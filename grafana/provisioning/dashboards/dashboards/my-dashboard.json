@@ -1,0 +1,47 @@
+{
+  "id": null,
+  "uid": "my-dashboard",
+  "title": "Sample Dashboard",
+  "tags": ["example"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Users Table",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "Postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawSql": "SELECT id, name, email FROM my_schema.users",
+          "format": "table"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "user_name",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "Postgres"
+        },
+        "query": "SELECT DISTINCT name FROM my_schema.users",
+        "label": "User Name",
+        "current": {},
+        "hide": 0,
+        "includeAll": true,
+        "multi": false,
+        "options": []
+      }
+    ]
+  }
+}
