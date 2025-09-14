@@ -9,8 +9,8 @@ def get_db_connection():
     return psycopg2.connect(
         host="postgres",
         database="mydb",
-        user="youruser",
-        password="yourpassword"
+        user="postgres",
+        password="postgres"
     )
 
 @app.get("/users")
@@ -26,4 +26,5 @@ def get_users():
 
 @app.get("/health")
 def health_check():
+
     return {"status": "healthy"}
