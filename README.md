@@ -1,0 +1,1 @@
+This project would automatically setup a set of containers containing Grafana, Postgres and a Python based app. The Postgres database would be pre-configured with the required tables. The Grafana container would be pre-configured with a sample Dashboard which connects to Postgres. The Python app can execute custom logi
