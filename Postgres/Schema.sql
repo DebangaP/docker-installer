@@ -60,3 +60,31 @@ CREATE TABLE IF NOT EXISTS my_schema.raw_ticks (
         overnight_low FLOAT,
         PRIMARY KEY (session_date, instrument_token)
     );
+
+
+CREATE TABLE my_schemat.ticks (
+    id SERIAL PRIMARY KEY,
+    instrument_token BIGINT NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+    last_price DECIMAL(15, 2),
+    volume BIGINT,
+    oi BIGINT,
+    open DECIMAL(15, 2),
+    high DECIMAL(15, 2),
+    low DECIMAL(15, 2),
+    close DECIMAL(15, 2)
+);
+
+CREATE TABLE my_schemat.market_depth (
+    id SERIAL PRIMARY KEY,
+    tick_id INTEGER REFERENCES ticks(id),
+    instrument_token BIGINT NOT NULL,
+    side VARCHAR(4) NOT NULL CHECK (side IN ('buy', 'sell')),
+    price DECIMAL(15, 2) NOT NULL,
+    quantity INTEGER NOT NULL,
+    orders INTEGER NOT NULL
+);
+
+CREATE INDEX idx_ticks_instrument_token ON my_schema.ticks(instrument_token);
+CREATE INDEX idx_ticks_timestamp ON my_schema.ticks(timestamp);
+CREATE INDEX idx_depth_tick_id ON my_schema.market_depth(tick_id);
