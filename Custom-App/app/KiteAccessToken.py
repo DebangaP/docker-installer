@@ -1,13 +1,26 @@
-from kiteconnect import KiteConnect
-import logging
 import os
+import logging
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
+from kiteconnect import KiteConnect
+import redis
+import time
+from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
+global ACCESS_TOKEN
+# Initialize Redis client
+redis_client = redis.Redis(host='redis', port=6379, decode_responses=True)
+
+load_dotenv()
+
 try:
-    API_KEY = os.environ["KITE_API_KEY"]
-    API_SECRET = os.environ["KITE_API_SECRET"]
+    API_KEY = os.getenv("KITE_API_KEY")
+    API_SECRET = os.getenv("KITE_API_SECRET")
+    #ACCESS_TOKEN = os.getenv("KITE_ACCESS_TOKEN")
+
     print(f"API_KEY: {API_KEY}")
     print(f"API_SECRET: {API_SECRET}")
 except KeyError as e:
@@ -20,10 +33,8 @@ kite = KiteConnect(api_key=API_KEY)
 # Function to validate access token
 def is_access_token_valid(access_token):
     try:
-        # Set the access token
-        kite.set_access_token(access_token)
-        # Make a simple API call to validate (e.g., get margins)
-        kite.margins()
+        kite.set_access_token(access_token) # Set the access token
+        kite.margins()  # Make a simple API call to validate (e.g., get margins)
         logging.info("Existing access token is valid")
         return True
     except Exception as e:
@@ -41,24 +52,98 @@ def generate_new_access_token(request_token):
         logging.error(f"Failed to generate new access token: {e}")
         return None
 
+
+# FastAPI app for capturing request_token
+app = FastAPI()
+
+@app.get("/", response_class=HTMLResponse)
+async def home():
+    login_url = kite.login_url()
+    return f"""
+        <h1>Kite Connect Authentication</h1>
+        <p><a href="{login_url}">Click here to log in to Kite Connect</a></p>
+        <p>Please authenticate to generate a new access token.</p>
+    """
+
+@app.get("/redirect", response_class=HTMLResponse)
+async def handle_redirect(request_token: str = None):
+    if not request_token:
+        raise HTTPException(status_code=400, detail="No request_token provided")
+    # Store request_token in Redis
+    redis_client.set("kite_request_token", request_token)
+    return f"""
+        <h1>Kite Connect Authentication</h1>
+        <p>Request token received: {request_token}</p>
+        <p>Access token generation in progress...</p>
+    """
+
 # Main logic
-def get_access_token(existing_access_token=None):
+def get_access_token():
     # Check if existing access token is provided and valid
-    if existing_access_token and is_access_token_valid(existing_access_token):
-        return existing_access_token
+    if ACCESS_TOKEN and is_access_token_valid(ACCESS_TOKEN):
+        return ACCESS_TOKEN
     else:
-        # Step 1: Print login URL for manual authentication
-        logging.info(f"Login URL: {kite.login_url()}")
-        # Step 2: Prompt user to log in and provide request_token
-        request_token = input("Enter the request_token from the redirect URL: ")
-        # Step 3: Generate new access token
+        # Clear any existing request_token in Redis
+        redis_client.delete("kite_request_token")
+        
+        # Log login URL
+        login_url = kite.login_url()
+        logging.info(f"Login URL: {login_url}")
+        logging.info("Please open the login URL in a browser to authenticate (http://localhost:8000).") # why?
+
+        # Wait for request_token from Redis
+        timeout = 300  # 5 minutes
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            request_token = redis_client.get("kite_request_token")
+            if request_token:
+                break
+            time.sleep(1)  # Poll every second
+        else:
+            raise Exception("Failed to receive request_token within timeout")
+
+        # Generate new access token
         new_access_token = generate_new_access_token(request_token)
         if new_access_token:
+            
+            ACCESS_TOKEN = new_access_token
             return new_access_token
         else:
             raise Exception("Could not obtain a valid access token")
 
-if __name__ == "__main__":
+
+""" def get_access_token():
+    # Check if existing access token is provided and valid
+    if ACCESS_TOKEN and is_access_token_valid(ACCESS_TOKEN):
+        return ACCESS_TOKEN
+    else:
+        # Start FastAPI server in a separate thread
+        server_thread = Thread(target=start_fastapi_server, daemon=True)
+        server_thread.start()
+
+        # Log login URL and wait for request_token
+        login_url = kite.login_url()
+        logging.info(f"Login URL: {login_url}")
+        logging.info("Please open the login URL in a browser to authenticate.")
+
+        # Wait for request_token from /redirect endpoint
+        request_token_event.wait(timeout=300)  # Wait up to 5 minutes
+        if not request_token:
+            raise Exception("Failed to receive request_token within timeout")
+
+        # Generate new access token
+        new_access_token = generate_new_access_token(request_token)
+        if new_access_token:
+            global ACCESS_TOKEN
+            ACCESS_TOKEN = new_access_token  # Update global ACCESS_TOKEN
+            return new_access_token
+        else:
+            raise Exception("Could not obtain a valid access token")
+ """
+
+
+
+""" if __name__ == "__main__":
     # Replace with your existing access token (if available, e.g., from a file or previous session)
     EXISTING_ACCESS_TOKEN = None  # Set to your current access token or None if not available
 
@@ -66,4 +151,4 @@ if __name__ == "__main__":
         ACCESS_TOKEN = get_access_token(EXISTING_ACCESS_TOKEN)
         print(f"Access Token: {ACCESS_TOKEN}")
     except Exception as e:
-        logging.error(f"Error: {e}")
+        logging.error(f"Error: {e}") """

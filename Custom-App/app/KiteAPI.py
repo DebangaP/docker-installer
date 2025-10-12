@@ -1,6 +1,6 @@
 import logging
 from kiteconnect import KiteConnect
-from KiteAccessToken import ACCESS_TOKEN
+from KiteAccessToken import get_access_token
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -15,7 +15,7 @@ kite = KiteConnect(api_key="your_api_key")
 data = kite.generate_session("request_token_here", api_secret="your_secret")
 
 #kite.set_access_token(data["access_token"])
-kite.set_access_token(ACCESS_TOKEN)
+kite.set_access_token(get_access_token)
 
 # Place an order
 try:

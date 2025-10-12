@@ -1,22 +1,26 @@
 import logging
 from kiteconnect import KiteTicker
-from KiteAccessToken import ACCESS_TOKEN
+from KiteAccessToken import get_access_token
 import psycopg2
 from psycopg2.extras import execute_batch
 from datetime import datetime
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 logging.basicConfig(level=logging.DEBUG)
 
 # Initialise
 #kws = KiteTicker("your_api_key", "your_access_token")
-kws = KiteTicker("your_api_key", ACCESS_TOKEN)
+kws = KiteTicker(os.getenv("KITE_API_KEY"), get_access_token)
 
 def get_db_connection():
     return psycopg2.connect(
         host="postgres",
         database="mydb",
-        user="youruser",
-        password="yourpassword"
+        user="postgres",
+        password="postgres"
     )
 
 # Save tick data to PostgreSQL
