@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS my_schema.raw_ticks (
     );
 
 
-CREATE TABLE my_schemat.ticks (
+CREATE TABLE my_schema.ticks (
     id SERIAL PRIMARY KEY,
     instrument_token BIGINT NOT NULL,
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -75,7 +75,7 @@ CREATE TABLE my_schemat.ticks (
     close DECIMAL(15, 2)
 );
 
-CREATE TABLE my_schemat.market_depth (
+CREATE TABLE my_schema.market_depth (
     id SERIAL PRIMARY KEY,
     tick_id INTEGER REFERENCES ticks(id),
     instrument_token BIGINT NOT NULL,
