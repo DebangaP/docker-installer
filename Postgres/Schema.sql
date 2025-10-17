@@ -73,11 +73,11 @@ CREATE TABLE my_schema.ticks (
     high DECIMAL(15, 2),
     low DECIMAL(15, 2),
     close DECIMAL(15, 2)
-);
+);  
 
 CREATE TABLE my_schema.market_depth (
     id SERIAL PRIMARY KEY,
-    tick_id INTEGER REFERENCES ticks(id),
+    tick_id INTEGER,
     instrument_token BIGINT NOT NULL,
     side VARCHAR(4) NOT NULL CHECK (side IN ('buy', 'sell')),
     price DECIMAL(15, 2) NOT NULL,
@@ -85,6 +85,3 @@ CREATE TABLE my_schema.market_depth (
     orders INTEGER NOT NULL
 );
 
-CREATE INDEX idx_ticks_instrument_token ON my_schema.ticks(instrument_token);
-CREATE INDEX idx_ticks_timestamp ON my_schema.ticks(timestamp);
-CREATE INDEX idx_depth_tick_id ON my_schema.market_depth(tick_id);

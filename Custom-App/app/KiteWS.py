@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 # Initialise
 #kws = KiteTicker("your_api_key", "your_access_token")
-kws = KiteTicker(os.getenv("KITE_API_KEY"), get_access_token)
+kws = KiteTicker(os.getenv("KITE_API_KEY"), get_access_token())
 
 def get_db_connection():
     return psycopg2.connect(

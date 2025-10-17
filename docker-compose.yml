@@ -29,7 +29,7 @@ services:
     networks:
       - app-network
 
-  python:
+  python:     # if there are older builds, then the new packages in requirements.txt won't be installed. Run "docker compose build --no-cache"
     build:
       context: ./Custom-App
       dockerfile: Dockerfile
@@ -42,9 +42,9 @@ services:
     networks:
       - app-network
     command: >
-      bash -c "uvicorn main:app --host 0.0.0.0 --port 8000 & 
-      python KiteWS.py & 
-      wait"
+      bash -c "uvicorn KiteAccessToken:app --host 0.0.0.0 --port 8000 &
+      python KiteWS.py &  
+      wait"   
 
   redis:
     image: redis:7-alpine
