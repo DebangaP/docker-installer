@@ -10,3 +10,5 @@ websocket-client==1.8.0
 matplotlib==3.9.2
 kiteconnect==5.0.1
 python-dotenv==0.20.0
+yfinance==0.2.61
+sqlalchemy==1.4.49
