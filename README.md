@@ -4,4 +4,5 @@ Steps to install
 1. Download and install Docker/ Docker Desktop
 2. Down and install git
 3. Go to the folder where you want to setup the code and run 'git clone https://github.com/DebangaP/docker-installer.git'
-4. run 'docker compose up'
+4. Add a .env file to the 'app' folder with KITE_API_KEY and KITE_API_SECRET
+5. run 'docker compose up'
