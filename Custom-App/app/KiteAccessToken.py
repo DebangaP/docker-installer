@@ -8,6 +8,7 @@ import redis
 import time
 from dotenv import load_dotenv
 from psycopg2.extras import execute_batch
+import psycopg2
 import pandas as pd
 from datetime import datetime
 
@@ -38,6 +39,20 @@ except KeyError as e:
 kite = KiteConnect(api_key=API_KEY)
 #print(kite)
 print('1')
+
+# Import functions at module level
+import KiteFetchData
+
+def get_db_connection():
+    return psycopg2.connect(
+        host="postgres",
+        database="mydb",
+        user="postgres",
+        password="postgres"
+    )
+
+conn = get_db_connection()
+cursor = conn.cursor()
 
 # Function to validate access token
 def is_access_token_valid(access_token):
@@ -92,17 +107,21 @@ async def home(
         return f"""
             <h1>Kite Connect Authentication</h1>
             <p>Request token received: {request_token}</p>
-             <p>Access token saved at timestamp: {datetime.fromtimestamp(float(kite_access_token_timestamp))}</p>
-            <p>Access token generation in progress...</p>
+             <p>Access token saved at timestamp: {datetime.fromtimestamp(float(kite_access_token_timestamp))} UTC (+5:30 hrs)</p>
             <p>Saving Tick data to Database...</p>
             <a href="http://localhost:3001/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&to=now"> GO TO My Dashboard</a>
+            <br>
+            <hr>
+            <a href="http://127.0.0.1:8000/fetch_data"> Refresh Data </a>
+            <br>
+            
         """
     else:
         # Show login page
         login_url = kite.login_url()
         return f"""
             <h1>Kite Connect Authentication</h1>
-            <p>Access token saved at timestamp: {datetime.fromtimestamp(kite_access_token_timestamp)}</p>
+            <p>Access token saved at timestamp: {datetime.fromtimestamp(float(kite_access_token_timestamp))}</p>
             <p><a href="{login_url}">Click here to log in to Kite Connect</a></p>
             <p>Please authenticate to generate a new access token.</p>
         """
@@ -120,6 +139,24 @@ async def handle_redirect(request_token: str = None):
         <p>Request token received: {request_token}</p>
         <p>Access token generation in progress...</p>
     """
+
+
+@app.get("/fetch_data", response_class=HTMLResponse)
+def fetch_data(request_token: str = None):
+    print('Fetching Data')
+
+    kite.set_access_token(redis_client.get("kite_access_token"))
+
+    KiteFetchData.fetch_and_save_holdings(kite, cursor)
+    KiteFetchData.fetch_and_save_orders(kite, cursor)
+    KiteFetchData.fetch_and_save_positions(kite, cursor)
+    KiteFetchData.fetch_and_save_trades(kite, cursor)
+    KiteFetchData.fetch_and_save_margins(kite, cursor)
+    
+    return f"""
+        <h1>Refreshing Data</h1>
+    """
+
 
 # To fetch TPO plots from http://localhost:8000/tpo_plot/premarket
 

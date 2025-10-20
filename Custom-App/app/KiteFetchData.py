@@ -107,7 +107,13 @@ def fetch_and_save_profile():
         logging.error(f"Error saving profile: {e}")
 
 
-def fetch_and_save_orders():
+def fetch_and_save_orders(kite: KiteConnect, cursor: psycopg2.extensions.cursor):
+    kite = kite
+    cursor = cursor
+    fetch_and_save_orders1()
+
+
+def fetch_and_save_orders1():
     try:
         print('Fetching orders')
         orders = kite.orders()  # Fetch orders from Kite API
@@ -115,7 +121,7 @@ def fetch_and_save_orders():
 
         if not orders:
             logging.warning("No orders found")
-            return []
+            #return []
 
         # Prepare data for insertion
         order_data = [
@@ -167,21 +173,27 @@ def fetch_and_save_orders():
 
         conn.commit()
         logging.info(f"Inserted/Updated {cursor.rowcount} orders")
-        return orders
+        #return orders
 
     except Exception as e:
         conn.rollback()
         logging.error(f"Error saving orders: {str(e)}")
 
 
-def fetch_and_save_positions():
+def fetch_and_save_positions(kite: KiteConnect, cursor: psycopg2.extensions.cursor):
+    kite = kite
+    cursor = cursor
+    fetch_and_save_positions1()
+
+
+def fetch_and_save_positions1():
     print('fetching positions')
     positions = kite.positions()    # save into postgres table with current date
     logging.info(f"User positions: {positions}")
 
     if not positions:
         logging.warning("No positions found")
-        return []
+        #return []
             
     # Process both 'net' and 'day' positions
     all_positions = []
@@ -249,7 +261,13 @@ def fetch_and_save_positions():
                 logging.error(f"Error in positions: {e}")
    
 
-def fetch_and_save_holdings():
+def fetch_and_save_holdings(kite: KiteConnect, cursor: psycopg2.extensions.cursor):
+    kite = kite
+    cursor = cursor
+    fetch_and_save_holdings1()
+
+
+def fetch_and_save_holdings1():
     print('fetching holdings')
     holdings = kite.holdings()  # save into postgres table with current date
     logging.info(f"User holdings: {holdings}")
@@ -257,7 +275,7 @@ def fetch_and_save_holdings():
     try:
         if not holdings:
             logging.warning("No holdings found")
-            return []
+            #return []
     except Exception as e:
         logging.error(f"Error XXXX: {e}")
 
@@ -326,14 +344,20 @@ def fetch_and_save_holdings():
         logging.error(f"Error saving holdings: {e}")    
     
 
-def fetch_and_save_trades():
+
+def fetch_and_save_trades(kite: KiteConnect, cursor: psycopg2.extensions.cursor):
+    kite = kite
+    cursor = cursor
+    fetch_and_save_trades1()
+
+def fetch_and_save_trades1():
     print('fetching trades')
     trades = kite.trades()  # save into postgres table with current date
     logging.info(f"User trades: {trades}")
 
     if not trades:
         logging.warning("No trades found")
-        return []
+        #return []
 
     try:
         cursor.executemany("""
@@ -371,19 +395,26 @@ def fetch_and_save_trades():
         logging.error(f"Error saving trades: {e}")       
 
 
+def fetch_and_save_margins(kite: KiteConnect, cursor: psycopg2.extensions.cursor):
+    kite = kite
+    cursor = cursor
+    fetch_and_save_margins1()
 
-def fetch_and_save_margins():
+
+def fetch_and_save_margins1():
     print('fetching margins')
     margins = kite.margins()    # save into postgres table with current date
     logging.info(f"User margins: {margins}")
 
     if not margins:
         logging.warning("No margins data found")
-        return []
-            
+        #return []
+    
+    logging.info("Margin 1")
     try:
         valid_margins = []
         for margin_type in ['equity', 'commodity']:
+            logging.info("Margin 2")
             margin = margins.get(margin_type, {})
             if not margin:
                 logging.warning(f"No data for margin_type: {margin_type}")
@@ -413,9 +444,17 @@ def fetch_and_save_margins():
                 'utilised_equity': margin.get('utilised', {}).get('equity', 0.0),
                 'utilised_delivery': margin.get('utilised', {}).get('delivery', 0.0)
             })
-            logging.debug(f"Processed margin: {valid_margins[-1]}")
-                
+        logging.debug(f"Processed margin: {valid_margins[-1]}")
+
+        logging.info("Margin 3")
+  
         if valid_margins:
+            logging.info("Margin 4")
+            #print('saving margins')
+            
+            cursor.execute("SELECT NOW();")
+            logging.info(cursor.fetchone())
+
             cursor.executemany("""
                 INSERT INTO my_schema.margins (
                     margin_type, enabled, net,
@@ -463,7 +502,7 @@ def fetch_and_save_margins():
             ])
             conn.commit()
             logging.info(f"Stored {len(valid_margins)} margins")
-        return valid_margins
+        #return valid_margins
     except Exception as e:
         conn.rollback()
         logging.error(f"Error fetching/storing margins: {e}")
@@ -473,15 +512,15 @@ def fetch_and_save_margins():
 try:
     init_postgres_conn()
     print('1')
-    fetch_and_save_holdings()
+    fetch_and_save_holdings1()
     print('2')
-    fetch_and_save_orders()
+    fetch_and_save_orders1()
     print('3')
-    fetch_and_save_positions()
+    fetch_and_save_positions1()
     print('4')
-    fetch_and_save_trades()
+    fetch_and_save_trades1()
     print('5')
-    fetch_and_save_margins()
+    fetch_and_save_margins1()
     print('6')
     fetch_and_save_profile()
 except Exception as e:
