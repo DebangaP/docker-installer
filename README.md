@@ -9,5 +9,5 @@ This project would automatically pull all your profile, holdings, orders, trades
 5. run '**docker compose up -d**'
 6. **Visit http://127.0.0.1:8000 to login to Kite and generate your Access Token**
 7. Once Access Token is generated, its valid for an entire day
-8. Visit **http://localhost:3001/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&to=now&timezone=browser** to see your Grafana Dashboard
+8. Visit **http://localhost:3001/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&to=now&timezone=browser** to see your Grafana Dashboard (user=admin/ password=adminpassword)
 
