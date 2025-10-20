@@ -4,16 +4,14 @@ from KiteAccessToken import get_access_token
 import psycopg2
 from psycopg2.extras import execute_batch
 from datetime import datetime
-from dotenv import load_dotenv
 import os
-
-load_dotenv()
+import redis
 
 logging.basicConfig(level=logging.DEBUG)
 
-# Initialise
-#kws = KiteTicker("your_api_key", "your_access_token")
-kws = KiteTicker(os.getenv("KITE_API_KEY"), get_access_token())
+redis_client = redis.Redis(host='redis', port=6379, decode_responses=True)
+
+kws = KiteTicker(os.getenv("KITE_API_KEY"), redis_client.get("kite_access_token"))
 
 def get_db_connection():
     return psycopg2.connect(
@@ -28,6 +26,7 @@ def save_tick_to_db(tick):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
+        logging.info(f"User holdings: {tick}")
         # Insert core tick data
         tick_sql = """
             INSERT INTO my_schema.ticks (instrument_token, timestamp, last_price, volume, oi, open, high, low, close)
@@ -87,10 +86,10 @@ def on_ticks(ws, ticks):
 def on_connect(ws, response):
     # Callback on successful connect.
     # Subscribe to a list of instrument_tokens (maybe Nifty 50 and MCX Gold).
-    ws.subscribe([53372167, 256265])
+    ws.subscribe([256265])
 
-    # Set RELIANCE to tick in `full` mode.
-    ws.set_mode(ws.MODE_FULL, [738561])
+    # Set NIFTY 50 to tick in `full` mode.
+    ws.set_mode(ws.MODE_FULL, [256265])
 
 def on_close(ws, code, reason):
     # On connection close stop the main loop

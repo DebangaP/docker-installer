@@ -1,21 +1,5 @@
 CREATE SCHEMA my_schema;
-CREATE TABLE my_schema.users (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(255) UNIQUE
-);
-CREATE TABLE my_schema.orders (
-    order_id SERIAL PRIMARY KEY,
-    user_id INT REFERENCES my_schema.users(id),
-    order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
--- Insert sample data
-INSERT INTO my_schema.users (name, email) VALUES
-('Alice', 'alice@example.com'),
-('Bob', 'bob@example.com');
-INSERT INTO my_schema.orders (user_id, order_date) VALUES
-(1, CURRENT_TIMESTAMP),
-(2, CURRENT_TIMESTAMP);
+
 CREATE TABLE IF NOT EXISTS my_schema.raw_ticks (
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         instrument_token INTEGER,
@@ -111,27 +95,27 @@ CREATE TABLE IF NOT EXISTS my_schema.profile (
     PRIMARY KEY (fetch_timestamp, user_id)
 );
 
-CREATE TABLE IF NOT EXISTS my_schema.orders (
-    fetch_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    run_date DATE DEFAULT CURRENT_DATE,
-    order_id VARCHAR(50),
-    parent_order_id VARCHAR(50),
-    exchange_order_id VARCHAR(50),
-    status VARCHAR(50),
-    status_message TEXT,
-    order_type VARCHAR(20),
-    transaction_type VARCHAR(20),
-    exchange VARCHAR(20),
-    trading_symbol VARCHAR(50),
-    instrument_token INTEGER,
-    quantity INTEGER,
-    price FLOAT,
-    trigger_price FLOAT,
-    average_price FLOAT,
-    order_timestamp TIMESTAMP,
-    exchange_timestamp TIMESTAMP,
-    PRIMARY KEY (fetch_timestamp, order_id)
+CREATE TABLE my_schema.orders (
+    order_id VARCHAR(50) NOT NULL, -- Adjust length based on actual data
+    parent_order_id VARCHAR(50),   -- Nullable, as it can be None
+    exchange_order_id VARCHAR(50), -- Nullable
+    status VARCHAR(20),            -- e.g., 'COMPLETE'
+    status_message TEXT,           -- Nullable, for longer messages
+    order_type VARCHAR(20),        -- e.g., 'MARKET'
+    transaction_type VARCHAR(20),  -- e.g., 'SELL'
+    exchange VARCHAR(10),          -- e.g., 'NSE'
+    trading_symbol VARCHAR(50),    -- e.g., 'SETF10GILT'
+    instrument_token BIGINT,       -- e.g., 4453121
+    quantity INTEGER,              -- e.g., 5
+    price NUMERIC(15, 2),         -- e.g., 0 (for MARKET orders)
+    trigger_price NUMERIC(15, 2), -- e.g., 0
+    average_price NUMERIC(15, 2), -- e.g., 258.5
+    order_timestamp TIMESTAMP,     -- e.g., '2025-10-20 09:34:26'
+    exchange_timestamp TIMESTAMP,  -- e.g., '2025-10-20 09:34:26'
+    run_date date DEFAULT CURRENT_DATE,
+    CONSTRAINT orders_order_id_key UNIQUE (order_id)
 );
+--CREATE UNIQUE INDEX orders_order_id_idx ON my_schema.orders (order_id);
 
 CREATE TABLE IF NOT EXISTS my_schema.trades (
     fetch_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -147,7 +131,7 @@ CREATE TABLE IF NOT EXISTS my_schema.trades (
     average_price FLOAT,
     trade_timestamp TIMESTAMP,
     exchange_timestamp TIMESTAMP,
-    PRIMARY KEY (fetch_timestamp, trade_id)
+    CONSTRAINT trades_unique_key UNIQUE (trade_id)
 );
 
 CREATE TABLE IF NOT EXISTS my_schema.positions (
@@ -171,7 +155,7 @@ CREATE TABLE IF NOT EXISTS my_schema.positions (
     realised FLOAT,
     unrealised FLOAT,
     value FLOAT,
-    PRIMARY KEY (fetch_timestamp, position_type, instrument_token)
+    CONSTRAINT positions_unique_key UNIQUE (position_type, instrument_token)
 );
 
 CREATE TABLE IF NOT EXISTS my_schema.holdings (
@@ -190,7 +174,7 @@ CREATE TABLE IF NOT EXISTS my_schema.holdings (
     pnl FLOAT,
     collateral_quantity INTEGER,
     collateral_type VARCHAR(20),
-    PRIMARY KEY (fetch_timestamp, instrument_token)
+    CONSTRAINT holdings_unique_key UNIQUE ( instrument_token)
 );
 
 CREATE TABLE IF NOT EXISTS my_schema.margins (
