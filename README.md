@@ -11,13 +11,13 @@ This project would automatically pull all your profile, holdings, orders, trades
 7. Once Access Token is generated, its valid for an entire day
 8. Visit **http://localhost:3001/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&to=now&timezone=browser** to see your Grafana Dashboard (user=admin/ password=adminpassword)
 
-**NIFTY50 Ticks
+**NIFTY50 Ticks**
 **<img width="706" height="507" alt="image" src="https://github.com/user-attachments/assets/b2866788-9859-4005-81c5-63c6228c176b" />
 
-**Todays' Positions
+**Todays' Positions**
 **<img width="930" height="180" alt="image" src="https://github.com/user-attachments/assets/f187eca5-32f2-400d-b5c1-cbf4f65d3c77" />
 
-**Latest Trades
+**Latest Trades**
 **<img width="952" height="187" alt="image" src="https://github.com/user-attachments/assets/be7a4b30-3045-4ed5-b907-3d0a006f88a8" />
 
 **Your Holdings**
