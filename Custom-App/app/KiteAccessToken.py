@@ -9,6 +9,7 @@ import time
 from dotenv import load_dotenv
 from psycopg2.extras import execute_batch
 import pandas as pd
+from datetime import datetime
 
 #import InsertOHLC   # run this code to insert latest data
 
@@ -91,17 +92,17 @@ async def home(
         return f"""
             <h1>Kite Connect Authentication</h1>
             <p>Request token received: {request_token}</p>
-            <p>Request token saved at timestamp: {kite_access_token_timestamp}</p>
+             <p>Access token saved at timestamp: {datetime.fromtimestamp(float(kite_access_token_timestamp))}</p>
             <p>Access token generation in progress...</p>
             <p>Saving Tick data to Database...</p>
-            <a href="/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&tonow>Dashboard</a>
+            <a href="http://localhost:3001/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&to=now"> GO TO My Dashboard</a>
         """
     else:
         # Show login page
         login_url = kite.login_url()
         return f"""
             <h1>Kite Connect Authentication</h1>
-            <p>Request token saved at timestamp: {kite_access_token_timestamp}</p>
+            <p>Access token saved at timestamp: {datetime.fromtimestamp(kite_access_token_timestamp)}</p>
             <p><a href="{login_url}">Click here to log in to Kite Connect</a></p>
             <p>Please authenticate to generate a new access token.</p>
         """

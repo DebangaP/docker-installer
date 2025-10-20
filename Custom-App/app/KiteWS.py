@@ -26,7 +26,7 @@ def save_tick_to_db(tick):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        logging.info(f"User holdings: {tick}")
+        #logging.info(f"User holdings: {tick}")
         # Insert core tick data
         tick_sql = """
             INSERT INTO my_schema.ticks (instrument_token, timestamp, last_price, volume, oi, open, high, low, close)

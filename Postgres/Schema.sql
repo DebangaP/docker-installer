@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS my_schema.profile (
     products TEXT[],
     order_types TEXT[],
     exchanges TEXT[],
-    PRIMARY KEY (fetch_timestamp, user_id)
+    PRIMARY KEY (user_id)
 );
 
 CREATE TABLE my_schema.orders (
@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS my_schema.holdings (
     pnl FLOAT,
     collateral_quantity INTEGER,
     collateral_type VARCHAR(20),
-    CONSTRAINT holdings_unique_key UNIQUE ( instrument_token)
+    CONSTRAINT holdings_unique_key UNIQUE (instrument_token)
 );
 
 CREATE TABLE IF NOT EXISTS my_schema.margins (
@@ -202,7 +202,7 @@ CREATE TABLE IF NOT EXISTS my_schema.margins (
     utilised_stock_collateral FLOAT,
     utilised_equity FLOAT,
     utilised_delivery FLOAT,
-    PRIMARY KEY (fetch_timestamp, margin_type)
+    CONSTRAINT margins_unique_key UNIQUE (margin_type)
 );
 
 -- public.master_scrips definition
