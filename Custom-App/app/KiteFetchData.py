@@ -21,16 +21,18 @@ try:
 except KeyError as e:
     logging.error(f"Environment variable {e} not set")
 
-# Initialize KiteConnect
-kite = KiteConnect(api_key=API_KEY)
+logging.info(f"API_KEY: {API_KEY}")
+logging.info(f"API_SECRET: {API_SECRET}")
 
 # Initialize Redis client
 redis_client = redis.Redis(host='redis', port=6379, decode_responses=True)
 access_token = redis_client.get("kite_access_token")
 print(access_token)
 
-
+# Initialize KiteConnect
+kite = KiteConnect(api_key=API_KEY)
 kite.set_access_token(access_token) # Set the access token
+
 
 def get_db_connection():
     return psycopg2.connect(

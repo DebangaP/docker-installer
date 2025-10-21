@@ -261,9 +261,72 @@ CREATE INDEX rt_intraday_price2_price_date_idx ON my_schema.rt_intraday_price US
 CREATE INDEX rt_intraday_price2_volume_idx ON my_schema.rt_intraday_price USING btree (volume, price_date, country);
 
 
+-- my_schema.instruments definition
+
+-- Drop table
+
+-- DROP TABLE my_schema.instruments;
+
+CREATE TABLE my_schema.instruments (
+	instrument_token int4 NOT NULL,
+	exchange_token int4 NULL,
+	tradingsymbol varchar NOT NULL,
+	"name" varchar NULL,
+	last_price float4 NULL,
+	expiry date NULL,
+	strike float4 NULL,
+	tick_size float4 NULL,
+	lot_size int4 NULL,
+	instrument_type varchar NULL,
+	segment varchar NULL,
+	exchange varchar NULL,
+	"timestamp" timestamp DEFAULT CURRENT_TIMESTAMP NULL,
+	run_date date DEFAULT CURRENT_DATE NULL,
+	CONSTRAINT instruments_pk1 PRIMARY KEY (instrument_token, expiry, strike)
+);
 
 
+CREATE TABLE my_schema.futures_ticks (
+    id SERIAL PRIMARY KEY,
+    instrument_token BIGINT NOT NULL,
+    timestamp TIMESTAMP default current_timestamp,
+    run_date date default current_date,
+    last_trade_time TIMESTAMP,
+    last_price DOUBLE PRECISION,
+    last_quantity INT,
+    buy_quantity BIGINT,
+    sell_quantity BIGINT,
+    volume BIGINT,
+    average_price DOUBLE PRECISION,
+    oi BIGINT,
+    oi_day_high BIGINT,
+    oi_day_low BIGINT,
+    net_change DOUBLE PRECISION,
+    lower_circuit_limit DOUBLE PRECISION,
+    upper_circuit_limit DOUBLE PRECISION
+);
 
+CREATE TABLE my_schema.futures_tick_ohlc (
+    tick_id INT REFERENCES my_schema.ticks(id) ON DELETE CASCADE,
+    open DOUBLE PRECISION,
+    high DOUBLE PRECISION,
+    low DOUBLE PRECISION,
+    close DOUBLE PRECISION,
+    PRIMARY KEY (tick_id),
+    timestamp TIMESTAMP default current_timestamp,
+    run_date date default current_date
+);
+
+CREATE TABLE my_schema.futures_tick_depth (
+    id SERIAL PRIMARY KEY,
+    tick_id INT REFERENCES my_schema.ticks(id) ON DELETE CASCADE,
+    side VARCHAR(4) CHECK (side IN ('buy', 'sell')),
+    price DOUBLE PRECISION,
+    quantity BIGINT,
+    orders INT,
+    timestamp TIMESTAMP default current_timestamp,
+    run_date date default current_date
+);
 
 
 INSERT INTO my_schema.master_scrips (scrip_id,scrip_screener_code,sector_code,created_at,yahoo_code,scrip_group,scrip_mcap,scrip_country,ownership,fno,hist_roce,debt_to_equity,ps_ratio,updated_at) VALUES

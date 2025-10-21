@@ -1,25 +1,6 @@
-import logging
-from kiteconnect import KiteTicker
-from KiteAccessToken import get_access_token
-import psycopg2
-from psycopg2.extras import execute_batch
-from datetime import datetime
-import os
-import redis
+from Boilerplate import *
 
-logging.basicConfig(level=logging.DEBUG)
-
-redis_client = redis.Redis(host='redis', port=6379, decode_responses=True)
-
-kws = KiteTicker(os.getenv("KITE_API_KEY"), redis_client.get("kite_access_token"))
-
-def get_db_connection():
-    return psycopg2.connect(
-        host="postgres",
-        database="mydb",
-        user="postgres",
-        password="postgres"
-    )
+kws = KiteTicker(API_KEY, access_token)
 
 # Save tick data to PostgreSQL
 def save_tick_to_db(tick):
@@ -76,6 +57,9 @@ def save_tick_to_db(tick):
         cursor.close()
         conn.close()
 
+NIFTY25OCTFUT = 52168
+NIFTY25NOVFUT = 37054
+NIFTY_SPOT_TOKEN = 256265
 
 def on_ticks(ws, ticks):
     # Callback to receive ticks.
@@ -86,10 +70,10 @@ def on_ticks(ws, ticks):
 def on_connect(ws, response):
     # Callback on successful connect.
     # Subscribe to a list of instrument_tokens (maybe Nifty 50 and MCX Gold).
-    ws.subscribe([256265])
 
-    # Set NIFTY 50 to tick in `full` mode.
-    ws.set_mode(ws.MODE_FULL, [256265])
+    ws.subscribe([NIFTY_SPOT_TOKEN, NIFTY25OCTFUT, NIFTY25NOVFUT])
+    ws.set_mode(ws.MODE_FULL, [NIFTY_SPOT_TOKEN, NIFTY25OCTFUT, NIFTY25NOVFUT])
+
 
 def on_close(ws, code, reason):
     # On connection close stop the main loop
