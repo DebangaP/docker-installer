@@ -11,8 +11,6 @@ from psycopg2.extras import execute_batch
 import psycopg2
 import pandas as pd
 from datetime import datetime
-import asyncio
-import subprocess
 from kiteconnect import KiteTicker
 
 # Configure logging
