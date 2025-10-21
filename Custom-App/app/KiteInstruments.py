@@ -32,9 +32,3 @@ except Exception as e:
     conn.rollback()
     logging.error(f"Error saving data: {e}")
 
-# Display columns
-print(df.columns)
-
-# Show first few records
-print(df.head())
-

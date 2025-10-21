@@ -58,9 +58,14 @@ def insert_tick_data(conn, tick_data):
 
 
 symbols = [
-    "NFO:NIFTY25OCTFUT",
-    "NFO:NIFTY25NOVFUT",
-    "NFO:NIFTY25DECFUT"]  # Use correct expiry symbol here
+    "NFO:NIFTY25OCTFUT", "NFO:NIFTY25NOVFUT", "NFO:NIFTY25DECFUT",
+    "NFO:GOLD25NOVFUT", "NFO:GOLD25DECFUT",
+    "NFO:SILVER26MARFUT", "NFO:SILVER26JUNFUT", "NFO:SILVER26SEPFUT",
+    "NFO:COPPER25NOVFUT", "NFO:COPPER25DECFUT",
+    "NFO:ALUMINIUM25NOVFUT", "NFO:AUMINIUM25DECFUT",
+    "NFO:CRUDEOIL25DECFUT", "NFO:CRUDEOIL25NOVFUT"
+    ]  
+# Use correct expiry symbol here
 
 for i in range(len(symbols)):
     symbol = symbols[i]
