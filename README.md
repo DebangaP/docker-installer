@@ -1,5 +1,5 @@
-This project would automatically pull all your profile, holdings, orders, trades, and margin data from Kite.
-
+This is a sample app to automatically pull all your profile, holdings, orders, trades, and margin data from Kite.
+To be noted that this is not a Production grade app.
 
 **Steps to install**
 1. Download and install **Docker/ Docker Desktop**
@@ -26,4 +26,6 @@ This project would automatically pull all your profile, holdings, orders, trades
 **Click on any particular stock to see its daily Candlestick chart**
 <img width="1080" height="386" alt="image" src="https://github.com/user-attachments/assets/333ce042-4ad8-4d6d-a868-64fdb56eebce" />
 
+**Top Gainers and Losers for the last trading day**
+<img width="1872" height="465" alt="image" src="https://github.com/user-attachments/assets/c5093877-1cbd-4146-922a-db92065f9e14" />
 
