@@ -42,16 +42,12 @@ services:
       - "8000:8000"  # FastAPI
     volumes:
       - ./Custom-App/app:/app
+      - ./start.sh:/start.sh   # Mount start.sh
     depends_on:
       - postgres
     networks:
       - app-network
-    command: >
-      bash -c "uvicorn KiteAccessToken:app --host 0.0.0.0 --port 8000 &
-      python KiteWS.py &  
-      python KiteFetchData.py &
-      python InsertOHLC.py & 
-      wait"   
+    command: ["bash", "/start.sh"]
 
   redis:
     image: redis:7-alpine
