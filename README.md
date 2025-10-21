@@ -1,4 +1,4 @@
-This is a sample app to automatically pull all your profile, holdings, orders, trades, and margin data from Kite.
+This is a sample app to automatically pull all your profile, holdings, orders, trades, and margin data from **Zerodha Kite**.
 To be noted that this is not a Production grade app.
 
 **Steps to install**
