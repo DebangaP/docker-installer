@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS my_schema.profile (
     products TEXT[],
     order_types TEXT[],
     exchanges TEXT[],
-    PRIMARY KEY (user_id)
+    CONSTRAINT profile_key UNIQUE (user_id)
 );
 
 CREATE TABLE my_schema.orders (

@@ -44,7 +44,7 @@ def fetch_and_save_profile():
                         user_id, user_name, email, user_type, broker,
                         products, order_types, exchanges
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (fetch_timestamp, user_id) DO UPDATE
+                    ON CONFLICT (user_id) DO UPDATE
                     SET user_name = EXCLUDED.user_name,
                         email = EXCLUDED.email,
                         user_type = EXCLUDED.user_type,
