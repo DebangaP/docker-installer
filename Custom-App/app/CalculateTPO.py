@@ -38,20 +38,20 @@ class TPOProfile:
         # Create 1-minute bins
         df['time_period'] = df[time_column].dt.floor('1min')
         
-        # Get unique time periods and assign TPO letters
-        time_periods = sorted(df['time_period'].unique())
-        tpo_letters = [chr(65 + i % 26) for i in range(len(time_periods))]  # A, B, C, ...
-        time_to_letter = dict(zip(time_periods, tpo_letters))
+        # Convert price_column to float to handle decimal.Decimal
+        df[price_column] = df[price_column].astype(float)
         
+        print(df)
+
         # Round prices to tick size
         df['price_level'] = (df[price_column] / self.tick_size).round() * self.tick_size
         
         # Build TPO profile
         tpo_dict = defaultdict(list)
-        for period in time_periods:
+        for period in sorted(df['time_period'].unique()):
             period_data = df[df['time_period'] == period]
             prices_in_period = period_data['price_level'].unique()
-            letter = time_to_letter[period]
+            letter = chr(65 + len(tpo_dict) % 26)  # A, B, C, ...
             
             for price in prices_in_period:
                 tpo_dict[price].append(letter)
@@ -63,6 +63,7 @@ class TPOProfile:
         ])
         
         # Calculate Initial Balance (first 2 time periods or 1 hour)
+        time_periods = sorted(df['time_period'].unique())
         ib_periods = time_periods[:min(2, len(time_periods))]
         ib_data = df[df['time_period'].isin(ib_periods)]
         if not ib_data.empty:
@@ -70,12 +71,14 @@ class TPOProfile:
             self.initial_balance_low = ib_data['price_level'].min()
         
         # Calculate Point of Control (POC) - price with most TPO count
-        self.poc = self.tpo_data.loc[self.tpo_data['tpo_count'].idxmax(), 'price']
+        if not self.tpo_data.empty:
+            self.poc = self.tpo_data.loc[self.tpo_data['tpo_count'].idxmax(), 'price']
         
         # Calculate Value Area (70% of TPO volume)
         self._calculate_value_area()
         
         return self.tpo_data
+
     
     def _calculate_value_area(self):
         """Calculate Value Area High and Low (70% of volume)"""
@@ -292,7 +295,7 @@ if __name__ == "__main__":
         'database': 'mydb',
         'user': 'postgres',
         'password': 'postgres',
-        'port': 5433
+        'port': 5434
     }
     
     # Initialize components
