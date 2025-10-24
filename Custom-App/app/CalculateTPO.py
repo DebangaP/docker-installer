@@ -207,7 +207,7 @@ class PostgresDataFetcher:
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
         
-        query += " ORDER BY timestamp ASC"
+        query += " ORDER BY timestamp"
         
         try:
             logging.info(f"Executing query: {query} with params: {params}")
