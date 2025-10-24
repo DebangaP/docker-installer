@@ -8,7 +8,7 @@ from collections import defaultdict
 import logging
 
 class TPOProfile:
-    def __init__(self, tick_size=0.05):
+    def __init__(self, tick_size=5):
         """
         Initialize TPO Profile calculator
         
@@ -230,7 +230,7 @@ class PostgresDataFetcher:
 
 class LiveTPOChart:
     def __init__(self, db_fetcher, table_name, symbol=None, 
-                 tick_size=0.05, refresh_interval=5000):
+                 tick_size=5, refresh_interval=5000):
         """
         Create live-updating TPO chart
         
@@ -302,19 +302,19 @@ if __name__ == "__main__":
     db_fetcher = PostgresDataFetcher(**DB_CONFIG)
     
     # Option 1: Create static TPO profile
-    print("Fetching data...")
+    print("Generating Pre-market TPO Profile...")
     df = db_fetcher.fetch_tick_data(
         table_name='ticks',
         instrument_token=256265,
-        start_time=datetime.now().replace(hour=9, minute=5),
-        end_time=datetime.now()
+        start_time= '2025-10-20 09:05:00.000 +0530',    #datetime.now().replace(hour=9, minute=5),
+        end_time='2025-10-20 09:15:00.000 +0530'   #datetime.now()
     )
 
     logging.info("Calculating TPO profile...")
     print(df)
     
     if not df.empty:
-        tpo = TPOProfile(tick_size=0.05)
+        tpo = TPOProfile(tick_size=5)
         tpo.calculate_tpo(df)
         
         print(f"\nTPO Metrics:")
