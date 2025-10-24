@@ -6,10 +6,11 @@ To be noted that this is not a Production grade app.
 2. Down and install **git**
 3. Go to the folder where you want to setup the code and run '**git clone https://github.com/DebangaP/docker-installer.git**'
 4. **Add a .env file to the 'app' folder with KITE_API_KEY and KITE_API_SECRET**
-5. run '**docker compose up -d**'
-6. **Visit http://127.0.0.1:8000 to login to Kite and generate your Access Token**
-7. Once Access Token is generated, its valid for an entire day
-8. Visit **http://localhost:3001/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&to=now&timezone=browser** to see your Grafana Dashboard (user=admin/ password=adminpassword)
+5. **If you have anything running at ports 3001, 8000 and 5433, please change the docker-compose file accordingly**
+6. run '**docker compose up -d**'
+7. **Visit http://127.0.0.1:8000 to login to Kite and generate your Access Token**
+8. Once Access Token is generated, its valid for an entire day
+9. Visit **http://localhost:3001/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&to=now&timezone=browser** to see your Grafana Dashboard (user=admin/ password=adminpassword)
 
 **NIFTY50 Ticks**
 **<img width="706" height="507" alt="image" src="https://github.com/user-attachments/assets/b2866788-9859-4005-81c5-63c6228c176b" />
