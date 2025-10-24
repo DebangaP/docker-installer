@@ -1,2 +1,3 @@
 CRON_TZ=Asia/Kolkata
-0 9 * * * python KiteWS.py &
+4 9 * * * python KiteWS.py &
+16 9 * * * python CalculateTPO.py &
