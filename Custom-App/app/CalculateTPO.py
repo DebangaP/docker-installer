@@ -201,13 +201,13 @@ class PostgresDataFetcher:
             conditions.append("timestamp + interval '5 hours 30 minutes'>= :start_time")
             params['start_time'] = start_time
         if end_time:
-            conditions.append("timestamp <= :end_time")
+            conditions.append("timestamp <= :end_time")   
             params['end_time'] = end_time
         
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
         
-        query += " ORDER BY timestamp"
+        query += " ORDER BY timestamp ASC"
         
         try:
             logging.info(f"Executing query: {query} with params: {params}")
