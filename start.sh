@@ -10,7 +10,7 @@ sleep 3m
 python KiteFetchData.py &
 python KiteFetchFuture.py &
 python KiteWS.py &
-python InsertOHLC.py &
+#python InsertOHLC.py &
 
 # Wait for all background processes to complete to keep container alive
 wait

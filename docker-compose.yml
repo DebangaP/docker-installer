@@ -25,7 +25,7 @@ services:
       - ./postgres:/docker-entrypoint-initdb.d
       - postgres-data:/var/lib/postgresql/data1     #if there are initialization errors after multiple runs --> docker rm -f $(docker ps -a -q),  docker volume rm customapp_postgres-data
     ports:
-      - "5434:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 10s

@@ -1,0 +1,2 @@
+CRON_TZ=Asia/Kolkata
+0 9 * * * python KiteWS.py &

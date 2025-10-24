@@ -69,11 +69,11 @@ def on_ticks(ws, ticks):
 
 def on_connect(ws, response):
     # Callback on successful connect.
-    # Subscribe to a list of instrument_tokens (maybe Nifty 50 and MCX Gold).
-
+    # Subscribe to a list of instrument_tokens.
+    logging.info("Connected: {}".format(response))
     ws.subscribe([NIFTY_SPOT_TOKEN, NIFTY25OCTFUT, NIFTY25NOVFUT])
     ws.set_mode(ws.MODE_FULL, [NIFTY_SPOT_TOKEN, NIFTY25OCTFUT, NIFTY25NOVFUT])
-
+    logging.info("Subscribed to tokens")
 
 def on_close(ws, code, reason):
     # On connection close stop the main loop
