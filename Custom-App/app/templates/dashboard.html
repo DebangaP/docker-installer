@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trading Dashboard</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.png">
     <style>
         * {
             margin: 0;
@@ -382,14 +383,48 @@
                 <button id="refreshBtn" class="btn btn-secondary">🔄 Refresh Charts</button>
             </div>
             
-            <div id="analysisInfo" class="analysis-info" style="display: none;">
-                <h4>📈 Analysis Information</h4>
-                <p id="analysisDateText"></p>
-                <p id="analysisModeText"></p>
-                <p id="dataAvailabilityText"></p>
+            <div class="date-controls" style="margin-top: 10px;">
+                <label for="refreshInterval">Auto Refresh:</label>
+                <select id="refreshInterval" class="date-input" disabled="true">
+                    <option value="5000">5 seconds</option>
+                    <option value="10000" selected>10 seconds</option>
+                    <option value="30000">30 seconds</option>
+                    <option value="60000">1 minute</option>
+                    <option value="300000">5 minutes</option>
+                    <option value="600000">10 minutes</option>
+                    <option value="0">Manual only</option>
+                </select>
+                <span id="refreshStatus" style="margin-left: 10px; font-size: 12px; color: #666;">Next refresh in: <span id="countdown">10</span>s</span>
             </div>
+            
         </div>
 
+
+        <!-- Market Bias Analysis Section -->
+        <div class="card" style="margin-bottom: 10px;">
+            <div class="card-header" style="padding: 15px 25px;">
+                <h3 class="card-title" style="font-size: 16px;">🎯 Market Bias Analysis</h3>
+                <span class="card-icon" style="font-size: 20px;">📊</span>
+            </div>
+            <div class="metrics-grid" style="gap: 10px; margin-bottom: 10px;">
+                <div class="metric-card" style="padding: 12px;">
+                    <div class="metric-value" id="biasScore" style="font-size: 18px;">0.0</div>
+                    <div class="metric-label" style="font-size: 11px;">Bias Score</div>
+                </div>
+                <div class="metric-card" style="padding: 12px;">
+                    <div class="metric-value" id="biasDirection" style="font-size: 18px;">Neutral</div>
+                    <div class="metric-label" style="font-size: 11px;">Bias Direction</div>
+                </div>
+                <div class="metric-card" style="padding: 12px;">
+                    <div class="metric-value" id="biasStrength" style="font-size: 18px;">Weak</div>
+                    <div class="metric-label" style="font-size: 11px;">Bias Strength</div>
+                </div>
+                <div class="metric-card" style="padding: 12px;">
+                    <div class="metric-value" id="riskLevel" style="font-size: 18px;">Medium</div>
+                    <div class="metric-label" style="font-size: 11px;">Risk Level</div>
+                </div>
+            </div>
+        </div>
 
         <!-- TPO Charts Section (full width) -->
         <div class="card" style="margin-bottom: 20px;">
@@ -402,39 +437,123 @@
             </div>
         </div>
 
-        <!-- Grafana Integration Section -->
-        <div class="card">
-            <div class="card-header">
-                <h3 class="card-title">📊 Live Market Charts</h3>
-                <span class="card-icon">📈</span>
+        <!-- Futures Order Flow Section -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header" style="padding: 15px 25px;">
+                <h3 class="card-title" style="font-size: 16px;">📊 Nifty 50 Futures Order Flow (Last Trading Day)</h3>
+                <span class="card-icon" style="font-size: 20px;">📈</span>
             </div>
-            <div class="grafana-container" style="height: 600px; text-align: center; padding: 50px;">
-                <div style="margin-bottom: 20px;">
-                    <h4>Grafana Dashboard</h4>
-                    <p>Click the button below to open Grafana in a new tab</p>
-                </div>
-                <a href="http://localhost:3001/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&to=now&timezone=browser" 
-                   target="_blank" 
-                   class="btn btn-primary" 
-                   style="padding: 15px 30px; font-size: 16px; text-decoration: none; display: inline-block;">
-                    📊 Open Grafana Dashboard
-                </a>
-                <div style="margin-top: 20px;">
-                    <small style="color: #666;">
-                        Note: Grafana is configured to prevent iframe embedding for security reasons.<br>
-                        Click the button above to view the dashboard in a new tab.
-                    </small>
-                </div>
+            <div class="tpo-chart-container" style="height: 200px; overflow-y: auto;">
+                <table id="futuresOrderFlowTable" style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <thead>
+                        <tr style="background-color: #f8f9fa; position: sticky; top: 0;">
+                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-size: 11px;">Time</th>
+                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-size: 11px;">Side</th>
+                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Price</th>
+                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Quantity</th>
+                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Orders</th>
+                        </tr>
+                    </thead>
+                    <tbody id="futuresOrderFlowBody">
+                        <tr>
+                            <td colspan="5" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading order flow data...</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
-    </div>
+
 
     <!-- Load TPO chart renderer -->
     <script src="/static/tpo-charts.js"></script>
     
     <script>
-        // Update system status every 10 seconds
-        setInterval(function() {
+        // Global variables for market bias analysis
+        let currentAnalysisDate = null;
+        let marketBiasData = null;
+        let refreshInterval = 30000; // Default 10 seconds
+        let refreshTimer = null;
+        let countdownTimer = null;
+        let countdownValue = 10;
+        
+        // Initialize refresh system
+        function initializeRefreshSystem() {
+            // Check if countdown elements exist before initializing
+            const countdownElement = document.getElementById('countdown');
+            const refreshStatusElement = document.getElementById('refreshStatus');
+            
+            if (!countdownElement || !refreshStatusElement) {
+                console.warn('Countdown elements not found, delaying refresh system initialization');
+                // Retry after a short delay
+                setTimeout(initializeRefreshSystem, 100);
+                return;
+            }
+            
+            // Start the refresh timer
+            startRefreshTimer();
+            
+            // Start countdown display
+            startCountdown();
+        }
+        
+        // Start refresh timer
+        function startRefreshTimer() {
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+            }
+            
+            if (refreshInterval > 0) {
+                refreshTimer = setInterval(function() {
+                    refreshDashboardData();
+                }, refreshInterval);
+            }
+        }
+        
+        // Start countdown display
+        function startCountdown() {
+            if (countdownTimer) {
+                clearInterval(countdownTimer);
+            }
+            
+            if (refreshInterval > 0) {
+                countdownValue = Math.floor(refreshInterval / 1000);
+                updateCountdownDisplay();
+                
+                countdownTimer = setInterval(function() {
+                    countdownValue--;
+                    updateCountdownDisplay();
+                    
+                    if (countdownValue <= 0) {
+                        countdownValue = Math.floor(refreshInterval / 1000);
+                    }
+                }, 1000);
+            } else {
+                updateCountdownDisplay();
+            }
+        }
+        
+        // Update countdown display
+        function updateCountdownDisplay() {
+            const countdownElement = document.getElementById('countdown');
+            const refreshStatusElement = document.getElementById('refreshStatus');
+            
+            // Check if elements exist before trying to update them
+            if (!countdownElement || !refreshStatusElement) {
+                console.warn('Countdown elements not found, skipping update');
+                return;
+            }
+            
+            if (refreshInterval === 0) {
+                countdownElement.textContent = 'Manual';
+                refreshStatusElement.textContent = 'Auto refresh disabled';
+            } else {
+                countdownElement.textContent = countdownValue;
+                refreshStatusElement.textContent = `Next refresh in: ${countdownValue}s`;
+            }
+        }
+        
+        // Refresh dashboard data
+        function refreshDashboardData() {
             fetch('/api/system_status')
                 .then(response => response.json())
                 .then(data => {
@@ -445,11 +564,15 @@
                     console.error('Error fetching system status:', error);
                 });
             
-            // Update margin data every 30 seconds
+            // Update margin data
             if (window.tpoChartRenderer) {
                 window.tpoChartRenderer.loadMarginData();
             }
-        }, 10000);
+            
+            // Update market bias analysis and futures order flow
+            loadMarketBiasAnalysis();
+            loadFuturesOrderFlow();
+        }
 
         function updateStatusIndicators(data) {
             // Update token status
@@ -460,6 +583,222 @@
             const tickIndicator = document.querySelector('.status-item:nth-child(2) .status-indicator');
             tickIndicator.className = `status-indicator ${data.tick_active ? 'status-online' : 'status-offline'}`;
         }
+        
+        // Load market bias analysis
+        function loadMarketBiasAnalysis() {
+            const analysisDate = document.getElementById('analysisDate').value || null;
+            
+            // Load market bias data
+            fetch(`/api/market_bias${analysisDate ? '?analysis_date=' + analysisDate : ''}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Error loading market bias:', data.error);
+                        return;
+                    }
+                    
+                    marketBiasData = data.analysis;
+                    updateMarketBiasDisplay();
+                })
+                .catch(error => {
+                    console.error('Error fetching market bias:', error);
+                });
+        }
+        
+        // Load futures order flow data
+        function loadFuturesOrderFlow() {
+            fetch('/api/futures_order_flow')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Error loading futures order flow:', data.error);
+                        updateFuturesOrderFlowDisplay([]);
+                        return;
+                    }
+                    
+                    updateFuturesOrderFlowDisplay(data.order_flow);
+                })
+                .catch(error => {
+                    console.error('Error fetching futures order flow:', error);
+                    updateFuturesOrderFlowDisplay([]);
+                });
+        }
+        
+        // Update futures order flow display
+        function updateFuturesOrderFlowDisplay(orderFlowData) {
+            const tbody = document.getElementById('futuresOrderFlowBody');
+            const titleElement = document.querySelector('#futuresOrderFlowTable').closest('.card').querySelector('.card-title');
+            
+            if (!orderFlowData || orderFlowData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">No order flow data available for last trading day</td></tr>';
+                // Reset title to default
+                titleElement.textContent = '📊 Nifty 50 Futures Order Flow (Last Trading Day)';
+                return;
+            }
+            
+            let html = '';
+            let tradingDate = '';
+            
+            // Get trading date from first order
+            if (orderFlowData.length > 0 && orderFlowData[0].run_date) {
+                tradingDate = orderFlowData[0].run_date;
+                // Update the title with trading date
+                titleElement.textContent = `📊 Nifty 50 Futures Order Flow (Last Trading Day - ${tradingDate})`;
+            }
+            
+            orderFlowData.forEach((order, index) => {
+                const sideClass = order.side === 'buy' ? 'color: #28a745; font-weight: bold;' : 'color: #dc3545; font-weight: bold;';
+                const sideText = order.side === 'buy' ? 'BUY' : 'SELL';
+                
+                html += `
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; font-size: 12px;">${order.timestamp}</td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; ${sideClass}; font-size: 12px;">${sideText}</td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">${order.price.toFixed(2)}</td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">${order.quantity.toLocaleString()}</td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">${order.orders}</td>
+                    </tr>
+                `;
+            });
+            
+            tbody.innerHTML = html;
+        }
+        
+        // Update market bias display
+        function updateMarketBiasDisplay() {
+            if (!marketBiasData) return;
+            
+            const comprehensiveBias = marketBiasData.comprehensive_bias;
+            const recommendations = marketBiasData.trading_recommendations;
+            
+            // Update bias metrics
+            document.getElementById('biasScore').textContent = comprehensiveBias.bias_score.toFixed(1);
+            document.getElementById('biasDirection').textContent = comprehensiveBias.bias_direction;
+            document.getElementById('biasStrength').textContent = comprehensiveBias.bias_strength;
+            document.getElementById('riskLevel').textContent = recommendations.risk_level;
+            
+            // Color code the bias direction
+            const biasDirectionElement = document.getElementById('biasDirection');
+            biasDirectionElement.className = 'metric-value';
+            if (comprehensiveBias.bias_direction === 'Bullish') {
+                biasDirectionElement.style.color = '#28a745';
+            } else if (comprehensiveBias.bias_direction === 'Bearish') {
+                biasDirectionElement.style.color = '#dc3545';
+            } else {
+                biasDirectionElement.style.color = '#6c757d';
+            }
+            
+            // Color code the bias strength
+            const biasStrengthElement = document.getElementById('biasStrength');
+            biasStrengthElement.className = 'metric-value';
+            if (comprehensiveBias.bias_strength === 'Strong') {
+                biasStrengthElement.style.color = '#dc3545';
+            } else if (comprehensiveBias.bias_strength === 'Moderate') {
+                biasStrengthElement.style.color = '#ffc107';
+            } else {
+                biasStrengthElement.style.color = '#6c757d';
+            }
+        }
+        
+        
+        // Event listeners for analysis date changes
+        document.getElementById('analysisDate').addEventListener('change', function() {
+            try {
+                loadMarketBiasAnalysis();
+            } catch (error) {
+                console.error('Error in analysis date change:', error);
+            }
+        });
+        
+        // Event listener for refresh interval changes
+        document.getElementById('refreshInterval').addEventListener('change', function() {
+            refreshInterval = parseInt(this.value);
+            initializeRefreshSystem();
+        });
+        
+        // Event listener for manual refresh button
+        document.getElementById('refreshBtn').addEventListener('click', function() {
+            refreshDashboardData();
+            // Reset countdown
+            if (refreshInterval > 0) {
+                countdownValue = Math.floor(refreshInterval / 1000);
+                updateCountdownDisplay();
+            }
+        });
+        
+        document.getElementById('backtestBtn').addEventListener('click', function() {
+            const analysisDate = document.getElementById('analysisDate').value;
+            if (!analysisDate) {
+                alert('Please select a date for backtesting');
+                return;
+            }
+            
+            // Update analysis date via API
+            fetch('/api/analysis_date', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `date=${analysisDate}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+                
+                document.getElementById('modeIndicator').textContent = 'BACKTEST MODE';
+                document.getElementById('modeIndicator').className = 'mode-indicator mode-backtest';
+                
+                // Reload all charts and analysis
+                loadMarketBiasAnalysis();
+                if (window.tpoChartRenderer) {
+                    window.tpoChartRenderer.loadTPOCharts();
+                }
+            })
+            .catch(error => {
+                console.error('Error setting analysis date:', error);
+            });
+        });
+        
+        document.getElementById('liveBtn').addEventListener('click', function() {
+            // Switch to live mode
+            fetch('/api/analysis_date', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'date=live'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+                
+                document.getElementById('modeIndicator').textContent = 'LIVE MODE';
+                document.getElementById('modeIndicator').className = 'mode-indicator mode-live';
+                document.getElementById('analysisDate').value = '';
+                
+                // Reload all charts and analysis
+                loadMarketBiasAnalysis();
+                if (window.tpoChartRenderer) {
+                    window.tpoChartRenderer.loadTPOCharts();
+                }
+            })
+            .catch(error => {
+                console.error('Error switching to live mode:', error);
+            });
+        });
+        
+        // Load initial data
+        document.addEventListener('DOMContentLoaded', function() {
+            loadMarketBiasAnalysis();
+            loadFuturesOrderFlow();
+            initializeRefreshSystem();
+        });
     </script>
 </body>
 </html>

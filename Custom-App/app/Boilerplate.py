@@ -34,7 +34,17 @@ logging.info(f"API_SECRET: {API_SECRET}")
 
 # Initialize KiteConnect
 kite = KiteConnect(api_key=API_KEY)
-kite.set_access_token(redis_client.get("kite_access_token"))
+
+# Get access token from Redis
+access_token = redis_client.get("kite_access_token")
+if access_token:
+    # Handle both string and bytes from Redis
+    if isinstance(access_token, bytes):
+        access_token = access_token.decode('utf-8')
+    kite.set_access_token(access_token)
+    logging.info("Access token set from Redis")
+else:
+    logging.warning("No access token found in Redis")
 
 def get_db_connection():
     return psycopg2.connect(

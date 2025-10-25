@@ -218,7 +218,7 @@ class TPOProfile:
         ax.set_xlabel('TPO Count', fontsize=12)
         ax.set_ylabel('Price', fontsize=12)
         ax.set_title('Market Profile (TPO)', fontsize=14, fontweight='bold')
-        ax.legend(loc='upper right', fontsize=10)
+        ax.legend(loc='upper right', fontsize=14)
         ax.grid(True, alpha=0.3, axis='y')
         
         return ax

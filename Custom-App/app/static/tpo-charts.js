@@ -104,22 +104,32 @@ class TPOChartRenderer {
     }
 
     updateAnalysisInfo(config) {
-        const infoDiv = document.getElementById('analysisInfo');
-        const dateText = document.getElementById('analysisDateText');
-        const modeText = document.getElementById('analysisModeText');
-        const dataText = document.getElementById('dataAvailabilityText');
-        
-        if (this.isLiveMode) {
-            dateText.textContent = `Analysis Date: ${config.current_date} (Live)`;
-            modeText.textContent = 'Mode: Real-time analysis with live data';
-            dataText.textContent = 'Data: Updating in real-time';
-        } else {
-            dateText.textContent = `Analysis Date: ${this.currentAnalysisDate} (Historical)`;
-            modeText.textContent = 'Mode: Historical backtesting';
-            dataText.textContent = 'Data: Complete market session (9:15am - 3:30pm IST)';
+        try {
+            const infoDiv = document.getElementById('analysisInfo');
+            const dateText = document.getElementById('analysisDateText');
+            const modeText = document.getElementById('analysisModeText');
+            const dataText = document.getElementById('dataAvailabilityText');
+            
+            // Check if elements exist before trying to update them
+            if (!infoDiv || !dateText || !modeText || !dataText) {
+                console.warn('Analysis info elements not found, skipping update');
+                return;
+            }
+            
+            if (this.isLiveMode) {
+                dateText.textContent = `Analysis Date: ${config.current_date} (Live)`;
+                modeText.textContent = 'Mode: Real-time analysis with live data';
+                dataText.textContent = 'Data: Updating in real-time';
+            } else {
+                dateText.textContent = `Analysis Date: ${this.currentAnalysisDate} (Historical)`;
+                modeText.textContent = 'Mode: Historical backtesting';
+                dataText.textContent = 'Data: Complete market session (9:15am - 3:30pm IST)';
+            }
+            
+            infoDiv.style.display = 'block';
+        } catch (error) {
+            console.error('Error in updateAnalysisInfo:', error);
         }
-        
-        infoDiv.style.display = 'block';
     }
 
     async loadMarginData() {

@@ -127,6 +127,39 @@ def get_system_status():
         'last_update': ist_now.strftime('%H:%M:%S IST')
     }
 
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request):
+    """Dashboard route - shows dashboard if valid token exists"""
+    # Check if valid access token exists in Redis
+    existing_token = redis_client.get("kite_access_token")
+    if existing_token:
+        # Handle both string and bytes from Redis
+        if isinstance(existing_token, bytes):
+            existing_token = existing_token.decode('utf-8')
+        
+        # Check if token is still valid
+        if is_access_token_valid(existing_token):
+            logging.info("Valid access token found, showing dashboard")
+            
+            # Get system status for dashboard
+            system_status = get_system_status()
+            tick_data = system_status['tick_data']
+            
+            return templates.TemplateResponse("dashboard.html", {
+                "request": request,
+                "token_status": "Valid" if system_status['token_valid'] else "Invalid",
+                "tick_status": "Active" if tick_data['active'] else "Inactive",
+                "last_update": system_status['last_update'],
+                "total_ticks": tick_data['total_ticks']
+            })
+    
+    # No valid token, redirect to login
+    login_url = kite.login_url()
+    return templates.TemplateResponse("login.html", {
+        "request": request,
+        "login_url": login_url
+    })
+
 @app.get("/", response_class=HTMLResponse)
 async def home(
     request: Request,
@@ -496,3 +529,134 @@ async def api_margin_data():
             "available_cash": 0,
             "live_balance": 0
         }
+
+@app.get("/api/market_bias")
+async def api_market_bias(analysis_date: str = Query(None)):
+    """API endpoint to get market bias analysis"""
+    try:
+        from MarketBiasAnalyzer import MarketBiasAnalyzer, PostgresDataFetcher
+        
+        DB_CONFIG = {
+            'host': 'postgres',
+            'database': 'mydb',
+            'user': 'postgres',
+            'password': 'postgres',
+            'port': 5432
+        }
+        
+        db_fetcher = PostgresDataFetcher(**DB_CONFIG)
+        bias_analyzer = MarketBiasAnalyzer(db_fetcher, instrument_token=256265, tick_size=5.0)
+        
+        # Determine analysis date
+        if analysis_date:
+            target_date = analysis_date
+        elif ANALYSIS_DATE:
+            target_date = ANALYSIS_DATE
+        else:
+            target_date = datetime.now().strftime("%Y-%m-%d")
+        
+        # Generate comprehensive analysis
+        analysis = bias_analyzer.generate_comprehensive_analysis(target_date)
+        
+        return {
+            "analysis_date": target_date,
+            "is_historical": bool(analysis_date or ANALYSIS_DATE),
+            "analysis": analysis
+        }
+    except Exception as e:
+        logging.error(f"Error generating market bias analysis: {e}")
+        return {"error": str(e)}
+
+@app.get("/api/market_bias_chart")
+async def api_market_bias_chart(analysis_date: str = Query(None)):
+    """API endpoint to get market bias analysis chart"""
+    try:
+        from MarketBiasAnalyzer import MarketBiasAnalyzer, PostgresDataFetcher
+        
+        DB_CONFIG = {
+            'host': 'postgres',
+            'database': 'mydb',
+            'user': 'postgres',
+            'password': 'postgres',
+            'port': 5432
+        }
+        
+        db_fetcher = PostgresDataFetcher(**DB_CONFIG)
+        bias_analyzer = MarketBiasAnalyzer(db_fetcher, instrument_token=256265, tick_size=5.0)
+        
+        # Determine analysis date
+        if analysis_date:
+            target_date = analysis_date
+        elif ANALYSIS_DATE:
+            target_date = ANALYSIS_DATE
+        else:
+            target_date = datetime.now().strftime("%Y-%m-%d")
+        
+        # Generate comprehensive analysis
+        analysis = bias_analyzer.generate_comprehensive_analysis(target_date)
+        
+        # Generate plot
+        plot_image = bias_analyzer.plot_bias_analysis(analysis)
+        
+        return {
+            "analysis_date": target_date,
+            "is_historical": bool(analysis_date or ANALYSIS_DATE),
+            "chart_image": plot_image
+        }
+    except Exception as e:
+        logging.error(f"Error generating market bias chart: {e}")
+        return {"error": str(e)}
+
+@app.get("/api/futures_order_flow")
+async def api_futures_order_flow():
+    """API endpoint to get Nifty 50 futures order flow data - always shows most recent trading day"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get the last 5 orders from futures_tick_depth for the most recent trading date (weekday)
+        # Always shows the most recent weekday with data, regardless of analysis date
+        cursor.execute("""
+            WITH last_trading_date AS (
+                SELECT MAX(run_date) as last_date
+                FROM my_schema.futures_tick_depth 
+                WHERE EXTRACT(DOW FROM run_date) BETWEEN 1 AND 5  -- Monday(1) to Friday(5)
+            )
+            SELECT 
+                ftd.timestamp,
+                ftd.side,
+                ftd.price,
+                ftd.quantity,
+                ftd.orders,
+                ftd.run_date
+            FROM my_schema.futures_tick_depth ftd
+            CROSS JOIN last_trading_date ltd
+            WHERE ftd.run_date = ltd.last_date
+            ORDER BY ftd.timestamp DESC
+            LIMIT 5
+        """)
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        # Format the results
+        order_flow_data = []
+        for row in results:
+            order_flow_data.append({
+                "timestamp": row[0].strftime("%H:%M:%S") if row[0] else "",
+                "side": row[1],
+                "price": float(row[2]) if row[2] else 0.0,
+                "quantity": int(row[3]) if row[3] else 0,
+                "orders": int(row[4]) if row[4] else 0,
+                "run_date": row[5].strftime("%Y-%m-%d") if row[5] else ""
+            })
+        
+        return {
+            "order_flow": order_flow_data,
+            "total_orders": len(order_flow_data),
+            "trading_date": order_flow_data[0]['run_date'] if order_flow_data else None
+        }
+    except Exception as e:
+        logging.error(f"Error fetching futures order flow: {e}")
+        return {"error": str(e)}
+
