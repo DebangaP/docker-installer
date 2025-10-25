@@ -145,7 +145,7 @@
         <h1>Kite Connect Authentication</h1>
         <p class="subtitle">Secure access to your trading dashboard</p>
         
-        <a href="{{ login_url }}" class="login-btn">
+        <a href="#" id="loginBtn" class="login-btn">
             🔐 Login to Kite Connect
         </a>
         
@@ -161,5 +161,38 @@
             <p>© 2025 Trading Dashboard. All rights reserved.</p>
         </div>
     </div>
+    
+    <script>
+        document.getElementById('loginBtn').addEventListener('click', async function(e) {
+            e.preventDefault();
+            console.log('Login button clicked');
+            
+            // Show loading state
+            this.innerHTML = '🔄 Checking authentication...';
+            this.style.pointerEvents = 'none';
+            
+            try {
+                console.log('Fetching system status...');
+                // Check if valid access token exists
+                const response = await fetch('/api/system_status');
+                const data = await response.json();
+                console.log('System status response:', data);
+                
+                if (data.token_valid) {
+                    console.log('Valid token found, redirecting to dashboard');
+                    // Valid token exists, redirect to dashboard
+                    window.location.href = '/dashboard';
+                } else {
+                    console.log('No valid token, proceeding with login');
+                    // No valid token, proceed with normal login
+                    window.location.href = '{{ login_url }}';
+                }
+            } catch (error) {
+                console.error('Error checking token status:', error);
+                // On error, proceed with normal login
+                window.location.href = '{{ login_url }}';
+            }
+        });
+    </script>
 </body>
 </html>
