@@ -116,11 +116,15 @@ def get_tick_data_status():
 
 # Function to get system status
 def get_system_status():
+    # Get current IST time
+    from datetime import datetime, timedelta
+    ist_now = datetime.now() + timedelta(hours=5, minutes=30)
+    
     return {
         'token_fetched_today': is_token_fetched_today(),
         'token_valid': is_token_currently_valid(),
         'tick_data': get_tick_data_status(),
-        'last_update': datetime.now().strftime('%H:%M:%S')
+        'last_update': ist_now.strftime('%H:%M:%S IST')
     }
 
 @app.get("/", response_class=HTMLResponse)
