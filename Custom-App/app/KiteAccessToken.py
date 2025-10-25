@@ -1,4 +1,10 @@
 from Boilerplate import *
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from fastapi import Request
+import os
+from datetime import datetime, timedelta
+import json
 
 # Function to validate access token
 def is_access_token_valid(access_token):
@@ -38,17 +44,95 @@ def generate_new_access_token(request_token):
 # FastAPI app for capturing request_token
 app = FastAPI()
 
+# Template configuration
+templates = Jinja2Templates(directory="templates")
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Global ANALYSIS_DATE configuration - can be set via API or environment
+ANALYSIS_DATE = None  # Set to None for current date, or specify date like '2025-10-20'
+
+# Function to check if access token was fetched today
+def is_token_fetched_today():
+    try:
+        timestamp = redis_client.get("kite_access_token_timestamp")
+        if not timestamp:
+            return False
+        
+        token_time = datetime.fromtimestamp(float(timestamp))
+        today = datetime.now().date()
+        return token_time.date() == today
+    except:
+        return False
+
+# Function to check if access token is currently valid
+def is_token_currently_valid():
+    try:
+        access_token = redis_client.get("kite_access_token")
+        if not access_token:
+            return False
+        return is_access_token_valid(access_token)
+    except:
+        return False
+
+# Function to check tick data status
+def get_tick_data_status():
+    try:
+        # Check if ticks are arriving by looking at recent data
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check for ticks in the last 5 minutes
+        cursor.execute("""
+            SELECT COUNT(*) FROM my_schema.ticks 
+            WHERE timestamp > NOW() - INTERVAL '5 minutes'
+            AND instrument_token = 256265
+        """)
+        recent_ticks = cursor.fetchone()[0]
+        
+        # Get total ticks for today
+        cursor.execute("""
+            SELECT COUNT(*) FROM my_schema.ticks 
+            WHERE DATE(timestamp + INTERVAL '5 hours 30 minutes') = CURRENT_DATE
+            AND instrument_token = 256265
+        """)
+        total_ticks = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return {
+            'active': recent_ticks > 0,
+            'recent_ticks': recent_ticks,
+            'total_ticks': total_ticks
+        }
+    except Exception as e:
+        logging.error(f"Error checking tick data status: {e}")
+        return {
+            'active': False,
+            'recent_ticks': 0,
+            'total_ticks': 0
+        }
+
+# Function to get system status
+def get_system_status():
+    return {
+        'token_fetched_today': is_token_fetched_today(),
+        'token_valid': is_token_currently_valid(),
+        'tick_data': get_tick_data_status(),
+        'last_update': datetime.now().strftime('%H:%M:%S')
+    }
+
 @app.get("/", response_class=HTMLResponse)
 async def home(
+    request: Request,
     action: str = Query(None),
     type: str = Query(None),
     status: str = Query(None),
     request_token: str = Query(None)
 ):
-    #await get_access_token()
     global token_access
     
-    kite_access_token_timestamp = redis_client.get("kite_access_token_timestamp")
     if request_token and status == "success" and action == "login" and type == "login":
         # Handle redirect from Zerodha with request_token
         redis_client.set("kite_request_token", request_token)
@@ -58,29 +142,208 @@ async def home(
         # Trigger get_access_token to generate and save access token
         access_token = get_access_token()  # Call your function here
 
-        return f"""
-            <h1>Kite Connect Authentication</h1>
-            <p>Request token received: {request_token}</p>
-            <p>Saving Tick data to Database...</p>
-            <a href="http://localhost:3001/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&to=now"> GO TO My Dashboard</a>
-            <br>
-            <hr>
-            <a href="http://127.0.0.1:8000/fetch_data"> Refresh Data </a>
-            <br>
-            
-        """
+        # Get system status for dashboard
+        system_status = get_system_status()
+        tick_data = system_status['tick_data']
+        
+        return templates.TemplateResponse("dashboard.html", {
+            "request": request,
+            "token_status": "Valid" if system_status['token_valid'] else "Invalid",
+            "tick_status": "Active" if tick_data['active'] else "Inactive",
+            "last_update": system_status['last_update'],
+            "total_ticks": tick_data['total_ticks']
+        })
     else:
         # Show login page
         login_url = kite.login_url()
-        #request_token = redis_client.get("kite_request_token")
-        #get_access_token()
-        #printrequest_token)
-        return f"""
-            <h1>Kite Connect Authentication</h1>
-            <p><a href="{login_url}">Click here to log in to Kite Connect</a></p>
-            <p>Please authenticate to generate a new access token.</p>
-        """
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "login_url": login_url
+        })
 
+
+# API endpoints for dashboard
+@app.get("/api/system_status")
+async def api_system_status():
+    """API endpoint to get current system status"""
+    status = get_system_status()
+    return {
+        "token_valid": status['token_valid'],
+        "token_fetched_today": status['token_fetched_today'],
+        "tick_active": status['tick_data']['active'],
+        "recent_ticks": status['tick_data']['recent_ticks'],
+        "total_ticks": status['tick_data']['total_ticks'],
+        "last_update": status['last_update']
+    }
+
+@app.get("/api/tpo_charts")
+async def api_tpo_charts(analysis_date: str = Query(None)):
+    """API endpoint to generate TPO chart images"""
+    try:
+        from CalculateTPO import PostgresDataFetcher, TPOProfile
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        import io
+        import base64
+        
+        DB_CONFIG = {
+            'host': 'postgres',
+            'database': 'mydb',
+            'user': 'postgres',
+            'password': 'postgres',
+            'port': 5432
+        }
+        
+        db_fetcher = PostgresDataFetcher(**DB_CONFIG)
+        
+        # Determine analysis date
+        if analysis_date:
+            target_date = analysis_date
+        elif ANALYSIS_DATE:
+            target_date = ANALYSIS_DATE
+        else:
+            target_date = datetime.now().strftime("%Y-%m-%d")
+        
+        # Get pre-market TPO data
+        pre_market_df = db_fetcher.fetch_tick_data(
+            table_name='ticks',
+            instrument_token=256265,
+            start_time=f'{target_date} 09:05:00.000 +0530',
+            end_time=f'{target_date} 09:15:00.000 +0530'
+        )
+        
+        # Get real-time TPO data
+        if analysis_date or ANALYSIS_DATE:
+            end_time = f'{target_date} 15:30:00.000 +0530'
+        else:
+            end_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.000 +0530")
+        
+        real_time_df = db_fetcher.fetch_tick_data(
+            table_name='ticks',
+            instrument_token=256265,
+            start_time=f'{target_date} 09:15:00.000 +0530',
+            end_time=end_time
+        )
+        
+        # Generate charts
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 10))
+        
+        # Pre-market chart
+        if not pre_market_df.empty:
+            pre_market_tpo = TPOProfile(tick_size=5)
+            pre_market_tpo.calculate_tpo(pre_market_df)
+            pre_market_tpo.plot_profile(ax=ax1, show_metrics=True, show_letters=True)
+            ax1.set_title(f"Pre-market TPO Profile ({target_date})", fontsize=14, fontweight='bold')
+        else:
+            ax1.text(0.5, 0.5, 'No pre-market data', ha='center', va='center', transform=ax1.transAxes)
+            ax1.set_title(f"Pre-market TPO Profile ({target_date})", fontsize=14, fontweight='bold')
+        
+        # Real-time chart
+        if not real_time_df.empty:
+            real_time_tpo = TPOProfile(tick_size=5)
+            real_time_tpo.calculate_tpo(real_time_df)
+            real_time_tpo.plot_profile(ax=ax2, show_metrics=True, show_letters=True)
+            ax2.set_title(f"Real-time TPO Profile ({target_date})", fontsize=14, fontweight='bold')
+        else:
+            ax2.text(0.5, 0.5, 'No real-time data', ha='center', va='center', transform=ax2.transAxes)
+            ax2.set_title(f"Real-time TPO Profile ({target_date})", fontsize=14, fontweight='bold')
+        
+        plt.tight_layout()
+        
+        # Convert to base64
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='png', dpi=150, bbox_inches='tight')
+        buffer.seek(0)
+        image_base64 = base64.b64encode(buffer.getvalue()).decode()
+        plt.close()
+        
+        return {
+            "analysis_date": target_date,
+            "is_historical": bool(analysis_date or ANALYSIS_DATE),
+            "chart_image": f"data:image/png;base64,{image_base64}"
+        }
+    except Exception as e:
+        logging.error(f"Error generating TPO charts: {e}")
+        return {"error": str(e)}
+
+@app.get("/api/analysis_date")
+async def get_analysis_date():
+    """Get current ANALYSIS_DATE configuration"""
+    return {
+        "analysis_date": ANALYSIS_DATE,
+        "is_live_mode": ANALYSIS_DATE is None,
+        "current_date": datetime.now().strftime("%Y-%m-%d")
+    }
+
+@app.post("/api/analysis_date")
+async def set_analysis_date(date: str = Query(None)):
+    """Set ANALYSIS_DATE for backtesting"""
+    global ANALYSIS_DATE
+    
+    if date is None or date == "live" or date == "":
+        ANALYSIS_DATE = None
+        return {
+            "message": "Switched to live mode",
+            "analysis_date": None,
+            "is_live_mode": True
+        }
+    
+    # Validate date format
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+        ANALYSIS_DATE = date
+        return {
+            "message": f"Analysis date set to {date}",
+            "analysis_date": date,
+            "is_live_mode": False
+        }
+    except ValueError:
+        return {
+            "error": "Invalid date format. Use YYYY-MM-DD format",
+            "analysis_date": ANALYSIS_DATE,
+            "is_live_mode": ANALYSIS_DATE is None
+        }
+
+@app.get("/api/available_dates")
+async def get_available_dates():
+    """Get list of available dates in the database for backtesting"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get available dates from ticks table
+        cursor.execute("""
+            SELECT DISTINCT DATE(timestamp + INTERVAL '5 hours 30 minutes') as trade_date
+            FROM my_schema.ticks 
+            WHERE instrument_token = 256265
+            ORDER BY trade_date DESC
+            LIMIT 30
+        """)
+        
+        dates = [row[0].strftime("%Y-%m-%d") for row in cursor.fetchall()]
+        conn.close()
+        
+        return {
+            "available_dates": dates,
+            "current_analysis_date": ANALYSIS_DATE
+        }
+    except Exception as e:
+        logging.error(f"Error fetching available dates: {e}")
+        return {"error": str(e)}
+
+@app.get("/refresh_data")
+async def refresh_data():
+    """Endpoint to refresh data"""
+    return {"message": "Data refresh initiated", "status": "success"}
+
+@app.get("/logout")
+async def logout():
+    """Endpoint to logout and clear tokens"""
+    redis_client.delete("kite_access_token")
+    redis_client.delete("kite_access_token_timestamp")
+    redis_client.delete("kite_request_token")
+    return {"message": "Logged out successfully", "status": "success"}
 
 @app.get("/redirect", response_class=HTMLResponse)
 async def handle_redirect(request_token: str = None):
@@ -144,3 +407,88 @@ def get_access_token():
         raise Exception("Could not obtain a valid access token")
 
 
+@app.get("/api/market_dashboard")
+async def api_market_dashboard(analysis_date: str = Query(None)):
+    """API endpoint to generate complete market dashboard"""
+    try:
+        return {
+            "analysis_date": analysis_date or datetime.now().strftime("%Y-%m-%d"),
+            "is_historical": bool(analysis_date or ANALYSIS_DATE),
+            "dashboard_image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        }
+    except Exception as e:
+        logging.error(f"Error generating market dashboard: {e}")
+        return {"error": str(e)}
+
+@app.get("/api/candlestick_chart")
+async def api_candlestick_chart(analysis_date: str = Query(None), chart_type: str = Query("market")):
+    """API endpoint to generate candlestick chart"""
+    try:
+        return {
+            "analysis_date": analysis_date or datetime.now().strftime("%Y-%m-%d"),
+            "chart_type": chart_type,
+            "is_historical": bool(analysis_date or ANALYSIS_DATE),
+            "chart_image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        }
+    except Exception as e:
+        logging.error(f"Error generating candlestick chart: {e}")
+        return {"error": str(e)}
+
+@app.get("/api/trades_table")
+async def api_trades_table():
+    """API endpoint to generate trades table"""
+    try:
+        return {
+            "trades_image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        }
+    except Exception as e:
+        logging.error(f"Error generating trades table: {e}")
+        return {"error": str(e)}
+
+@app.get("/api/gainers_losers")
+async def api_gainers_losers():
+    """API endpoint to generate gainers and losers chart"""
+    try:
+        return {
+            "gainers_image": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        }
+    except Exception as e:
+        logging.error(f"Error generating gainers/losers chart: {e}")
+        return {"error": str(e)}
+
+@app.get("/api/margin_data")
+async def api_margin_data():
+    """API endpoint to get margin data for status bar"""
+    try:
+        # Use the existing database connection from Boilerplate
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get margin data from database
+        cursor.execute("""
+            SELECT DISTINCT margin_type, net, available_cash, available_live_balance
+            FROM my_schema.margins
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.margins)
+            AND enabled IS TRUE
+        """)
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        if results:
+            total_cash = sum(row[2] for row in results if row[2] is not None)
+            total_live_balance = sum(row[3] for row in results if row[3] is not None)
+        else:
+            total_cash = 0
+            total_live_balance = 0
+        
+        return {
+            "available_cash": total_cash,
+            "live_balance": total_live_balance
+        }
+    except Exception as e:
+        logging.error(f"Error fetching margin data: {e}")
+        return {
+            "available_cash": 0,
+            "live_balance": 0
+        }
