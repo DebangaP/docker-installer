@@ -11,6 +11,13 @@ To be noted that this is not a Production grade app.
 7. **Visit http://127.0.0.1:8000 to login to Kite and generate your Access Token**
    <img width="566" height="720" alt="image" src="https://github.com/user-attachments/assets/610d3acb-e13a-41d9-b7d9-8052fd8a0863" />
 
+   Post Zerodha login
+   <img width="1121" height="861" alt="image" src="https://github.com/user-attachments/assets/a7c7fc56-c0e0-4762-a817-b351951a814c" />
+
+   <img width="1111" height="327" alt="image" src="https://github.com/user-attachments/assets/658eae55-fab1-4419-8c8f-b5bdbf9f75f8" />
+
+
+
 9. Once Access Token is generated, its valid for an entire day
 10. Visit **http://localhost:3001/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&to=now&timezone=browser** to see your Grafana Dashboard (user=admin/ password=adminpassword)
 
