@@ -9,8 +9,10 @@ To be noted that this is not a Production grade app.
 5. **If you have anything running at ports 3001, 8000 and 5433, please change the docker-compose file accordingly**
 6. run '**docker compose up -d**'
 7. **Visit http://127.0.0.1:8000 to login to Kite and generate your Access Token**
-8. Once Access Token is generated, its valid for an entire day
-9. Visit **http://localhost:3001/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&to=now&timezone=browser** to see your Grafana Dashboard (user=admin/ password=adminpassword)
+   <img width="566" height="720" alt="image" src="https://github.com/user-attachments/assets/610d3acb-e13a-41d9-b7d9-8052fd8a0863" />
+
+9. Once Access Token is generated, its valid for an entire day
+10. Visit **http://localhost:3001/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&to=now&timezone=browser** to see your Grafana Dashboard (user=admin/ password=adminpassword)
 
 **NIFTY50 Ticks**
 **<img width="706" height="507" alt="image" src="https://github.com/user-attachments/assets/b2866788-9859-4005-81c5-63c6228c176b" />
