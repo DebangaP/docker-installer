@@ -260,7 +260,7 @@ async def api_tpo_charts(analysis_date: str = Query(None)):
             table_name='ticks',
             instrument_token=256265,
             start_time=f'{target_date} 09:15:00.000 +0530',
-            end_time=end_time
+            end_time=f'{target_date} 15:30:00.000 +0530'
         )
         
         # Generate charts
