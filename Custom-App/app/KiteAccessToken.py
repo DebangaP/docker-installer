@@ -1048,8 +1048,18 @@ async def api_positions():
         # Convert to serializable format
         positions_list = []
         for position in positions:
+            # Handle fetch_timestamp (could be string or datetime)
+            fetch_ts = position["fetch_timestamp"]
+            if fetch_ts:
+                if hasattr(fetch_ts, 'strftime'):
+                    fetch_ts_str = fetch_ts.strftime("%Y-%m-%d %H:%M:%S")
+                else:
+                    fetch_ts_str = str(fetch_ts)
+            else:
+                fetch_ts_str = ""
+            
             positions_list.append({
-                "fetch_timestamp": position["fetch_timestamp"].strftime("%Y-%m-%d %H:%M:%S") if position["fetch_timestamp"] else "",
+                "fetch_timestamp": fetch_ts_str,
                 "position_type": position["position_type"],
                 "trading_symbol": position["trading_symbol"],
                 "product": position["product"],
@@ -1309,6 +1319,114 @@ async def api_portfolio_history(days: int = Query(30, ge=1, le=365)):
         logging.error(traceback.format_exc())
         return {"error": str(e), "portfolio_history": []}
 
+@app.get("/api/sparkline/{trading_symbol}")
+async def api_sparkline(trading_symbol: str, days: int = Query(30, ge=7, le=90)):
+    """API endpoint to get sparkline data for a stock"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get recent price history for sparkline
+        cursor.execute("""
+            SELECT 
+                price_date::date,
+                price_close as price
+            FROM my_schema.rt_intraday_price
+            WHERE scrip_id = %s
+            AND price_date::date >= CURRENT_DATE - make_interval(days => %s)
+            ORDER BY price_date ASC
+        """, (trading_symbol, days))
+        
+        sparkline_data = cursor.fetchall()
+        
+        # Convert to list of price values
+        prices = []
+        labels = []
+        for row in sparkline_data:
+            prices.append(float(row['price']) if row['price'] else 0.0)
+            # Handle both string and date objects for price_date
+            price_date = row['price_date']
+            if price_date:
+                if hasattr(price_date, 'strftime'):
+                    labels.append(price_date.strftime('%Y-%m-%d'))
+                else:
+                    labels.append(str(price_date))
+            else:
+                labels.append('')
+        
+        conn.close()
+        
+        return {
+            "trading_symbol": trading_symbol,
+            "prices": prices,
+            "labels": labels,
+            "min_price": min(prices) if prices else 0,
+            "max_price": max(prices) if prices else 0
+        }
+    except Exception as e:
+        logging.error(f"Error fetching sparkline data: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"error": str(e), "prices": [], "labels": []}
+
+@app.get("/api/candlestick/{trading_symbol}")
+async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90)):
+    """API endpoint to get candlestick chart data for a stock"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get OHLC data for candlestick chart
+        cursor.execute("""
+            SELECT 
+                price_date,
+                price_open,
+                price_high,
+                price_low,
+                price_close,
+                volume
+            FROM my_schema.rt_intraday_price
+            WHERE scrip_id = %s
+            AND price_date::date >= CURRENT_DATE - make_interval(days => %s)
+            ORDER BY price_date ASC
+        """, (trading_symbol, days))
+        
+        ohlc_data = cursor.fetchall()
+        
+        # Convert to lists
+        data = []
+        for row in ohlc_data:
+            # Handle both string and date objects for price_date
+            price_date = row['price_date']
+            if price_date:
+                if hasattr(price_date, 'strftime'):
+                    date_str = price_date.strftime('%Y-%m-%d')
+                else:
+                    date_str = str(price_date)
+            else:
+                date_str = ''
+                
+            data.append({
+                "date": date_str,
+                "open": float(row['price_open']) if row['price_open'] else 0.0,
+                "high": float(row['price_high']) if row['price_high'] else 0.0,
+                "low": float(row['price_low']) if row['price_low'] else 0.0,
+                "close": float(row['price_close']) if row['price_close'] else 0.0,
+                "volume": float(row['volume']) if row['volume'] else 0.0
+            })
+        
+        conn.close()
+        
+        return {
+            "trading_symbol": trading_symbol,
+            "data": data
+        }
+    except Exception as e:
+        logging.error(f"Error fetching candlestick data: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"error": str(e), "data": []}
+
 @app.get("/api/today_pnl")
 async def api_today_pnl():
     """API endpoint to get today's total P&L from holdings using rt_intraday_price"""
@@ -1544,13 +1662,33 @@ async def api_futures_order_flow():
         # Format the results
         order_flow_data = []
         for row in results:
+            # Handle timestamp (could be string or datetime)
+            timestamp_val = row[0]
+            if timestamp_val:
+                if hasattr(timestamp_val, 'strftime'):
+                    timestamp_str = timestamp_val.strftime("%H:%M:%S")
+                else:
+                    timestamp_str = str(timestamp_val)[:8]  # Extract HH:MM:SS from string
+            else:
+                timestamp_str = ""
+            
+            # Handle run_date (could be string or date)
+            run_date_val = row[5]
+            if run_date_val:
+                if hasattr(run_date_val, 'strftime'):
+                    run_date_str = run_date_val.strftime("%Y-%m-%d")
+                else:
+                    run_date_str = str(run_date_val)
+            else:
+                run_date_str = ""
+            
             order_flow_data.append({
-                "timestamp": row[0].strftime("%H:%M:%S") if row[0] else "",
+                "timestamp": timestamp_str,
                 "side": row[1],
                 "price": float(row[2]) if row[2] else 0.0,
                 "quantity": int(row[3]) if row[3] else 0,
                 "orders": int(row[4]) if row[4] else 0,
-                "run_date": row[5].strftime("%Y-%m-%d") if row[5] else ""
+                "run_date": run_date_str
             })
         
         return {

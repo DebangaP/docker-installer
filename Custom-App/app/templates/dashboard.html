@@ -324,6 +324,10 @@
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.1/dist/chartjs-adapter-moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@latest/dist/chartjs-chart-financial.min.js"></script>
 </head>
 <body>
     <div class="header">
@@ -569,6 +573,7 @@
                     <thead id="holdingsTableHeader">
                         <tr style="background-color: #f8f9fa;">
                             <th onclick="sortHoldings('trading_symbol')" style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; cursor: pointer; user-select: none;" id="header_trading_symbol">Symbol ↕</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Sparkline (last 30D)</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Qty</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Avg. Price</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">LTP</th>
@@ -586,6 +591,9 @@
                         <tr style="border-bottom: 1px solid #eee;">
                             <td style="padding: 12px; border: 1px solid #ddd;">
                                 <strong>{{ holding.trading_symbol }}</strong>
+                            </td>
+                            <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+                                <canvas id="sparkline-{{ holding.trading_symbol }}" width="120" height="40" onclick="showCandlestick('{{ holding.trading_symbol }}')" style="cursor: pointer;"></canvas>
                             </td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
                                 {{ holding.quantity }}
@@ -1146,6 +1154,9 @@
                                 <td style="padding: 12px; border: 1px solid #ddd;">
                                     <strong>${holding.trading_symbol}</strong>
                                 </td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+                                    <canvas id="sparkline-ajax-${holding.trading_symbol}" width="120" height="40" onclick="showCandlestick('${holding.trading_symbol}')" style="cursor: pointer;"></canvas>
+                                </td>
                                 <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
                                     ${holding.quantity}
                                 </td>
@@ -1231,6 +1242,11 @@
                     
                     // Scroll to top of holdings table
                     document.getElementById('holdingsTableBody').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    
+                    // Load sparklines for the displayed holdings
+                    data.holdings.forEach(holding => {
+                        loadSparkline(holding.trading_symbol);
+                    });
                 })
                 .catch(error => {
                     console.error('Error fetching holdings:', error);
@@ -1696,6 +1712,204 @@
             loadPnlSummary();
             loadPortfolioChart(30);
             initializeRefreshSystem();
+        });
+    </script>
+
+    <!-- Candlestick Chart Modal -->
+    <div id="candlestickModal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+        <div style="background-color: #fefefe; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 20px; border: 1px solid #888; width: 80vw; height: 80vh; border-radius: 10px; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.3); overflow: hidden;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-shrink: 0;">
+                <h2 id="modalStockSymbol" style="margin: 0; font-size: 1.5em;">Stock Chart</h2>
+                <button onclick="closeCandlestickModal()" style="background-color: #dc3545; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 14px;">Close</button>
+            </div>
+            <div style="margin-bottom: 15px; flex-shrink: 0;">
+                <label for="chartDays">Days to display:</label>
+                <select id="chartDays" onchange="updateCandlestickChart()" style="padding: 5px 10px; margin-left: 10px;">
+                    <option value="7">7 days</option>
+                    <option value="15">15 days</option>
+                    <option value="30" selected>30 days</option>
+                    <option value="60">60 days</option>
+                    <option value="90">90 days</option>
+                </select>
+            </div>
+            <div style="flex: 1; overflow: hidden; position: relative;">
+                <canvas id="candlestickChartCanvas" style="width: 100%; height: 100%;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStockSymbol = '';
+        let candlestickChart = null;
+
+        function loadSparklines() {
+            {% for holding in holdings_info.holdings %}
+            loadSparkline('{{ holding.trading_symbol }}');
+            {% endfor %}
+        }
+
+        function loadSparkline(symbol) {
+            fetch(`/api/sparkline/${symbol}?days=30`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error(`Error loading sparkline for ${symbol}:`, data.error);
+                        return;
+                    }
+                    
+                    // Try to find canvas with or without 'ajax-' prefix
+                    let canvas = document.getElementById(`sparkline-${symbol}`);
+                    if (!canvas) {
+                        canvas = document.getElementById(`sparkline-ajax-${symbol}`);
+                    }
+                    if (!canvas) return;
+                    
+                    const ctx = canvas.getContext('2d');
+                    const prices = data.prices;
+                    if (!prices || prices.length === 0) return;
+                    
+                    const width = canvas.width;
+                    const height = canvas.height;
+                    const padding = 5;
+                    
+                    const minPrice = Math.min(...prices);
+                    const maxPrice = Math.max(...prices);
+                    const priceRange = maxPrice - minPrice || 1;
+                    
+                    // Clear canvas
+                    ctx.clearRect(0, 0, width, height);
+                    
+                    // Determine color based on trend
+                    const firstPrice = prices[0];
+                    const lastPrice = prices[prices.length - 1];
+                    const color = lastPrice >= firstPrice ? '#28a745' : '#dc3545';
+                    
+                    // Draw line
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    
+                    for (let i = 0; i < prices.length; i++) {
+                        const x = padding + (i / (prices.length - 1)) * (width - 2 * padding);
+                        const y = height - padding - ((prices[i] - minPrice) / priceRange) * (height - 2 * padding);
+                        
+                        if (i === 0) {
+                            ctx.moveTo(x, y);
+                        } else {
+                            ctx.lineTo(x, y);
+                        }
+                    }
+                    
+                    ctx.stroke();
+                })
+                .catch(error => console.error(`Error loading sparkline for ${symbol}:`, error));
+        }
+
+        function showCandlestick(symbol) {
+            currentStockSymbol = symbol;
+            document.getElementById('modalStockSymbol').textContent = `${symbol} - Candlestick Chart`;
+            document.getElementById('candlestickModal').style.display = 'block';
+            updateCandlestickChart();
+        }
+
+        function closeCandlestickModal() {
+            document.getElementById('candlestickModal').style.display = 'none';
+            if (candlestickChart) {
+                candlestickChart.destroy();
+                candlestickChart = null;
+            }
+        }
+        
+        // Handle window resize to adjust chart size
+        window.addEventListener('resize', function() {
+            if (document.getElementById('candlestickModal').style.display !== 'none' && candlestickChart) {
+                const canvas = document.getElementById('candlestickChartCanvas');
+                const container = canvas.parentElement;
+                canvas.width = container.clientWidth;
+                canvas.height = container.clientHeight;
+                candlestickChart.resize();
+            }
+        });
+
+        function updateCandlestickChart() {
+            if (!currentStockSymbol) return;
+            
+            const days = document.getElementById('chartDays').value;
+            
+            fetch(`/api/candlestick/${currentStockSymbol}?days=${days}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Error loading candlestick data:', data.error);
+                        return;
+                    }
+                    
+                    console.log('Candlestick data received:', data);
+                    
+                    const ctx = document.getElementById('candlestickChartCanvas').getContext('2d');
+                    
+                    // Destroy existing chart if it exists
+                    if (candlestickChart) {
+                        candlestickChart.destroy();
+                    }
+                    
+                    // Prepare data for Chart.js Financial candlestick
+                    // Data format: {x: timestamp, o: open, h: high, l: low, c: close}
+                    const candlestickData = data.data.map(d => {
+                        // Convert date string to timestamp
+                        const timestamp = new Date(d.date).getTime();
+                        return {
+                            x: timestamp, o: d.open, h: d.high, l: d.low, c: d.close
+                        };
+                    });
+                    
+                    console.log('Candlestick data formatted:', candlestickData.slice(0, 5));
+                    
+                    // Get the container dimensions
+                    const container = ctx.canvas.parentElement;
+                    ctx.canvas.width = container.clientWidth;
+                    ctx.canvas.height = container.clientHeight;
+                    
+                    // Create candlestick chart using Chart.js Financial
+                    try {
+                    candlestickChart = new Chart(ctx, {
+                        type: 'candlestick',
+                        data: {
+                            datasets: [{
+                                label: currentStockSymbol,
+                                data: candlestickData
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: {
+                                    beginAtZero: false
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true
+                                },
+                                title: {
+                                    display: true,
+                                    text: `${currentStockSymbol} - Last ${days} Days`
+                                }
+                            }
+                        }
+                    });
+                    console.log('Chart created successfully');
+                    } catch (error) {
+                        console.error('Error creating chart:', error);
+                    }
+                })
+                .catch(error => console.error('Error loading candlestick data:', error));
+        }
+
+        // Load sparklines after page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSparklines();
         });
     </script>
 </body>
