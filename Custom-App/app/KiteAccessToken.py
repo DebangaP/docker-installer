@@ -8,12 +8,75 @@ from datetime import datetime, timedelta
 import json
 import io
 import pandas as pd
+import numpy as np
+try:
+    import talib
+    TALIB_AVAILABLE = True
+except ImportError as e:
+    logging.error(f"TA-Lib not available: {e}")
+    TALIB_AVAILABLE = False
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 
+
+# Function to calculate Supertrend
+def calculate_supertrend(high, low, close, period=14, multiplier=3.0):
+    """Calculate Supertrend indicator"""
+    try:
+        # Calculate ATR
+        atr = talib.ATR(high, low, close, timeperiod=period)
+        
+        # Calculate basic bands
+        hl_avg = (high + low) / 2
+        upper_band = hl_avg + (multiplier * atr)
+        lower_band = hl_avg - (multiplier * atr)
+        
+        # Initialize arrays
+        supertrend = np.full(len(close), np.nan)
+        direction = np.zeros(len(close))
+        
+        # Initialize final upper/lower bands
+        final_upper_band = upper_band.copy()
+        final_lower_band = lower_band.copy()
+        
+        # Calculate Supertrend
+        for i in range(1, len(close)):
+            # Final Upper Band
+            if close[i-1] <= final_upper_band[i-1]:
+                final_upper_band[i] = min(upper_band[i], final_upper_band[i-1])
+            else:
+                final_upper_band[i] = upper_band[i]
+            
+            # Final Lower Band
+            if close[i-1] >= final_lower_band[i-1]:
+                final_lower_band[i] = max(lower_band[i], final_lower_band[i-1])
+            else:
+                final_lower_band[i] = lower_band[i]
+            
+            # Supertrend
+            if i == 1:
+                # Initialize first value
+                supertrend[i] = final_upper_band[i] if close[i-1] <= final_upper_band[i] else final_lower_band[i]
+                direction[i] = -1 if close[i-1] <= final_upper_band[i] else 1
+            else:
+                if close[i-1] <= supertrend[i-1]:
+                    supertrend[i] = final_upper_band[i]
+                    direction[i] = -1  # Down
+                else:
+                    supertrend[i] = final_lower_band[i]
+                    direction[i] = 1  # Up
+        
+        return supertrend, direction
+    except Exception as e:
+        logging.error(f"Error calculating Supertrend: {e}")
+        return np.full(len(close), np.nan), np.zeros(len(close))
 
 # Function to validate access token
 def is_access_token_valid(access_token):
@@ -61,6 +124,9 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Global ANALYSIS_DATE configuration - can be set via API or environment
 ANALYSIS_DATE = None  # Set to None for current date, or specify date like '2025-10-20'
+
+# Global SHOW_HOLDINGS configuration - controls visibility of holdings sections
+SHOW_HOLDINGS = os.getenv("SHOW_HOLDINGS", "True").lower() == "true"
 
 # Function to check if access token was fetched today
 def is_token_fetched_today():
@@ -373,7 +439,8 @@ async def dashboard(request: Request, page: int = Query(1, ge=1)):
                 "tick_status": "Active" if tick_data['active'] else "Inactive",
                 "last_update": system_status['last_update'],
                 "total_ticks": tick_data['total_ticks'],
-                "holdings_info": holdings_info
+                "holdings_info": holdings_info,
+                "show_holdings": SHOW_HOLDINGS
             })
     
     # No valid token, redirect to login
@@ -413,7 +480,8 @@ async def home(
             "tick_status": "Active" if tick_data['active'] else "Inactive",
             "last_update": system_status['last_update'],
             "total_ticks": tick_data['total_ticks'],
-            "holdings_info": holdings_info
+            "holdings_info": holdings_info,
+            "show_holdings": SHOW_HOLDINGS
         })
     else:
         # Show login page
@@ -1395,6 +1463,13 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
         
         # Convert to lists
         data = []
+        dates = []
+        opens = []
+        highs = []
+        lows = []
+        closes = []
+        volumes = []
+        
         for row in ohlc_data:
             # Handle both string and date objects for price_date
             price_date = row['price_date']
@@ -1405,14 +1480,68 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
                     date_str = str(price_date)
             else:
                 date_str = ''
-                
+            
+            dates.append(date_str)
+            opens.append(float(row['price_open']) if row['price_open'] else 0.0)
+            highs.append(float(row['price_high']) if row['price_high'] else 0.0)
+            lows.append(float(row['price_low']) if row['price_low'] else 0.0)
+            closes.append(float(row['price_close']) if row['price_close'] else 0.0)
+            volumes.append(float(row['volume']) if row['volume'] else 0.0)
+        
+        # Convert to numpy arrays
+        opens_array = np.array(opens)
+        highs_array = np.array(highs)
+        lows_array = np.array(lows)
+        closes_array = np.array(closes)
+        
+        # Calculate technical indicators
+        if TALIB_AVAILABLE:
+            try:
+                logging.info(f"Calculating indicators using TA-Lib for {len(closes_array)} data points")
+                sma_20 = talib.SMA(closes_array, timeperiod=20)
+                sma_50 = talib.SMA(closes_array, timeperiod=50)
+                sma_200 = talib.SMA(closes_array, timeperiod=200)
+                supertrend, supertrend_direction = calculate_supertrend(highs_array, lows_array, closes_array)
+                logging.info(f"Indicators calculated successfully")
+            except Exception as e:
+                logging.error(f"Error calculating indicators: {e}")
+                import traceback
+                logging.error(traceback.format_exc())
+                # Return empty indicators
+                sma_20 = np.full(len(closes_array), np.nan)
+                sma_50 = np.full(len(closes_array), np.nan)
+                sma_200 = np.full(len(closes_array), np.nan)
+                supertrend = np.full(len(closes_array), np.nan)
+                supertrend_direction = np.zeros(len(closes_array))
+        else:
+            # Use pandas for calculations
+            logging.info(f"TA-Lib not available, using pandas for calculations")
+            df = pd.DataFrame({
+                'close': closes_array,
+                'high': highs_array,
+                'low': lows_array
+            })
+            sma_20 = df['close'].rolling(window=20).mean().values
+            sma_50 = df['close'].rolling(window=50).mean().values
+            sma_200 = df['close'].rolling(window=200).mean().values
+            # Simple Supertrend calculation
+            supertrend, supertrend_direction = calculate_supertrend(highs_array, lows_array, closes_array)
+            logging.info(f"Indicators calculated using pandas")
+        
+        # Build data array with indicators
+        for i in range(len(dates)):
             data.append({
-                "date": date_str,
-                "open": float(row['price_open']) if row['price_open'] else 0.0,
-                "high": float(row['price_high']) if row['price_high'] else 0.0,
-                "low": float(row['price_low']) if row['price_low'] else 0.0,
-                "close": float(row['price_close']) if row['price_close'] else 0.0,
-                "volume": float(row['volume']) if row['volume'] else 0.0
+                "date": dates[i],
+                "open": opens[i],
+                "high": highs[i],
+                "low": lows[i],
+                "close": closes[i],
+                "volume": volumes[i],
+                "sma_20": float(sma_20[i]) if not np.isnan(sma_20[i]) else None,
+                "sma_50": float(sma_50[i]) if not np.isnan(sma_50[i]) else None,
+                "sma_200": float(sma_200[i]) if not np.isnan(sma_200[i]) else None,
+                "supertrend": float(supertrend[i]) if not np.isnan(supertrend[i]) else None,
+                "supertrend_direction": int(supertrend_direction[i]) if not np.isnan(supertrend_direction[i]) else None
             })
         
         conn.close()
@@ -1942,6 +2071,304 @@ async def download_pnl_summary_excel():
         )
     except Exception as e:
         logging.error(f"Error generating Excel file: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"error": str(e)}
+
+@app.get("/api/download/pnl_summary/pdf")
+async def download_pnl_summary_pdf():
+    """Download complete P&L summary with equity and MF holdings as PDF file"""
+    try:
+        # Get all holdings data (similar to Excel version)
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Fetch all data similar to download_pnl_summary_excel
+        cursor.execute("SELECT CURRENT_DATE as today_date")
+        today = cursor.fetchone()['today_date']
+        today_str = today.strftime('%Y-%m-%d')
+        
+        cursor.execute("""
+            SELECT MAX(price_date) as prev_date FROM my_schema.rt_intraday_price WHERE price_date < %s
+        """, (today_str,))
+        prev_date_result = cursor.fetchone()
+        prev_date = prev_date_result['prev_date'] if prev_date_result and prev_date_result['prev_date'] else None
+        
+        equity_today, equity_overall = 0.0, 0.0
+        mf_today, mf_overall = 0.0, 0.0
+        intraday = 0.0
+        
+        if prev_date:
+            prev_date_str = prev_date.strftime('%Y-%m-%d') if hasattr(prev_date, 'strftime') else str(prev_date)
+            cursor.execute("""
+                WITH holdings_today AS (
+                    SELECT trading_symbol, quantity FROM my_schema.holdings
+                    WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+                ),
+                today_prices AS (SELECT scrip_id, price_close FROM my_schema.rt_intraday_price WHERE price_date = %s),
+                prev_prices AS (SELECT scrip_id, price_close FROM my_schema.rt_intraday_price WHERE price_date = %s)
+                SELECT COALESCE(SUM(h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0))), 0) as equity_today_pnl
+                FROM holdings_today h
+                LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
+                LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
+            """, (today_str, prev_date_str))
+            result = cursor.fetchone()
+            equity_today = float(result['equity_today_pnl']) if result else 0.0
+        
+        cursor.execute("SELECT COALESCE(SUM(pnl), 0) as equity_overall_pnl FROM my_schema.holdings WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)")
+        result = cursor.fetchone()
+        equity_overall = float(result['equity_overall_pnl']) if result else 0.0
+        
+        cursor.execute("SELECT COALESCE(SUM(day_change_percentage * invested_amount / 100), 0) as mf_today_pnl FROM my_schema.mf_holdings WHERE run_date = (SELECT MAX(run_date) FROM my_schema.mf_holdings)")
+        result = cursor.fetchone()
+        mf_today = float(result['mf_today_pnl']) if result else 0.0
+        
+        cursor.execute("SELECT COALESCE(SUM(pnl), 0) as mf_overall_pnl FROM my_schema.mf_holdings WHERE run_date = (SELECT MAX(run_date) FROM my_schema.mf_holdings)")
+        result = cursor.fetchone()
+        mf_overall = float(result['mf_overall_pnl']) if result else 0.0
+        
+        cursor.execute("SELECT COALESCE(SUM(pnl), 0) as intraday_pnl FROM my_schema.positions WHERE run_date = (SELECT MAX(run_date) FROM my_schema.positions) AND position_type = 'day'")
+        result = cursor.fetchone()
+        intraday = float(result['intraday_pnl']) if result else 0.0
+        
+        # Get equity holdings
+        cursor.execute("""
+            SELECT trading_symbol, quantity, average_price, last_price,
+                   (quantity * average_price) as invested_amount,
+                   (quantity * last_price) as current_amount, pnl
+            FROM my_schema.holdings WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings) ORDER BY trading_symbol
+        """)
+        equity_holdings = cursor.fetchall()
+        
+        # Get MF holdings
+        cursor.execute("""
+            SELECT folio, fund, tradingsymbol, quantity, average_price, last_price,
+                   invested_amount, current_value, pnl, net_change_percentage, day_change_percentage
+            FROM my_schema.mf_holdings WHERE run_date = (SELECT MAX(run_date) FROM my_schema.mf_holdings) ORDER BY fund, tradingsymbol
+        """)
+        mf_holdings = cursor.fetchall()
+        conn.close()
+        
+        # Create PDF in memory
+        output = io.BytesIO()
+        doc = SimpleDocTemplate(output, pagesize=A4, topMargin=0.5*inch)
+        
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor('#1a1a1a'), spaceAfter=12)
+        
+        elements = []
+        elements.append(Paragraph("P&L Summary Report", title_style))
+        elements.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # P&L Summary Table
+        summary_data = [
+            ['Category', "Today's P&L", 'Overall P&L'],
+            ['Equity Portfolio', f'Rs {equity_today:,.2f}', f'Rs {equity_overall:,.2f}'],
+            ['Mutual Fund Portfolio', f'Rs {mf_today:,.2f}', f'Rs {mf_overall:,.2f}'],
+            ['Intraday Trades', f'Rs {intraday:,.2f}', '-'],
+            ['Total', f'Rs {equity_today + mf_today + intraday:,.2f}', f'Rs {equity_overall + mf_overall:,.2f}']
+        ]
+        summary_table = Table(summary_data, colWidths=[2.5*inch, 2*inch, 2*inch])
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+        ]))
+        elements.append(summary_table)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Generate Portfolio Value Chart
+        try:
+            # Get portfolio history for the last 30 days using the same logic as api_portfolio_history
+            cursor_hist = get_db_connection()
+            cursor_history = cursor_hist.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            
+            # Get daily equity balances
+            cursor_history.execute("""
+                SELECT 
+                    run_date,
+                    COALESCE(SUM(quantity * last_price), 0) as equity_value
+                FROM my_schema.holdings
+                WHERE run_date >= CURRENT_DATE - make_interval(days => 30)
+                GROUP BY run_date
+                ORDER BY run_date
+            """)
+            equity_data = cursor_history.fetchall()
+            
+            # Get daily MF balances
+            cursor_history.execute("""
+                SELECT 
+                    run_date,
+                    COALESCE(SUM(current_value), 0) as mf_value
+                FROM my_schema.mf_holdings
+                WHERE run_date >= CURRENT_DATE - make_interval(days => 30)
+                GROUP BY run_date
+                ORDER BY run_date
+            """)
+            mf_data = cursor_history.fetchall()
+            cursor_hist.close()
+            
+            # Create a map of dates to values
+            equity_map = {str(row['run_date']): float(row['equity_value']) for row in equity_data}
+            mf_map = {str(row['run_date']): float(row['mf_value']) for row in mf_data}
+            
+            # Get all unique dates
+            all_dates = sorted(set(list(equity_map.keys()) + list(mf_map.keys())))
+            
+            if all_dates and len(all_dates) > 0:
+                # Prepare chart data
+                dates = [datetime.strptime(date, '%Y-%m-%d') for date in all_dates]
+                equity_vals = [equity_map.get(date, 0.0) for date in all_dates]
+                mf_vals = [mf_map.get(date, 0.0) for date in all_dates]
+                total_vals = [e + m for e, m in zip(equity_vals, mf_vals)]
+                
+                # Create chart
+                plt.figure(figsize=(8, 4))
+                ax = plt.subplot(111)
+                
+                ax.plot(dates, equity_vals, label='Equity', color='green', linewidth=2)
+                ax.plot(dates, mf_vals, label='Mutual Fund', color='blue', linewidth=2)
+                ax.plot(dates, total_vals, label='Total Portfolio', color='red', linewidth=2.5)
+                
+                ax.set_title('Total Portfolio Value (Last 30 Days)', fontsize=12, fontweight='bold')
+                ax.set_xlabel('Date', fontsize=10)
+                ax.set_ylabel('Value (₹)', fontsize=10)
+                ax.legend(loc='best', fontsize=9)
+                ax.grid(True, alpha=0.3)
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%d-%m'))
+                plt.xticks(rotation=45)
+                plt.tight_layout()
+                
+                # Save chart to BytesIO
+                chart_buffer = io.BytesIO()
+                plt.savefig(chart_buffer, format='png', dpi=150, bbox_inches='tight')
+                chart_buffer.seek(0)
+                plt.close()
+                
+                # Add chart to PDF
+                elements.append(Paragraph("Portfolio Value Trend", title_style))
+                elements.append(Spacer(1, 0.2*inch))
+                chart_img = Image(chart_buffer, width=6*inch, height=3*inch)
+                elements.append(chart_img)
+                elements.append(Spacer(1, 0.3*inch))
+        except Exception as e:
+            logging.error(f"Error generating portfolio chart: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+            # Continue without chart if it fails
+        
+        elements.append(PageBreak())
+        
+        # Equity Holdings Table
+        elements.append(Paragraph("Equity Holdings", title_style))
+        elements.append(Spacer(1, 0.2*inch))
+        
+        equity_total_invested = sum(row['invested_amount'] for row in equity_holdings)
+        equity_total_current = sum(row['current_amount'] for row in equity_holdings)
+        equity_total_pnl = sum(row['pnl'] for row in equity_holdings)
+        
+        equity_data = [['Symbol', 'Qty', 'Avg Price', 'LTP', 'Invested', 'Current', 'P&L']]
+        for row in equity_holdings:
+            row_dict = dict(row)
+            equity_data.append([
+                row_dict['trading_symbol'],
+                str(row_dict['quantity']),
+                f"Rs {row_dict['average_price']:.2f}",
+                f"Rs {row_dict['last_price']:.2f}",
+                f"Rs {row_dict['invested_amount']:.2f}",
+                f"Rs {row_dict['current_amount']:.2f}",
+                f"Rs {row_dict['pnl']:.2f}"
+            ])
+        
+        equity_data.append([
+            'TOTAL', '', '', '',
+            f'Rs {equity_total_invested:,.2f}',
+            f'Rs {equity_total_current:,.2f}',
+            f'Rs {equity_total_pnl:,.2f}'
+        ])
+        
+        equity_table = Table(equity_data, repeatRows=1, colWidths=[1.2*inch, 0.5*inch, 0.8*inch, 0.8*inch, 1*inch, 1*inch, 0.9*inch])
+        equity_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -2), colors.beige),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -2), 7),
+            ('FONTSIZE', (0, -1), (-1, -1), 9),
+        ]))
+        elements.append(equity_table)
+        elements.append(Spacer(1, 0.3*inch))
+        elements.append(PageBreak())
+        
+        # MF Holdings Table
+        elements.append(Paragraph("Mutual Fund Holdings", title_style))
+        elements.append(Spacer(1, 0.2*inch))
+        
+        mf_total_invested = sum(row['invested_amount'] for row in mf_holdings)
+        mf_total_current = sum(row['current_value'] for row in mf_holdings)
+        mf_total_pnl = sum(row['pnl'] for row in mf_holdings)
+        
+        mf_data = [['Fund', 'Symbol', 'Qty', 'Avg Price', 'LTP', 'Invested', 'Current', 'P&L']]
+        for row in mf_holdings:
+            row_dict = dict(row)
+            mf_data.append([
+                row_dict.get('fund', '')[:20],  # Truncate long fund names
+                row_dict.get('tradingsymbol', ''),
+                str(row_dict.get('quantity', 0)),
+                f"Rs {row_dict.get('average_price', 0):.2f}",
+                f"Rs {row_dict.get('last_price', 0):.2f}",
+                f"Rs {row_dict.get('invested_amount', 0):.2f}",
+                f"Rs {row_dict.get('current_value', 0):.2f}",
+                f"Rs {row_dict.get('pnl', 0):.2f}"
+            ])
+        
+        mf_data.append([
+            'TOTAL', '', '', '', '',
+            f'Rs {mf_total_invested:,.2f}',
+            f'Rs {mf_total_current:,.2f}',
+            f'Rs {mf_total_pnl:,.2f}'
+        ])
+        
+        mf_table = Table(mf_data, repeatRows=1, colWidths=[1.5*inch, 1*inch, 0.5*inch, 0.7*inch, 0.7*inch, 0.9*inch, 0.9*inch, 0.8*inch])
+        mf_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -2), colors.beige),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -2), 7),
+            ('FONTSIZE', (0, -1), (-1, -1), 8),
+        ]))
+        elements.append(mf_table)
+        
+        doc.build(elements)
+        output.seek(0)
+        
+        return StreamingResponse(
+            io.BytesIO(output.read()),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=pnl_summary_{datetime.now().strftime('%Y%m%d')}.pdf"}
+        )
+    except Exception as e:
+        logging.error(f"Error generating P&L Summary PDF: {e}")
         import traceback
         logging.error(traceback.format_exc())
         return {"error": str(e)}

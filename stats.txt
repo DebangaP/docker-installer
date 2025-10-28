@@ -1,0 +1,10 @@
+Codebase Statistics
+Total: 10,126 lines across 29 files
+Breakdown by File Type:
+Python (.py): 6,666 lines (65.8%)
+HTML (.html): 2,150 lines (21.2%)
+JavaScript (.js): 241 lines (2.4%)
+JSON (.json): 929 lines (9.2%)
+YAML (.yml/.yaml): 89 lines (0.9%)
+Text/Markdown (.txt/.md): 51 lines (0.5%)
+CSS (.css): 0 lines (CSS is embedded in HTML)
