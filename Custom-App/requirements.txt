@@ -14,3 +14,4 @@ yfinance==0.2.61
 sqlalchemy==1.4.49
 openpyxl==3.1.5
 reportlab==4.4.4
+TA-Lib==0.6.8

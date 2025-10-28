@@ -17,13 +17,11 @@ RUN apt-get update && apt-get install -y cron tzdata && \
 # Expose ports for FastAPI (8000) and Streamlit (8501)
 EXPOSE 8000
 
-# Apply cron job
-RUN crontab /app/crontab.txt
-# Start cron in foreground
-CMD ["cron", "-f"]
+# Copy crontab file to the cron.d directory and give it the right permissions.
+# The cron daemon will pick it up automatically.
+COPY app/crontab.txt /etc/cron.d/crontab
+RUN chmod 0644 /etc/cron.d/crontab
 
 # Default command (can be overridden in docker-compose.yml)
 # CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-
 #CMD ["python", "MarketProf1.py"]
-

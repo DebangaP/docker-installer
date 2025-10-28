@@ -464,6 +464,7 @@
             </div>
         </div>
 
+        {% if show_holdings %}
         <!-- Today's P&L Summary Section -->
         <div class="card" style="margin-bottom: 20px;">
             <div class="card-header" style="justify-content: space-between;">
@@ -517,6 +518,7 @@
                 <canvas id="portfolioChart" style="max-height: 400px;"></canvas>
             </div>
         </div>
+        {% endif %}
 
         <!-- Current Positions Section -->
         <div class="card" style="margin-bottom: 20px;">
@@ -546,6 +548,7 @@
             </div>
         </div>
 
+        {% if show_holdings %}
         <!-- Current Holdings Section -->
         <div class="card" style="margin-bottom: 20px;">
             <div class="card-header" style="justify-content: space-between;">
@@ -724,6 +727,7 @@
                 </table>
             </div>
         </div>
+        {% endif %}
 
     </div>  <!-- Close container div -->
 
@@ -850,6 +854,8 @@
             loadMarketBiasAnalysis();
             loadFuturesOrderFlow();
             
+            // Only update holdings if enabled
+            {% if show_holdings %}
             // Update MF holdings
             loadMFHoldings();
             
@@ -861,6 +867,7 @@
             if (daysSelector) {
                 loadPortfolioChart(daysSelector.value || 30);
             }
+            {% endif %}
         }
 
         function updateStatusIndicators(data) {
@@ -1708,9 +1715,11 @@
             loadMarketBiasAnalysis();
             loadFuturesOrderFlow();
             loadPositions();
+            {% if show_holdings %}
             loadMFHoldings();
             loadPnlSummary();
             loadPortfolioChart(30);
+            {% endif %}
             initializeRefreshSystem();
         });
     </script>
@@ -1727,9 +1736,9 @@
                 <select id="chartDays" onchange="updateCandlestickChart()" style="padding: 5px 10px; margin-left: 10px;">
                     <option value="7">7 days</option>
                     <option value="15">15 days</option>
-                    <option value="30" selected>30 days</option>
+                    <option value="30">30 days</option>
                     <option value="60">60 days</option>
-                    <option value="90">90 days</option>
+                    <option value="90" selected>90 days</option>
                 </select>
             </div>
             <div style="flex: 1; overflow: hidden; position: relative;">
@@ -1845,6 +1854,8 @@
                     }
                     
                     console.log('Candlestick data received:', data);
+                    console.log('First data point structure:', data.data[0]);
+                    console.log('Sample data point:', JSON.stringify(data.data[0], null, 2));
                     
                     const ctx = document.getElementById('candlestickChartCanvas').getContext('2d');
                     
@@ -1863,7 +1874,33 @@
                         };
                     });
                     
+                    // Prepare indicator data for line charts
+                    const sma20Data = data.data.map(d => ({
+                        x: new Date(d.date).getTime(),
+                        y: d.sma_20
+                    })).filter(d => d.y !== null && !isNaN(d.y));
+                    
+                    const sma50Data = data.data.map(d => ({
+                        x: new Date(d.date).getTime(),
+                        y: d.sma_50
+                    })).filter(d => d.y !== null && !isNaN(d.y));
+                    
+                    const sma200Data = data.data.map(d => ({
+                        x: new Date(d.date).getTime(),
+                        y: d.sma_200
+                    })).filter(d => d.y !== null && !isNaN(d.y));
+                    
+                    const supertrendData = data.data.map(d => ({
+                        x: new Date(d.date).getTime(),
+                        y: d.supertrend,
+                        direction: d.supertrend_direction
+                    })).filter(d => d.y !== null && !isNaN(d.y));
+                    
                     console.log('Candlestick data formatted:', candlestickData.slice(0, 5));
+                    console.log('SMA 20 data:', sma20Data.slice(0, 5));
+                    console.log('SMA 50 data:', sma50Data.slice(0, 5));
+                    console.log('SMA 200 data:', sma200Data.slice(0, 5));
+                    console.log('Supertrend data:', supertrendData.slice(0, 5));
                     
                     // Get the container dimensions
                     const container = ctx.canvas.parentElement;
@@ -1872,6 +1909,7 @@
                     
                     // Create candlestick chart using Chart.js Financial
                     try {
+                    // First, create the candlestick chart
                     candlestickChart = new Chart(ctx, {
                         type: 'candlestick',
                         data: {
@@ -1890,7 +1928,8 @@
                             },
                             plugins: {
                                 legend: {
-                                    display: true
+                                    display: true,
+                                    position: 'top'
                                 },
                                 title: {
                                     display: true,
@@ -1899,9 +1938,88 @@
                             }
                         }
                     });
+                    
+                    // Add indicator datasets after chart creation
+                    if (sma20Data.length > 0) {
+                        candlestickChart.data.datasets.push({
+                            label: 'SMA 20',
+                            data: sma20Data,
+                            type: 'line',
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            tension: 0.1,
+                            fill: false
+                        });
+                    }
+                    
+                    if (sma50Data.length > 0) {
+                        candlestickChart.data.datasets.push({
+                            label: 'SMA 50',
+                            data: sma50Data,
+                            type: 'line',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            tension: 0.1,
+                            fill: false
+                        });
+                    }
+                    
+                    if (sma200Data.length > 0) {
+                        candlestickChart.data.datasets.push({
+                            label: 'SMA 200',
+                            data: sma200Data,
+                            type: 'line',
+                            borderColor: 'rgba(255, 206, 86, 1)',
+                            backgroundColor: 'rgba(255, 206, 86, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            tension: 0.1,
+                            fill: false
+                        });
+                    }
+                    
+                    if (supertrendData.length > 0) {
+                        candlestickChart.data.datasets.push({
+                            label: 'Supertrend',
+                            data: supertrendData,
+                            type: 'line',
+                            borderColor: 'rgba(138, 43, 226, 1)',  // Default fallback
+                            backgroundColor: 'rgba(138, 43, 226, 0.1)',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            pointRadius: 0,
+                            tension: 0.1,
+                            fill: false,
+                            segment: {
+                                borderColor: (ctx) => {
+                                    const segment = ctx.p0;
+                                    // Get direction from the data point
+                                    const dataIndex = ctx.p0DataIndex;
+                                    const point = supertrendData[dataIndex];
+                                    if (point && point.direction === 1) {
+                                        return 'rgba(40, 167, 69, 1)';  // Green for uptrend
+                                    } else {
+                                        return 'rgba(220, 53, 69, 1)';  // Red for downtrend
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    
+                    // Update the chart to render the new datasets
+                    candlestickChart.update();
                     console.log('Chart created successfully');
+                    console.log('Chart datasets after update:', candlestickChart.data.datasets.length);
+                    candlestickChart.data.datasets.forEach((ds, index) => {
+                        console.log(`Dataset ${index}:`, ds.label, ds.type, 'data points:', ds.data.length);
+                    });
                     } catch (error) {
                         console.error('Error creating chart:', error);
+                        console.error(error.stack);
                     }
                 })
                 .catch(error => console.error('Error loading candlestick data:', error));
