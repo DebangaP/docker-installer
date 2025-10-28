@@ -335,10 +335,6 @@
                 </div>
                 <div class="status-item">
                     <span class="status-indicator status-online"></span>
-                    <span>Tick Data: {{ tick_status }}</span>
-                </div>
-                <div class="status-item">
-                    <span class="status-indicator status-online"></span>
                     <span>Last Update: {{ last_update }}</span>
                 </div>
                 <div class="status-item">
@@ -348,6 +344,10 @@
                 <div class="status-item">
                     <span class="status-indicator status-online"></span>
                     <span id="marginCash">Cash: ₹0</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-indicator status-online"></span>
+                    <span id="todayPnl">Today's P&L: ₹0</span>
                 </div>
                 <div class="status-item">
                     <span class="status-indicator status-online"></span>
@@ -463,6 +463,166 @@
             </div>
         </div>
 
+        <!-- Current Positions Section -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header">
+                <h3 class="card-title">📊 Active Positions</h3>
+                <span class="card-icon">📈</span>
+            </div>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <thead>
+                        <tr style="background-color: #f8f9fa;">
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Timestamp</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Type</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Symbol</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Product</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Exchange</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Avg. Price</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">P&L</th>
+                        </tr>
+                    </thead>
+                    <tbody id="positionsTableBody">
+                        <tr>
+                            <td colspan="7" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading positions...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Current Holdings Section -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header" style="justify-content: space-between;">
+                <h3 class="card-title">💼 Current Holdings</h3>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="addGTTForAll(5)" class="btn btn-success" style="padding: 6px 12px; font-size: 12px;">
+                        + Add GTT (5% SL)
+                    </button>
+                    <button onclick="addGTTForAll(10)" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">
+                        + Add GTT (10% SL)
+                    </button>
+                    <button onclick="viewAllGTTs()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #6c757d; color: white;">
+                        View GTTs
+                    </button>
+                </div>
+            </div>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <thead id="holdingsTableHeader">
+                        <tr style="background-color: #f8f9fa;">
+                            <th onclick="sortHoldings('trading_symbol')" style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; cursor: pointer; user-select: none;" id="header_trading_symbol">Symbol ↕</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Qty</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Avg. Price</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">LTP</th>
+                            <th onclick="sortHoldings('invested_amount')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none;" id="header_invested_amount">Invested Amount ↕</th>
+                            <th onclick="sortHoldings('current_amount')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none;" id="header_current_amount">Current Amount ↕</th>
+                            <th onclick="sortHoldings('pnl')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none;" id="header_pnl">Total P&L ↕</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Today's P&L</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Existing GTT</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Set New GTT</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="holdingsTableBody">
+                        {% for holding in holdings_info.holdings %}
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 12px; border: 1px solid #ddd;">
+                                <strong>{{ holding.trading_symbol }}</strong>
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                {{ holding.quantity }}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                ₹{{ "%.2f"|format(holding.average_price) }}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                ₹{{ "%.2f"|format(holding.last_price) }}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                ₹{{ "%.2f"|format(holding.quantity * holding.average_price) }}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                ₹{{ "%.2f"|format(holding.quantity * holding.last_price) }}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                {% if holding.pnl >= 0 %}
+                                    <span style="color: #28a745; font-weight: bold;">₹{{ "%.2f"|format(holding.pnl) }}</span>
+                                {% else %}
+                                    <span style="color: #dc3545; font-weight: bold;">₹{{ "%.2f"|format(holding.pnl) }}</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                {% if holding.today_pnl >= 0 %}
+                                    <div style="color: #28a745; font-weight: bold;">₹{{ "%.2f"|format(holding.today_pnl) }}</div>
+                                    <div style="font-size: 10px; color: #28a745;">{{ "+%.2f"|format(holding.pct_change) }}%</div>
+                                {% else %}
+                                    <div style="color: #dc3545; font-weight: bold;">₹{{ "%.2f"|format(holding.today_pnl) }}</div>
+                                    <div style="font-size: 10px; color: #dc3545;">{{ "%.2f"|format(holding.pct_change) }}%</div>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 11px;">
+                                {% if holding.existing_gtt %}
+                                <div style="display: flex; flex-direction: column; gap: 4px;">
+                                    <span style="color: #28a745; font-weight: bold;">✓ Active</span>
+                                    <span style="color: #666;">₹{{ "%.2f"|format(holding.existing_gtt.trigger_price) }}</span>
+                                    <button onclick="cancelGTT({{ holding.existing_gtt.trigger_id }}, '{{ holding.trading_symbol }}')" 
+                                            class="btn" style="padding: 2px 6px; font-size: 10px; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">
+                                        Cancel
+                                    </button>
+                                </div>
+                                {% else %}
+                                <span style="color: #999;">No GTT</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">
+                                <form onsubmit="setGTT(event, '{{ holding.instrument_token }}', '{{ holding.trading_symbol }}', {{ holding.quantity }})" style="display: flex; gap: 8px; align-items: center; justify-content: center;">
+                                    <input type="number" id="trigger_price_{{ holding.instrument_token }}" step="0.05" placeholder="Price" 
+                                           style="width: 80px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" required>
+                                    <button type="submit" class="btn btn-secondary" style="padding: 4px 12px; font-size: 12px;">Set</button>
+                                </form>
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">
+                                <div style="display: flex; gap: 4px; justify-content: center; flex-wrap: wrap;">
+                                    <button class="btn btn-success" style="padding: 4px 8px; font-size: 11px;" onclick="buyMore('{{ holding.instrument_token }}', '{{ holding.trading_symbol }}')">
+                                        Buy More
+                                    </button>
+                                    <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="sellSome('{{ holding.instrument_token }}', '{{ holding.trading_symbol }}', {{ holding.quantity }})">
+                                        Sell Some
+                                    </button>
+                                    <button class="btn" style="padding: 4px 8px; font-size: 11px; background-color: #dc3545; color: white;" onclick="sellAll('{{ holding.instrument_token }}', '{{ holding.trading_symbol }}', {{ holding.quantity }})">
+                                        Sell All
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination Controls -->
+            {% set total_pages = (holdings_info.total_count / holdings_info.per_page) | round(0, 'ceil') | int %}
+            {% if total_pages > 1 %}
+            <div id="holdingsPagination" style="display: flex; justify-content: center; align-items: center; padding: 20px; border-top: 1px solid #eee;">
+                {% if holdings_info.page > 1 %}
+                <button onclick="loadHoldingsPage({{ holdings_info.page - 1 }})" 
+                   style="padding: 8px 16px; margin: 0 5px; background-color: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">&laquo; Previous</button>
+                {% else %}
+                <span style="padding: 8px 16px; margin: 0 5px; background-color: #999; color: white; border-radius: 5px; cursor: not-allowed;">&laquo; Previous</span>
+                {% endif %}
+                <span style="margin: 0 10px; font-weight: 600;">Page {{ holdings_info.page }} of {{ total_pages }}</span>
+                {% if holdings_info.page < total_pages %}
+                <button onclick="loadHoldingsPage({{ holdings_info.page + 1 }})" 
+                   style="padding: 8px 16px; margin: 0 5px; background-color: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Next &raquo;</button>
+                {% else %}
+                <span style="padding: 8px 16px; margin: 0 5px; background-color: #999; color: white; border-radius: 5px; cursor: not-allowed;">Next &raquo;</span>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+    </div>  <!-- Close container div -->
 
     <!-- Load TPO chart renderer -->
     <script src="/static/tpo-charts.js"></script>
@@ -793,10 +953,373 @@
             });
         });
         
+        // Global variable for sort settings
+        let sortColumn = 'trading_symbol';
+        let sortDirection = 'asc';
+        
+        // Sort holdings function
+        function sortHoldings(column) {
+            if (sortColumn === column) {
+                // Toggle direction
+                sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortColumn = column;
+                sortDirection = 'asc';
+            }
+            
+            // Update header indicators
+            updateSortIndicators();
+            
+            // Reload first page with new sort
+            loadHoldingsPage(1);
+        }
+        
+        // Update sort indicators in table headers
+        function updateSortIndicators() {
+            const headers = ['header_trading_symbol', 'header_invested_amount', 'header_current_amount', 'header_pnl'];
+            const labelMap = {
+                'header_trading_symbol': 'Symbol',
+                'header_invested_amount': 'Invested Amount',
+                'header_current_amount': 'Current Amount',
+                'header_pnl': 'P&L'
+            };
+            
+            headers.forEach(headerId => {
+                const header = document.getElementById(headerId);
+                if (header) {
+                    const column = headerId.replace('header_', '');
+                    if (sortColumn === column) {
+                        header.innerHTML = `${labelMap[headerId]} ${sortDirection === 'asc' ? '↑' : '↓'}`;
+                    } else {
+                        header.innerHTML = `${labelMap[headerId]} ↕`;
+                    }
+                }
+            });
+        }
+        
+        // Load holdings page via AJAX
+        function loadHoldingsPage(page) {
+            // Pass sort parameters to API for server-side sorting
+            fetch(`/api/holdings?page=${page}&per_page=10&sort_by=${sortColumn}&sort_dir=${sortDirection}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Error loading holdings:', data.error);
+                        return;
+                    }
+                    
+                    // Update table body (data is already sorted by server)
+                    const tbody = document.getElementById('holdingsTableBody');
+                    tbody.innerHTML = '';
+                    
+                    data.holdings.forEach(holding => {
+                        const pnlClass = holding.pnl >= 0 ? '28a745' : 'dc3545';
+                        const pnlColor = holding.pnl >= 0 ? 'color: #28a745; font-weight: bold;' : 'color: #dc3545; font-weight: bold;';
+                        
+                        const row = `
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 12px; border: 1px solid #ddd;">
+                                    <strong>${holding.trading_symbol}</strong>
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                    ${holding.quantity}
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                    ₹${holding.average_price.toFixed(2)}
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                    ₹${holding.last_price.toFixed(2)}
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                    ₹${holding.invested_amount.toFixed(2)}
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                    ₹${holding.current_amount.toFixed(2)}
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                    <span style="${pnlColor}">₹${holding.pnl.toFixed(2)}</span>
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                    <div style="${holding.today_pnl >= 0 ? 'color: #28a745; font-weight: bold;' : 'color: #dc3545; font-weight: bold;'}">₹${holding.today_pnl.toFixed(2)}</div>
+                                    <div style="font-size: 10px; ${holding.today_pnl >= 0 ? 'color: #28a745;' : 'color: #dc3545;'}">${holding.pct_change >= 0 ? '+' : ''}${holding.pct_change.toFixed(2)}%</div>
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 11px;">
+                                    ${holding.existing_gtt ? `
+                                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                                        <span style="color: #28a745; font-weight: bold;">✓ Active</span>
+                                        <span style="color: #666;">₹${holding.existing_gtt.trigger_price.toFixed(2)}</span>
+                                        <button onclick="cancelGTT(${holding.existing_gtt.trigger_id}, '${holding.trading_symbol}')" 
+                                                class="btn" style="padding: 2px 6px; font-size: 10px; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">
+                                            Cancel
+                                        </button>
+                                    </div>
+                                    ` : `
+                                    <span style="color: #999;">No GTT</span>
+                                    `}
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">
+                                    <form onsubmit="setGTT(event, '${holding.instrument_token}', '${holding.trading_symbol}', ${holding.quantity})" style="display: flex; gap: 8px; align-items: center; justify-content: center;">
+                                        <input type="number" id="trigger_price_ajax_${holding.instrument_token}" step="0.05" placeholder="Price" 
+                                               style="width: 80px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" required>
+                                        <button type="submit" class="btn btn-secondary" style="padding: 4px 12px; font-size: 12px;">Set</button>
+                                    </form>
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">
+                                    <div style="display: flex; gap: 4px; justify-content: center; flex-wrap: wrap;">
+                                        <button class="btn btn-success" style="padding: 4px 8px; font-size: 11px;" onclick="buyMore('${holding.instrument_token}', '${holding.trading_symbol}')">
+                                            Buy More
+                                        </button>
+                                        <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="sellSome('${holding.instrument_token}', '${holding.trading_symbol}', ${holding.quantity})">
+                                            Sell Some
+                                        </button>
+                                        <button class="btn" style="padding: 4px 8px; font-size: 11px; background-color: #dc3545; color: white;" onclick="sellAll('${holding.instrument_token}', '${holding.trading_symbol}', ${holding.quantity})">
+                                            Sell All
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
+                        tbody.innerHTML += row;
+                    });
+                    
+                    // Update pagination controls
+                    const total_pages = Math.ceil(data.total_count / data.per_page);
+                    const paginationDiv = document.getElementById('holdingsPagination');
+                    paginationDiv.innerHTML = '';
+                    
+                    if (data.page > 1) {
+                        paginationDiv.innerHTML += `<button onclick="loadHoldingsPage(${data.page - 1})" 
+                            style="padding: 8px 16px; margin: 0 5px; background-color: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">&laquo; Previous</button>`;
+                    } else {
+                        paginationDiv.innerHTML += `<span style="padding: 8px 16px; margin: 0 5px; background-color: #999; color: white; border-radius: 5px; cursor: not-allowed;">&laquo; Previous</span>`;
+                    }
+                    
+                    paginationDiv.innerHTML += `<span style="margin: 0 10px; font-weight: 600;">Page ${data.page} of ${total_pages}</span>`;
+                    
+                    if (data.page < total_pages) {
+                        paginationDiv.innerHTML += `<button onclick="loadHoldingsPage(${data.page + 1})" 
+                            style="padding: 8px 16px; margin: 0 5px; background-color: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Next &raquo;</button>`;
+                    } else {
+                        paginationDiv.innerHTML += `<span style="padding: 8px 16px; margin: 0 5px; background-color: #999; color: white; border-radius: 5px; cursor: not-allowed;">Next &raquo;</span>`;
+                    }
+                    
+                    // Scroll to top of holdings table
+                    document.getElementById('holdingsTableBody').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                })
+                .catch(error => {
+                    console.error('Error fetching holdings:', error);
+                });
+        }
+        
+        // GTT management functions
+        async function addGTTForAll(stopLossPercent) {
+            // Show custom confirmation dialog
+            const confirmationText = prompt(
+                `⚠️ WARNING: This will add GTT orders with ${stopLossPercent}% stop-loss for ALL holdings.\n\n` +
+                `This action will affect all your current holdings. Please type "I UNDERSTAND" to continue:`
+            );
+            
+            if (confirmationText !== "I UNDERSTAND") {
+                if (confirmationText !== null) {  // User clicked Cancel or typed something else
+                    alert('Operation cancelled. You must type "I UNDERSTAND" exactly to proceed.');
+                }
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/add_gtt_for_all?stop_loss_percentage=${stopLossPercent}`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`Successfully added ${data.results.success.length} GTTs\nFailed: ${data.results.failed.length}\nSkipped: ${data.results.skipped.length}`);
+                    // Reload holdings to show updated GTT status
+                    loadHoldingsPage(1);
+                } else {
+                    alert(`Failed: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error adding GTT for all:', error);
+                alert('Error adding GTTs. Please try again.');
+            }
+        }
+        
+        async function viewAllGTTs() {
+            try {
+                const response = await fetch('/api/get_all_gtts');
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert(`Error: ${data.error}`);
+                    return;
+                }
+                
+                if (data.gtts && data.gtts.length > 0) {
+                    let message = `Active GTT Orders (${data.gtts.length}):\n\n`;
+                    data.gtts.forEach((gtt, index) => {
+                        message += `${index + 1}. ${gtt.tradingsymbol || 'N/A'} - Trigger ID: ${gtt.trigger_id || gtt.id}\n`;
+                    });
+                    alert(message);
+                } else {
+                    alert('No active GTT orders found.');
+                }
+            } catch (error) {
+                console.error('Error fetching GTTs:', error);
+                alert('Error fetching GTTs. Please try again.');
+            }
+        }
+        
+        async function cancelGTT(triggerId, tradingSymbol) {
+            if (!confirm(`Cancel GTT for ${tradingSymbol}?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/cancel_gtt/${triggerId}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`GTT cancelled successfully for ${tradingSymbol}`);
+                    // Reload holdings to update GTT status
+                    loadHoldingsPage(1);
+                } else {
+                    alert(`Failed to cancel GTT: ${data.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Error cancelling GTT:', error);
+                alert('Error cancelling GTT. Please try again.');
+            }
+        }
+        
+        async function setGTT(event, instrumentToken, tradingSymbol, quantity) {
+            event.preventDefault();
+            const triggerInput = event.target.querySelector(`#trigger_price_${instrumentToken}`);
+            const triggerPrice = triggerInput.value;
+            
+            if (!triggerPrice) {
+                alert('Please enter a trigger price');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/set_gtt', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        instrument_token: instrumentToken,
+                        tradingsymbol: tradingSymbol,
+                        quantity: quantity,
+                        trigger_price: parseFloat(triggerPrice)
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`GTT set successfully for ${tradingSymbol}!\nTrigger ID: ${data.trigger_id}`);
+                    triggerInput.value = '';
+                    // Reload holdings to show updated GTT status
+                    loadHoldingsPage(1);
+                } else {
+                    alert(`Failed to set GTT: ${data.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Error setting GTT:', error);
+                alert('Error setting GTT. Please try again.');
+            }
+        }
+        
+        // Holdings action functions
+        function buyMore(instrumentToken, tradingSymbol) {
+            const quantity = prompt(`Enter quantity to buy for ${tradingSymbol}:`);
+            if (quantity && quantity > 0) {
+                // TODO: Implement buy order API call
+                alert(`Buy order: ${quantity} shares of ${tradingSymbol}`);
+                console.log('Buy order:', { instrumentToken, tradingSymbol, quantity });
+                // Example: fetch('/api/buy_order', { method: 'POST', body: JSON.stringify({ instrumentToken, quantity }) });
+            }
+        }
+         
+        function sellSome(instrumentToken, tradingSymbol, currentQuantity) {
+            const quantity = prompt(`Enter quantity to sell for ${tradingSymbol} (max: ${currentQuantity}):`);
+            if (quantity && quantity > 0 && quantity <= currentQuantity) {
+                // TODO: Implement sell order API call
+                alert(`Sell order: ${quantity} shares of ${tradingSymbol}`);
+                console.log('Sell order:', { instrumentToken, tradingSymbol, quantity });
+                // Example: fetch('/api/sell_order', { method: 'POST', body: JSON.stringify({ instrumentToken, quantity }) });
+            } else if (quantity > currentQuantity) {
+                alert('Quantity cannot exceed current holding');
+            }
+        }
+        
+        function sellAll(instrumentToken, tradingSymbol, quantity) {
+            if (confirm(`Are you sure you want to sell all ${quantity} shares of ${tradingSymbol}?`)) {
+                // TODO: Implement sell all API call
+                alert(`Sell all order: ${quantity} shares of ${tradingSymbol}`);
+                console.log('Sell all order:', { instrumentToken, tradingSymbol, quantity });
+                // Example: fetch('/api/sell_all', { method: 'POST', body: JSON.stringify({ instrumentToken, quantity }) });
+            }
+        }
+        
+        // Load positions data
+        function loadPositions() {
+            fetch('/api/positions')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Error loading positions:', data.error);
+                        document.getElementById('positionsTableBody').innerHTML = 
+                            '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading positions data</td></tr>';
+                        return;
+                    }
+                    
+                    const tbody = document.getElementById('positionsTableBody');
+                    tbody.innerHTML = '';
+                    
+                    if (!data.positions || data.positions.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">No active positions</td></tr>';
+                        return;
+                    }
+                    
+                    data.positions.forEach(position => {
+                        const pnlColor = position.pnl >= 0 ? 'color: #28a745; font-weight: bold;' : 'color: #dc3545; font-weight: bold;';
+                        const typeColor = position.position_type === 'LONG' ? '#28a745' : position.position_type === 'SHORT' ? '#dc3545' : '#6c757d';
+                        
+                        const row = `
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 10px; border: 1px solid #ddd; font-size: 11px;">${position.fetch_timestamp || ''}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: bold; font-size: 11px; color: ${typeColor};">${position.position_type || '-'}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; font-size: 11px;">${position.trading_symbol || '-'}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; font-size: 11px;">${position.product || '-'}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; font-size: 11px;">${position.exchange || '-'}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-size: 11px;">₹${position.average_price.toFixed(2)}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-size: 11px;">
+                                    <span style="${pnlColor}">₹${position.pnl.toFixed(2)}</span>
+                                </td>
+                            </tr>
+                        `;
+                        tbody.innerHTML += row;
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching positions:', error);
+                    document.getElementById('positionsTableBody').innerHTML = 
+                        '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading positions data</td></tr>';
+                });
+        }
+        
         // Load initial data
         document.addEventListener('DOMContentLoaded', function() {
             loadMarketBiasAnalysis();
             loadFuturesOrderFlow();
+            loadPositions();
             initializeRefreshSystem();
         });
     </script>

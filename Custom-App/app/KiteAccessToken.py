@@ -6,6 +6,7 @@ import os
 from datetime import datetime, timedelta
 import json
 
+
 # Function to validate access token
 def is_access_token_valid(access_token):
     print('cheking token')
@@ -114,6 +115,76 @@ def get_tick_data_status():
             'total_ticks': 0
         }
 
+
+# Function to get holdings data
+def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, sort_dir: str = "asc"):
+    """Fetch current holdings from the database with pagination and sorting."""
+    try:
+        conn = get_db_connection()
+        # Use RealDictCursor to get results as dictionaries
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # Fetch holdings for the most recent run_date
+        # Get total count for pagination
+        cursor.execute("""
+            SELECT COUNT(*) as total_count
+            FROM my_schema.holdings
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+        """)
+        total_count = cursor.fetchone()['total_count']
+
+        # Validate and set sort column
+        valid_sort_columns = ['trading_symbol', 'invested_amount', 'current_amount', 'pnl']
+        if sort_by not in valid_sort_columns:
+            sort_by = 'trading_symbol'
+        
+        # Validate sort direction
+        if sort_dir.lower() not in ['asc', 'desc']:
+            sort_dir = 'asc'
+        
+        # Calculate offset for pagination
+        offset = (page - 1) * per_page
+
+        # Fetch paginated holdings for the most recent run_date
+        # Calculate invested amount and current value
+        cursor.execute("""
+            SELECT 
+                trading_symbol,
+                instrument_token,
+                quantity,
+                average_price,
+                last_price,
+                pnl,
+                (quantity * average_price) as invested_amount,
+                (quantity * last_price) as current_amount,
+                (SELECT MAX(run_date) FROM my_schema.holdings) as run_date
+            FROM my_schema.holdings
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+            ORDER BY {sort_by} {sort_dir}
+            LIMIT %s OFFSET %s
+        """.format(sort_by=sort_by, sort_dir=sort_dir.upper()), (per_page, offset))
+        holdings = cursor.fetchall()
+        
+        # Convert RealDictRow objects to regular dictionaries for Jinja2 template compatibility
+        holdings_list = [dict(row) for row in holdings]
+        
+        conn.close()
+        return {
+            "holdings": holdings_list,
+            "total_count": total_count,
+            "page": page,
+            "per_page": per_page
+        }
+    except Exception as e:
+        logging.error(f"Error fetching holdings data: {e}")
+        return {
+            "holdings": [],
+            "total_count": 0,
+            "page": page,
+            "per_page": per_page
+        }
+
+
 # Function to get system status
 def get_system_status():
     # Get current IST time
@@ -127,8 +198,114 @@ def get_system_status():
         'last_update': ist_now.strftime('%H:%M:%S IST')
     }
 
+# Helper function to enrich holdings with today's P&L
+def enrich_holdings_with_today_pnl(holdings_data):
+    """Enrich holdings data with today's P&L from rt_intraday_price"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get today's date
+        cursor.execute("SELECT CURRENT_DATE as today_date")
+        today = cursor.fetchone()['today_date']
+        today_str = today.strftime('%Y-%m-%d')
+        
+        # Get previous trading day
+        cursor.execute("""
+            SELECT MAX(price_date) as prev_date
+            FROM my_schema.rt_intraday_price
+            WHERE price_date < %s
+        """, (today_str,))
+        
+        prev_date_result = cursor.fetchone()
+        prev_date = prev_date_result['prev_date'] if prev_date_result and prev_date_result['prev_date'] else None
+        
+        # Get today's P&L for all holdings
+        today_pnl_map = {}
+        if prev_date:
+            cursor.execute("""
+                WITH holdings_today AS (
+                    SELECT DISTINCT trading_symbol, quantity
+                    FROM my_schema.holdings
+                    WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+                ),
+                today_prices AS (
+                    SELECT scrip_id, price_close
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date = %s
+                ),
+                prev_prices AS (
+                    SELECT scrip_id, price_close
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date = %s
+                )
+                SELECT 
+                    h.trading_symbol,
+                    h.quantity,
+                    COALESCE(today_p.price_close, 0) as today_price,
+                    COALESCE(prev_p.price_close, 0) as prev_price,
+                    h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0)) as today_pnl
+                FROM holdings_today h
+                LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
+                LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
+            """, (today_str, prev_date))
+            
+            for row in cursor.fetchall():
+                today_price = float(row['today_price']) if row['today_price'] else 0.0
+                prev_price = float(row['prev_price']) if row['prev_price'] else 0.0
+                today_pnl = float(row['today_pnl']) if row['today_pnl'] else 0.0
+                
+                # Calculate percentage change
+                pct_change = 0.0
+                if prev_price > 0:
+                    pct_change = ((today_price - prev_price) / prev_price) * 100
+                
+                today_pnl_map[row['trading_symbol']] = {
+                    'today_pnl': today_pnl,
+                    'today_price': today_price,
+                    'prev_price': prev_price,
+                    'pct_change': pct_change
+                }
+        
+        conn.close()
+        
+        # Convert RealDictRow objects to regular dictionaries and enrich with today's P&L
+        enriched_holdings = []
+        for holding in holdings_data.get('holdings', []):
+            # Convert RealDictRow to dict
+            holding_dict = dict(holding)
+            symbol = holding_dict.get('trading_symbol', '')
+            today_pnl_info = today_pnl_map.get(symbol, {'today_pnl': 0.0, 'today_price': 0.0, 'prev_price': 0.0, 'pct_change': 0.0})
+            
+            # Add today's P&L fields
+            holding_dict['today_pnl'] = today_pnl_info['today_pnl']
+            holding_dict['today_price'] = today_pnl_info['today_price']
+            holding_dict['prev_price'] = today_pnl_info['prev_price']
+            holding_dict['pct_change'] = today_pnl_info.get('pct_change', 0.0)
+            
+            enriched_holdings.append(holding_dict)
+        
+        # Update holdings_data with enriched holdings
+        holdings_data['holdings'] = enriched_holdings
+        return holdings_data
+        
+    except Exception as e:
+        logging.error(f"Error enriching holdings with today's P&L: {e}")
+        # Return holdings with default today_pnl values
+        enriched_holdings = []
+        for holding in holdings_data.get('holdings', []):
+            holding_dict = dict(holding)
+            holding_dict['today_pnl'] = 0.0
+            holding_dict['today_price'] = 0.0
+            holding_dict['prev_price'] = 0.0
+            holding_dict['pct_change'] = 0.0
+            enriched_holdings.append(holding_dict)
+        
+        holdings_data['holdings'] = enriched_holdings
+        return holdings_data
+
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request):
+async def dashboard(request: Request, page: int = Query(1, ge=1)):
     """Dashboard route - shows dashboard if valid token exists"""
     # Check if valid access token exists in Redis
     existing_token = redis_client.get("kite_access_token")
@@ -144,13 +321,18 @@ async def dashboard(request: Request):
             # Get system status for dashboard
             system_status = get_system_status()
             tick_data = system_status['tick_data']
+            holdings_info = get_holdings_data(page=page, per_page=10)
+            
+            # Enrich holdings with today's P&L
+            holdings_info = enrich_holdings_with_today_pnl(holdings_info)
             
             return templates.TemplateResponse("dashboard.html", {
                 "request": request,
                 "token_status": "Valid" if system_status['token_valid'] else "Invalid",
                 "tick_status": "Active" if tick_data['active'] else "Inactive",
                 "last_update": system_status['last_update'],
-                "total_ticks": tick_data['total_ticks']
+                "total_ticks": tick_data['total_ticks'],
+                "holdings_info": holdings_info
             })
     
     # No valid token, redirect to login
@@ -182,13 +364,15 @@ async def home(
         # Get system status for dashboard
         system_status = get_system_status()
         tick_data = system_status['tick_data']
+        holdings_info = get_holdings_data(page=1, per_page=10)
         
         return templates.TemplateResponse("dashboard.html", {
             "request": request,
             "token_status": "Valid" if system_status['token_valid'] else "Invalid",
             "tick_status": "Active" if tick_data['active'] else "Inactive",
             "last_update": system_status['last_update'],
-            "total_ticks": tick_data['total_ticks']
+            "total_ticks": tick_data['total_ticks'],
+            "holdings_info": holdings_info
         })
     else:
         # Show login page
@@ -607,6 +791,374 @@ async def api_market_bias_chart(analysis_date: str = Query(None)):
         logging.error(f"Error generating market bias chart: {e}")
         return {"error": str(e)}
 
+@app.get("/api/holdings")
+async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=1), sort_by: str = Query(None), sort_dir: str = Query("asc")):
+    """API endpoint to get paginated holdings data with sorting and GTT info"""
+    try:
+        holdings_info = get_holdings_data(page=page, per_page=per_page, sort_by=sort_by, sort_dir=sort_dir)
+        
+        # Get all active GTTs for holdings lookup
+        from KiteGTT import KiteGTTManager
+        manager = KiteGTTManager(kite)
+        all_gtts = manager.get_all_gtts()
+        
+        # Create a map of tradingsymbol to GTT info
+        gtt_map = {}
+        for gtt in all_gtts:
+            symbol = gtt.get('tradingsymbol', '')
+            if symbol:
+                gtt_map[symbol] = {
+                    'trigger_id': gtt.get('trigger_id') or gtt.get('id'),
+                    'trigger_price': gtt.get('trigger_price'),
+                    'order_price': gtt.get('order_price'),
+                    'status': gtt.get('status', 'ACTIVE')
+                }
+        
+        # Get today's P&L prices for all holdings
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get today's and previous day's prices
+        cursor.execute("SELECT CURRENT_DATE as today_date")
+        today = cursor.fetchone()['today_date']
+        today_str = today.strftime('%Y-%m-%d')
+        
+        cursor.execute("""
+            SELECT MAX(price_date) as prev_date
+            FROM my_schema.rt_intraday_price
+            WHERE price_date < %s
+        """, (today_str,))
+        
+        prev_date_result = cursor.fetchone()
+        prev_date = prev_date_result['prev_date'] if prev_date_result and prev_date_result['prev_date'] else None
+        
+        # Create a map of today's P&L per stock
+        today_pnl_map = {}
+        if prev_date:
+            cursor.execute("""
+                WITH holdings_today AS (
+                    SELECT DISTINCT trading_symbol, quantity
+                    FROM my_schema.holdings
+                    WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+                ),
+                today_prices AS (
+                    SELECT scrip_id, price_close
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date = %s
+                ),
+                prev_prices AS (
+                    SELECT scrip_id, price_close
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date = %s
+                )
+                SELECT 
+                    h.trading_symbol,
+                    h.quantity,
+                    COALESCE(today_p.price_close, 0) as today_price,
+                    COALESCE(prev_p.price_close, 0) as prev_price,
+                    h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0)) as today_pnl
+                FROM holdings_today h
+                LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
+                LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
+            """, (today_str, prev_date))
+            
+            for row in cursor.fetchall():
+                today_price = float(row['today_price']) if row['today_price'] else 0.0
+                prev_price = float(row['prev_price']) if row['prev_price'] else 0.0
+                today_pnl = float(row['today_pnl']) if row['today_pnl'] else 0.0
+                
+                # Calculate percentage change
+                pct_change = 0.0
+                if prev_price > 0:
+                    pct_change = ((today_price - prev_price) / prev_price) * 100
+                
+                today_pnl_map[row['trading_symbol']] = {
+                    'today_pnl': today_pnl,
+                    'today_price': today_price,
+                    'prev_price': prev_price,
+                    'pct_change': pct_change
+                }
+        
+        conn.close()
+        
+        # Convert holdings to serializable format
+        holdings_list = []
+        for holding in holdings_info["holdings"]:
+            symbol = holding["trading_symbol"]
+            today_pnl_info = today_pnl_map.get(symbol, {'today_pnl': 0.0, 'today_price': 0.0, 'prev_price': 0.0, 'pct_change': 0.0})
+            
+            holdings_list.append({
+                "trading_symbol": symbol,
+                "instrument_token": holding["instrument_token"],
+                "quantity": holding["quantity"],
+                "average_price": float(holding["average_price"]) if holding["average_price"] else 0.0,
+                "last_price": float(holding["last_price"]) if holding["last_price"] else 0.0,
+                "pnl": float(holding["pnl"]) if holding["pnl"] else 0.0,
+                "invested_amount": float(holding.get("invested_amount", 0)),
+                "current_amount": float(holding.get("current_amount", 0)),
+                "today_pnl": today_pnl_info['today_pnl'],
+                "today_price": today_pnl_info['today_price'],
+                "prev_price": today_pnl_info['prev_price'],
+                "pct_change": today_pnl_info.get('pct_change', 0.0),
+                "existing_gtt": gtt_map.get(symbol)
+            })
+        
+        return {
+            "holdings": holdings_list,
+            "total_count": holdings_info["total_count"],
+            "page": holdings_info["page"],
+            "per_page": holdings_info["per_page"]
+        }
+    except Exception as e:
+        logging.error(f"Error fetching holdings: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"error": str(e)}
+
+@app.get("/api/positions")
+async def api_positions():
+    """API endpoint to get latest positions data"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cursor.execute("""
+            SELECT 
+                fetch_timestamp, 
+                position_type, 
+                trading_symbol, 
+                product, 
+                exchange, 
+                average_price, 
+                pnl 
+            FROM my_schema.positions 
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.positions)
+            ORDER BY trading_symbol
+        """)
+        
+        positions = cursor.fetchall()
+        conn.close()
+        
+        # Convert to serializable format
+        positions_list = []
+        for position in positions:
+            positions_list.append({
+                "fetch_timestamp": position["fetch_timestamp"].strftime("%Y-%m-%d %H:%M:%S") if position["fetch_timestamp"] else "",
+                "position_type": position["position_type"],
+                "trading_symbol": position["trading_symbol"],
+                "product": position["product"],
+                "exchange": position["exchange"],
+                "average_price": float(position["average_price"]) if position["average_price"] else 0.0,
+                "pnl": float(position["pnl"]) if position["pnl"] else 0.0
+            })
+        
+        return {"positions": positions_list}
+    except Exception as e:
+        logging.error(f"Error fetching positions: {e}")
+        return {"error": str(e), "positions": []}
+
+@app.get("/api/today_pnl")
+async def api_today_pnl():
+    """API endpoint to get today's total P&L from holdings using rt_intraday_price"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get today's date in YYYY-MM-DD format
+        cursor.execute("SELECT CURRENT_DATE as today_date")
+        today = cursor.fetchone()['today_date']
+        today_str = today.strftime('%Y-%m-%d')
+        
+        # Get previous trading day (assuming we can find it from rt_intraday_price)
+        cursor.execute("""
+            SELECT MAX(price_date) as prev_date
+            FROM my_schema.rt_intraday_price
+            WHERE price_date < %s
+        """, (today_str,))
+        
+        prev_date_result = cursor.fetchone()
+        if not prev_date_result or not prev_date_result['prev_date']:
+            logging.warning("No previous trading day found")
+            return {"total_pnl": 0.0, "message": "No previous trading day data available"}
+        
+        prev_date = prev_date_result['prev_date']
+        
+        # Calculate P&L for each holding: quantity × (today_price - prev_day_price)
+        cursor.execute("""
+            WITH holdings_data AS (
+                SELECT 
+                    h.trading_symbol,
+                    h.quantity,
+                    h.last_price as current_price
+                FROM my_schema.holdings h
+                WHERE h.run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+            ),
+            today_prices AS (
+                SELECT 
+                    scrip_id,
+                    price_close
+                FROM my_schema.rt_intraday_price
+                WHERE price_date = %s
+            ),
+            prev_prices AS (
+                SELECT 
+                    scrip_id,
+                    price_close
+                FROM my_schema.rt_intraday_price
+                WHERE price_date = %s
+            )
+            SELECT 
+                COALESCE(SUM(
+                    h.quantity * (COALESCE(today_p.price_close, h.current_price) - COALESCE(prev_p.price_close, 0))
+                ), 0) as total_pnl
+            FROM holdings_data h
+            LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
+            LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
+        """, (today_str, prev_date))
+        
+        result = cursor.fetchone()
+        total_pnl = float(result['total_pnl']) if result and result['total_pnl'] is not None else 0.0
+        conn.close()
+        
+        return {
+            "total_pnl": total_pnl,
+            "today_date": today_str,
+            "prev_date": prev_date
+        }
+    except Exception as e:
+        logging.error(f"Error fetching today's P&L: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"error": str(e), "total_pnl": 0.0}
+
+@app.post("/api/set_gtt")
+async def api_set_gtt(
+    instrument_token: str = None,
+    tradingsymbol: str = None,
+    quantity: int = None,
+    trigger_price: float = None,
+    exchange: str = kite.EXCHANGE_NSE
+):
+    """API endpoint to set a GTT stop-loss order"""
+    try:
+        from KiteGTT import KiteGTTManager
+        
+        # Get current price from holdings
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT trading_symbol, last_price 
+            FROM my_schema.holdings 
+            WHERE instrument_token = %s 
+            AND run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+            LIMIT 1
+        """, (instrument_token,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            return {"error": "Holding not found"}
+        
+        tradingsymbol = result[0] if not tradingsymbol else tradingsymbol
+        last_price = result[1]
+        
+        if not trigger_price:
+            return {"error": "Trigger price is required"}
+        
+        order_price = float(trigger_price) * 0.999
+        
+        manager = KiteGTTManager(kite)
+        gtt_response = manager.add_gtt(
+            tradingsymbol=tradingsymbol,
+            exchange=exchange,
+            quantity=int(quantity),
+            trigger_price=float(trigger_price),
+            last_price=last_price,
+            order_price=order_price
+        )
+        
+        if gtt_response:
+            return {
+                "success": True,
+                "trigger_id": gtt_response.get('trigger_id') or gtt_response.get('id'),
+                "message": f"GTT set successfully for {tradingsymbol}"
+            }
+        else:
+            return {"success": False, "error": "Failed to set GTT"}
+            
+    except Exception as e:
+        logging.error(f"Error setting GTT: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/add_gtt_for_all")
+async def api_add_gtt_for_all(stop_loss_percentage: float = 5.0):
+    """API endpoint to add GTT stop-loss for all holdings"""
+    try:
+        from KiteGTT import KiteGTTManager
+        
+        manager = KiteGTTManager(kite)
+        results = manager.add_gtt_for_all_holdings(
+            stop_loss_percentage=stop_loss_percentage,
+            overwrite_existing=False
+        )
+        
+        return {
+            "success": True,
+            "results": results,
+            "message": f"Added {len(results['success'])} GTTs, {len(results['failed'])} failed"
+        }
+        
+    except Exception as e:
+        logging.error(f"Error adding GTT for all: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/get_all_gtts")
+async def api_get_all_gtts():
+    """API endpoint to get all active GTT orders"""
+    try:
+        from KiteGTT import KiteGTTManager
+        
+        manager = KiteGTTManager(kite)
+        gtt_list = manager.get_all_gtts()
+        
+        return {"gtts": gtt_list, "total": len(gtt_list)}
+        
+    except Exception as e:
+        logging.error(f"Error fetching GTTs: {e}")
+        return {"error": str(e), "gtts": []}
+
+@app.delete("/api/cancel_gtt/{trigger_id}")
+async def api_cancel_gtt(trigger_id: int):
+    """API endpoint to cancel a specific GTT"""
+    try:
+        from KiteGTT import KiteGTTManager
+        
+        manager = KiteGTTManager(kite)
+        success = manager.cancel_gtt(trigger_id)
+        
+        return {"success": success}
+        
+    except Exception as e:
+        logging.error(f"Error cancelling GTT: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/cancel_all_gtts")
+async def api_cancel_all_gtts():
+    """API endpoint to cancel all GTT orders"""
+    try:
+        from KiteGTT import KiteGTTManager
+        
+        manager = KiteGTTManager(kite)
+        results = manager.cancel_all_gtts()
+        
+        return {"success": True, "results": results}
+        
+    except Exception as e:
+        logging.error(f"Error cancelling all GTTs: {e}")
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/futures_order_flow")
 async def api_futures_order_flow():
     """API endpoint to get Nifty 50 futures order flow data - always shows most recent trading day"""
@@ -659,4 +1211,3 @@ async def api_futures_order_flow():
     except Exception as e:
         logging.error(f"Error fetching futures order flow: {e}")
         return {"error": str(e)}
-

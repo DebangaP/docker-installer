@@ -163,7 +163,6 @@ CREATE TABLE IF NOT EXISTS my_schema.holdings (
     run_date DATE DEFAULT CURRENT_DATE,
     trading_symbol VARCHAR(50),
     instrument_token INTEGER,
-    exchange VARCHAR(20),
     isin VARCHAR(12),
     quantity INTEGER,
     t1_quantity INTEGER,
@@ -174,7 +173,7 @@ CREATE TABLE IF NOT EXISTS my_schema.holdings (
     pnl FLOAT,
     collateral_quantity INTEGER,
     collateral_type VARCHAR(20),
-    CONSTRAINT holdings_unique_key UNIQUE (instrument_token)
+    CONSTRAINT holdings_unique_key UNIQUE (instrument_token, run_date)
 );
 
 CREATE TABLE IF NOT EXISTS my_schema.margins (
@@ -1349,3 +1348,42 @@ INSERT INTO my_schema.master_scrips (scrip_id,scrip_screener_code,sector_code,cr
 	 ('BENARES',NULL,NULL,'2025-07-20 12:06:20.571123','BENARES.BO',NULL,1285,'IN',NULL,NULL,56.0,0.0,NULL,'2025-06-08 11:08:26.642493'),
 	 ('20MICRONS',NULL,NULL,'2025-07-20 12:06:20.571123','20MICRONS.BO',NULL,935,'IN',NULL,NULL,56.0,0.0,NULL,'2025-06-08 11:08:26.642493'),
 	 ('DRONEACH',NULL,NULL,'2025-07-20 12:06:20.571123','DRONACHRYA.BO',NULL,198,'IN',NULL,NULL,56.0,0.0,NULL,'2025-06-08 11:08:26.642493');
+
+-- Table to store GTT (Good Till Triggered) transactions and responses
+CREATE TABLE IF NOT EXISTS my_schema.gtt_transactions (
+    id SERIAL PRIMARY KEY,
+    trigger_id INTEGER,
+    trading_symbol VARCHAR(50) NOT NULL,
+    exchange VARCHAR(20) NOT NULL,
+    instrument_token INTEGER,
+    quantity INTEGER NOT NULL,
+    trigger_price FLOAT NOT NULL,
+    last_price FLOAT NOT NULL,
+    order_price FLOAT NOT NULL,
+    order_type VARCHAR(20) DEFAULT 'LIMIT',
+    transaction_type VARCHAR(10) DEFAULT 'SELL',
+    product VARCHAR(10) DEFAULT 'CNC',
+    status VARCHAR(20) DEFAULT 'ACTIVE',
+    gtt_type VARCHAR(20) DEFAULT 'SINGLE',
+    response JSONB,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    cancelled_at TIMESTAMP,
+    run_date DATE DEFAULT CURRENT_DATE,
+    notes TEXT
+);
+
+-- Indexes for GTT transactions table
+CREATE INDEX IF NOT EXISTS idx_gtt_transactions_trigger_id ON my_schema.gtt_transactions(trigger_id);
+CREATE INDEX IF NOT EXISTS idx_gtt_transactions_trading_symbol ON my_schema.gtt_transactions(trading_symbol);
+CREATE INDEX IF NOT EXISTS idx_gtt_transactions_status ON my_schema.gtt_transactions(status);
+CREATE INDEX IF NOT EXISTS idx_gtt_transactions_run_date ON my_schema.gtt_transactions(run_date);
+CREATE INDEX IF NOT EXISTS idx_gtt_transactions_created_at ON my_schema.gtt_transactions(created_at);
+
+-- Comments on GTT transactions table
+COMMENT ON TABLE my_schema.gtt_transactions IS 'Stores all GTT (Good Till Triggered) order transactions and their responses from Kite API';
+COMMENT ON COLUMN my_schema.gtt_transactions.trigger_id IS 'Kite API trigger ID for the GTT order';
+COMMENT ON COLUMN my_schema.gtt_transactions.status IS 'Current status: ACTIVE, CANCELLED, TRIGGERED, etc.';
+COMMENT ON COLUMN my_schema.gtt_transactions.response IS 'Full JSON response from Kite API';
+COMMENT ON COLUMN my_schema.gtt_transactions.notes IS 'Additional notes or metadata about the GTT order';

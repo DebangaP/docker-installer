@@ -4,7 +4,7 @@
 uvicorn KiteAccessToken:app --host 0.0.0.0 --port 8000 &
 
 echo "Waiting for 3 minutes before continuing..."
-sleep 3m
+sleep 4m
 
 # Start all scripts in the background
 python KiteFetchData.py &

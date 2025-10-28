@@ -152,6 +152,22 @@ class TPOChartRenderer {
             if (balanceElement) {
                 balanceElement.textContent = `Balance: ₹${data.live_balance.toLocaleString()}`;
             }
+
+            // Fetch today's P&L
+            try {
+                const pnlResponse = await fetch('/api/today_pnl');
+                const pnlData = await pnlResponse.json();
+                
+                if (!pnlData.error && pnlData.total_pnl !== undefined) {
+                    const pnlElement = document.getElementById('todayPnl');
+                    const pnlColor = pnlData.total_pnl >= 0 ? 'color: #28a745;' : 'color: #dc3545;';
+                    if (pnlElement) {
+                        pnlElement.innerHTML = `<span style="${pnlColor}">Today's P&L: ₹${pnlData.total_pnl.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                    }
+                }
+            } catch (pnlError) {
+                console.error('Error loading P&L data:', pnlError);
+            }
         } catch (error) {
             console.error('Error loading margin data:', error);
         }

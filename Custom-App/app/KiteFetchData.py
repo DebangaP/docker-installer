@@ -11,7 +11,6 @@ def init_postgres_conn():
                     run_date DATE DEFAULT CURRENT_DATE,
                     trading_symbol VARCHAR(50),
                     instrument_token INTEGER,
-                    exchange VARCHAR(20),
                     isin VARCHAR(12),
                     quantity INTEGER,
                     t1_quantity INTEGER,
@@ -22,7 +21,7 @@ def init_postgres_conn():
                     pnl FLOAT,
                     collateral_quantity INTEGER,
                     collateral_type VARCHAR(20),
-                    CONSTRAINT holdings_unique_key UNIQUE ( instrument_token)
+                    CONSTRAINT holdings_unique_key UNIQUE (instrument_token, run_date)
                 );
             """)
         conn.commit()
@@ -246,7 +245,6 @@ def fetch_and_save_holdings1():
             holding = {
                 'tradingsymbol': h.get('tradingsymbol', ''),
                 'instrument_token': h.get('instrument_token', 0),
-                'exchange': h.get('exchange', ''),
                 'isin': h.get('isin', ''),
                 'quantity': h.get('quantity', 0),
                 't1_quantity': h.get('t1_quantity', 0),
@@ -268,13 +266,12 @@ def fetch_and_save_holdings1():
         if valid_holdings:
             cursor.executemany("""
                 INSERT INTO my_schema.holdings (
-                    trading_symbol, instrument_token, exchange,
+                    trading_symbol, instrument_token,
                     isin, quantity, t1_quantity, authorised_quantity, average_price,
                     close_price, last_price, pnl, collateral_quantity, collateral_type
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (instrument_token) DO UPDATE
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (instrument_token, run_date) DO UPDATE
                 SET trading_symbol = EXCLUDED.trading_symbol,
-                    exchange = EXCLUDED.exchange,
                     isin = EXCLUDED.isin,
                     quantity = EXCLUDED.quantity,
                     t1_quantity = EXCLUDED.t1_quantity,
@@ -288,7 +285,7 @@ def fetch_and_save_holdings1():
             """, [
                 (
                     h['tradingsymbol'], h['instrument_token'],
-                    h['exchange'], h['isin'], h['quantity'],
+                    h['isin'], h['quantity'],
                     h['t1_quantity'], h['authorised_quantity'],
                     h['average_price'], h['close_price'], h['last_price'],
                     h['pnl'], h['collateral_quantity'], h['collateral_type']
@@ -298,8 +295,7 @@ def fetch_and_save_holdings1():
             logging.info(f"Stored {len(valid_holdings)} holdings")
     except Exception as e:
         conn.rollback()
-        logging.error(f"Error saving holdings: {e}")    
-    
+        logging.error(f"Error saving holdings: {e}")  
 
 
 def fetch_and_save_trades(kite: KiteConnect, cursor: psycopg2.extensions.cursor):
@@ -471,6 +467,7 @@ try:
     print('1')
     fetch_and_save_holdings1()
     print('2')
+
     fetch_and_save_orders1()
     print('3')
     fetch_and_save_positions1()
