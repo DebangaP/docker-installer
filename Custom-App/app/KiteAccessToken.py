@@ -2,9 +2,17 @@ from Boilerplate import *
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi import Request
+from fastapi.responses import StreamingResponse, FileResponse
 import os
 from datetime import datetime, timedelta
 import json
+import io
+import pandas as pd
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
 
 
 # Function to validate access token
@@ -134,14 +142,14 @@ def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, so
         total_count = cursor.fetchone()['total_count']
 
         # Validate and set sort column
-        valid_sort_columns = ['trading_symbol', 'invested_amount', 'current_amount', 'pnl']
+        valid_sort_columns = ['trading_symbol', 'invested_amount', 'current_amount', 'pnl', 'today_pnl']
         if sort_by not in valid_sort_columns:
             sort_by = 'trading_symbol'
         
         # Validate sort direction
         if sort_dir.lower() not in ['asc', 'desc']:
             sort_dir = 'asc'
-        
+
         # Calculate offset for pagination
         offset = (page - 1) * per_page
 
@@ -157,6 +165,10 @@ def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, so
                 pnl,
                 (quantity * average_price) as invested_amount,
                 (quantity * last_price) as current_amount,
+                round(case when (quantity * average_price) != 0 then
+                    (pnl / (quantity * average_price)) * 100
+                else 0
+                end::numeric, 2) as pnl_pct_change,
                 (SELECT MAX(run_date) FROM my_schema.holdings) as run_date
             FROM my_schema.holdings
             WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
@@ -220,12 +232,14 @@ def enrich_holdings_with_today_pnl(holdings_data):
         prev_date_result = cursor.fetchone()
         prev_date = prev_date_result['prev_date'] if prev_date_result and prev_date_result['prev_date'] else None
         
-        # Get today's P&L for all holdings
+        # Get today's P&L for all holdings - match by instrument_token
         today_pnl_map = {}
         if prev_date:
+            # Convert prev_date to string format
+            prev_date_str = prev_date.strftime('%Y-%m-%d') if hasattr(prev_date, 'strftime') else str(prev_date)
             cursor.execute("""
                 WITH holdings_today AS (
-                    SELECT DISTINCT trading_symbol, quantity
+                    SELECT instrument_token, trading_symbol, quantity
                     FROM my_schema.holdings
                     WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
                 ),
@@ -240,31 +254,42 @@ def enrich_holdings_with_today_pnl(holdings_data):
                     WHERE price_date = %s
                 )
                 SELECT 
+                    h.instrument_token,
                     h.trading_symbol,
                     h.quantity,
                     COALESCE(today_p.price_close, 0) as today_price,
                     COALESCE(prev_p.price_close, 0) as prev_price,
-                    h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0)) as today_pnl
+                    h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0)) as today_pnl,
+                    round(case when prev_p.price_close != 0 then 
+	                    ((COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
+	                else 0
+	                end::numeric, 2) as pct_change,
+                    concat(round(h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0))), ' (',
+                    round(case when prev_p.price_close != 0 then 
+	                    ((COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
+	                else 0
+	                end::numeric, 2), '%%)') as "Todays_Change"
                 FROM holdings_today h
                 LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
                 LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
-            """, (today_str, prev_date))
+                
+            """, (today_str, prev_date_str))
             
             for row in cursor.fetchall():
+                instrument_token = row['instrument_token']
                 today_price = float(row['today_price']) if row['today_price'] else 0.0
                 prev_price = float(row['prev_price']) if row['prev_price'] else 0.0
                 today_pnl = float(row['today_pnl']) if row['today_pnl'] else 0.0
+                pct_change = float(row['pct_change']) if row['pct_change'] else 0.0
+                today_change_str = str(row.get("Todays_Change", '')) if row.get("Todays_Change") else ''
                 
-                # Calculate percentage change
-                pct_change = 0.0
-                if prev_price > 0:
-                    pct_change = ((today_price - prev_price) / prev_price) * 100
-                
-                today_pnl_map[row['trading_symbol']] = {
+                # Store by instrument_token to match with holdings
+                today_pnl_map[instrument_token] = {
                     'today_pnl': today_pnl,
                     'today_price': today_price,
                     'prev_price': prev_price,
-                    'pct_change': pct_change
+                    'pct_change': pct_change,
+                    'today_change': today_change_str
                 }
         
         conn.close()
@@ -274,14 +299,22 @@ def enrich_holdings_with_today_pnl(holdings_data):
         for holding in holdings_data.get('holdings', []):
             # Convert RealDictRow to dict
             holding_dict = dict(holding)
-            symbol = holding_dict.get('trading_symbol', '')
-            today_pnl_info = today_pnl_map.get(symbol, {'today_pnl': 0.0, 'today_price': 0.0, 'prev_price': 0.0, 'pct_change': 0.0})
+            instrument_token = holding_dict.get('instrument_token')
+            today_pnl_info = today_pnl_map.get(instrument_token, {'today_pnl': 0.0, 'today_price': 0.0, 'prev_price': 0.0, 'pct_change': 0.0, 'today_change': '0 (0%)'})
             
             # Add today's P&L fields
             holding_dict['today_pnl'] = today_pnl_info['today_pnl']
             holding_dict['today_price'] = today_pnl_info['today_price']
             holding_dict['prev_price'] = today_pnl_info['prev_price']
             holding_dict['pct_change'] = today_pnl_info.get('pct_change', 0.0)
+            holding_dict['today_change'] = today_pnl_info.get('today_change', '0 (0%)')
+            
+            # Ensure pnl_pct_change field exists (from original query)
+            if 'pnl_pct_change' not in holding_dict:
+                # Calculate it if missing
+                invested_amount = holding_dict.get('invested_amount', 0)
+                pnl = holding_dict.get('pnl', 0)
+                holding_dict['pnl_pct_change'] = (pnl / invested_amount * 100) if invested_amount != 0 else 0.0
             
             enriched_holdings.append(holding_dict)
         
@@ -299,6 +332,14 @@ def enrich_holdings_with_today_pnl(holdings_data):
             holding_dict['today_price'] = 0.0
             holding_dict['prev_price'] = 0.0
             holding_dict['pct_change'] = 0.0
+            holding_dict['today_change'] = '0 (0%)'
+            
+            # Ensure pnl_pct_change field exists
+            if 'pnl_pct_change' not in holding_dict:
+                invested_amount = holding_dict.get('invested_amount', 0)
+                pnl = holding_dict.get('pnl', 0)
+                holding_dict['pnl_pct_change'] = (pnl / invested_amount * 100) if invested_amount != 0 else 0.0
+            
             enriched_holdings.append(holding_dict)
         
         holdings_data['holdings'] = enriched_holdings
@@ -553,10 +594,31 @@ async def get_available_dates():
         logging.error(f"Error fetching available dates: {e}")
         return {"error": str(e)}
 
+@app.post("/api/refresh_futures")
+async def api_refresh_futures():
+    """API endpoint to refresh futures data"""
+    try:
+        from KiteFetchFuture import fetch_and_save_futures
+        result = fetch_and_save_futures()
+        return result
+    except Exception as e:
+        logging.error(f"Error refreshing futures data: {e}")
+        return {"success": False, "error": str(e)}
+
 @app.get("/refresh_data")
 async def refresh_data():
-    """Endpoint to refresh data"""
-    return {"message": "Data refresh initiated", "status": "success"}
+    """Endpoint to refresh all data including futures"""
+    try:
+        from KiteFetchFuture import fetch_and_save_futures
+        futures_result = fetch_and_save_futures()
+        return {
+            "message": "Data refresh initiated", 
+            "status": "success",
+            "futures": futures_result
+        }
+    except Exception as e:
+        logging.error(f"Error in refresh_data: {e}")
+        return {"message": "Data refresh initiated", "status": "partial", "error": str(e)}
 
 @app.get("/logout")
 async def logout():
@@ -795,7 +857,12 @@ async def api_market_bias_chart(analysis_date: str = Query(None)):
 async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=1), sort_by: str = Query(None), sort_dir: str = Query("asc")):
     """API endpoint to get paginated holdings data with sorting and GTT info"""
     try:
-        holdings_info = get_holdings_data(page=page, per_page=per_page, sort_by=sort_by, sort_dir=sort_dir)
+        # If sorting by today_pnl, we need to get all holdings, enrich them, sort, then paginate
+        if sort_by == 'today_pnl':
+            # Get all holdings without pagination
+            holdings_info = get_holdings_data(page=1, per_page=10000, sort_by='trading_symbol', sort_dir='asc')
+        else:
+            holdings_info = get_holdings_data(page=page, per_page=per_page, sort_by=sort_by, sort_dir=sort_dir)
         
         # Get all active GTTs for holdings lookup
         from KiteGTT import KiteGTTManager
@@ -832,52 +899,75 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
         prev_date_result = cursor.fetchone()
         prev_date = prev_date_result['prev_date'] if prev_date_result and prev_date_result['prev_date'] else None
         
-        # Create a map of today's P&L per stock
+        # Create a map of today's P&L per holding by instrument_token
         today_pnl_map = {}
         if prev_date:
-            cursor.execute("""
-                WITH holdings_today AS (
-                    SELECT DISTINCT trading_symbol, quantity
-                    FROM my_schema.holdings
-                    WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
-                ),
-                today_prices AS (
-                    SELECT scrip_id, price_close
-                    FROM my_schema.rt_intraday_price
-                    WHERE price_date = %s
-                ),
-                prev_prices AS (
-                    SELECT scrip_id, price_close
-                    FROM my_schema.rt_intraday_price
-                    WHERE price_date = %s
-                )
-                SELECT 
-                    h.trading_symbol,
-                    h.quantity,
-                    COALESCE(today_p.price_close, 0) as today_price,
-                    COALESCE(prev_p.price_close, 0) as prev_price,
-                    h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0)) as today_pnl
-                FROM holdings_today h
-                LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
-                LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
-            """, (today_str, prev_date))
+            # Convert prev_date to string format safely
+            try:
+                if hasattr(prev_date, 'strftime'):
+                    prev_date_str = prev_date.strftime('%Y-%m-%d')
+                elif isinstance(prev_date, str):
+                    prev_date_str = prev_date
+                else:
+                    prev_date_str = str(prev_date)
+            except Exception as e:
+                logging.error(f"Error converting prev_date to string: {e}, prev_date={prev_date}")
+                prev_date_str = None
             
-            for row in cursor.fetchall():
-                today_price = float(row['today_price']) if row['today_price'] else 0.0
-                prev_price = float(row['prev_price']) if row['prev_price'] else 0.0
-                today_pnl = float(row['today_pnl']) if row['today_pnl'] else 0.0
+            if prev_date_str:
+                cursor.execute("""
+                    WITH holdings_today AS (
+                        SELECT instrument_token, trading_symbol, quantity
+                        FROM my_schema.holdings
+                        WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+                    ),
+                    today_prices AS (
+                        SELECT scrip_id, price_close
+                        FROM my_schema.rt_intraday_price
+                        WHERE price_date = %s
+                    ),
+                    prev_prices AS (
+                        SELECT scrip_id, price_close
+                        FROM my_schema.rt_intraday_price
+                        WHERE price_date = %s
+                    )
+                    SELECT 
+                        h.instrument_token,
+                        h.trading_symbol,
+                        h.quantity,
+                        COALESCE(today_p.price_close, 0) as today_price,
+                        COALESCE(prev_p.price_close, 0) as prev_price,
+                        h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0)) as today_pnl,
+                        round(case when prev_p.price_close != 0 then 
+    	                    ((COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
+    	                else 0
+    	                end::numeric, 2) as pct_change,
+                        concat(round(h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0))), ' (',
+                        round(case when prev_p.price_close != 0 then 
+    	                    ((COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
+    	                else 0
+    	                end::numeric, 2), '%%)') as "Todays_Change"
+                    FROM holdings_today h
+                    LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
+                    LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
+                """, (today_str, prev_date_str))
                 
-                # Calculate percentage change
-                pct_change = 0.0
-                if prev_price > 0:
-                    pct_change = ((today_price - prev_price) / prev_price) * 100
-                
-                today_pnl_map[row['trading_symbol']] = {
-                    'today_pnl': today_pnl,
-                    'today_price': today_price,
-                    'prev_price': prev_price,
-                    'pct_change': pct_change
-                }
+                for row in cursor.fetchall():
+                    instrument_token = row['instrument_token']
+                    today_price = float(row['today_price']) if row['today_price'] else 0.0
+                    prev_price = float(row['prev_price']) if row['prev_price'] else 0.0
+                    today_pnl = float(row['today_pnl']) if row['today_pnl'] else 0.0
+                    pct_change = float(row['pct_change']) if row['pct_change'] else 0.0
+                    today_change_str = str(row.get("Todays_Change", '')) if row.get("Todays_Change") else ''
+                    
+                    # Store by instrument_token to match individual holdings
+                    today_pnl_map[instrument_token] = {
+                        'today_pnl': today_pnl,
+                        'today_price': today_price,
+                        'prev_price': prev_price,
+                        'pct_change': pct_change,
+                        'today_change': today_change_str
+                    }
         
         conn.close()
         
@@ -885,29 +975,45 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
         holdings_list = []
         for holding in holdings_info["holdings"]:
             symbol = holding["trading_symbol"]
-            today_pnl_info = today_pnl_map.get(symbol, {'today_pnl': 0.0, 'today_price': 0.0, 'prev_price': 0.0, 'pct_change': 0.0})
+            instrument_token = holding["instrument_token"]
+            today_pnl_info = today_pnl_map.get(instrument_token, {'today_pnl': 0.0, 'today_price': 0.0, 'prev_price': 0.0, 'pct_change': 0.0, 'today_change': '0 (0%)'})
             
             holdings_list.append({
                 "trading_symbol": symbol,
-                "instrument_token": holding["instrument_token"],
+                "instrument_token": instrument_token,
                 "quantity": holding["quantity"],
                 "average_price": float(holding["average_price"]) if holding["average_price"] else 0.0,
                 "last_price": float(holding["last_price"]) if holding["last_price"] else 0.0,
                 "pnl": float(holding["pnl"]) if holding["pnl"] else 0.0,
                 "invested_amount": float(holding.get("invested_amount", 0)),
                 "current_amount": float(holding.get("current_amount", 0)),
+                "pnl_pct_change": float(holding.get("pnl_pct_change", 0)) if holding.get("pnl_pct_change") else 0.0,
                 "today_pnl": today_pnl_info['today_pnl'],
                 "today_price": today_pnl_info['today_price'],
                 "prev_price": today_pnl_info['prev_price'],
                 "pct_change": today_pnl_info.get('pct_change', 0.0),
+                "today_change": today_pnl_info.get('today_change', '0 (0%)'),
                 "existing_gtt": gtt_map.get(symbol)
             })
         
+        # If sorting by today_pnl, sort the enriched list and then paginate
+        if sort_by == 'today_pnl':
+            sort_reverse = sort_dir.lower() == 'desc'
+            holdings_list.sort(key=lambda x: x['today_pnl'], reverse=sort_reverse)
+            
+            # Apply pagination after sorting
+            total_count = len(holdings_list)
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            holdings_list = holdings_list[start_idx:end_idx]
+        else:
+            total_count = holdings_info["total_count"]
+        
         return {
             "holdings": holdings_list,
-            "total_count": holdings_info["total_count"],
-            "page": holdings_info["page"],
-            "per_page": holdings_info["per_page"]
+            "total_count": total_count,
+            "page": page,
+            "per_page": per_page
         }
     except Exception as e:
         logging.error(f"Error fetching holdings: {e}")
@@ -956,6 +1062,251 @@ async def api_positions():
     except Exception as e:
         logging.error(f"Error fetching positions: {e}")
         return {"error": str(e), "positions": []}
+
+@app.get("/api/mf_holdings")
+async def api_mf_holdings():
+    """API endpoint to get latest MF holdings data"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cursor.execute("""
+            SELECT 
+                folio,
+                fund,
+                tradingsymbol,
+                isin,
+                quantity,
+                average_price,
+                last_price,
+                invested_amount,
+                current_value,
+                pnl,
+                net_change_percentage,
+                day_change_percentage
+            FROM my_schema.mf_holdings 
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.mf_holdings)
+            ORDER BY fund, tradingsymbol
+        """)
+        
+        mf_holdings = cursor.fetchall()
+        conn.close()
+        
+        # Convert to serializable format
+        mf_holdings_list = []
+        for mf in mf_holdings:
+            mf_holdings_list.append({
+                "folio": mf["folio"],
+                "fund": mf["fund"],
+                "tradingsymbol": mf["tradingsymbol"],
+                "isin": mf["isin"],
+                "quantity": float(mf["quantity"]) if mf["quantity"] else 0.0,
+                "average_price": float(mf["average_price"]) if mf["average_price"] else 0.0,
+                "last_price": float(mf["last_price"]) if mf["last_price"] else 0.0,
+                "invested_amount": float(mf["invested_amount"]) if mf["invested_amount"] else 0.0,
+                "current_value": float(mf["current_value"]) if mf["current_value"] else 0.0,
+                "pnl": float(mf["pnl"]) if mf["pnl"] else 0.0,
+                "net_change_percentage": float(mf["net_change_percentage"]) if mf["net_change_percentage"] else 0.0,
+                "day_change_percentage": float(mf["day_change_percentage"]) if mf["day_change_percentage"] else 0.0
+            })
+        
+        return {"mf_holdings": mf_holdings_list}
+    except Exception as e:
+        logging.error(f"Error fetching MF holdings: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"error": str(e), "mf_holdings": []}
+
+@app.get("/api/today_pnl_summary")
+async def api_today_pnl_summary():
+    """API endpoint to get today's P&L summary for Equity, MF, and Intraday trades"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get today's date
+        cursor.execute("SELECT CURRENT_DATE as today_date")
+        today = cursor.fetchone()['today_date']
+        today_str = today.strftime('%Y-%m-%d')
+        
+        # Get previous trading day
+        cursor.execute("""
+            SELECT MAX(price_date) as prev_date
+            FROM my_schema.rt_intraday_price
+            WHERE price_date < %s
+        """, (today_str,))
+        prev_date_result = cursor.fetchone()
+        prev_date = prev_date_result['prev_date'] if prev_date_result and prev_date_result['prev_date'] else None
+        
+        # Calculate Equity P&L - sum up individual holdings P&L
+        equity_pnl = 0.0
+        if prev_date:
+            # Convert prev_date to string format
+            prev_date_str = prev_date.strftime('%Y-%m-%d') if hasattr(prev_date, 'strftime') else str(prev_date)
+            cursor.execute("""
+                WITH holdings_today AS (
+                    SELECT trading_symbol, quantity
+                    FROM my_schema.holdings
+                    WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+                ),
+                today_prices AS (
+                    SELECT scrip_id, price_close
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date = %s
+                ),
+                prev_prices AS (
+                    SELECT scrip_id, price_close
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date = %s
+                )
+                SELECT 
+                    h.trading_symbol,
+                    h.quantity,
+                    COALESCE(today_p.price_close, 0) as today_price,
+                    COALESCE(prev_p.price_close, 0) as prev_price,
+                    h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0)) as today_pnl
+                FROM holdings_today h
+                LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
+                LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
+            """, (today_str, prev_date_str))
+            
+            # Sum up all individual holdings P&L
+            for row in cursor.fetchall():
+                holding_pnl = float(row['today_pnl']) if row['today_pnl'] else 0.0
+                equity_pnl += holding_pnl
+        
+        # Calculate MF P&L (today's change)
+        cursor.execute("""
+            SELECT 
+                COALESCE(SUM(day_change_percentage * invested_amount / 100), 0) as mf_pnl
+            FROM my_schema.mf_holdings 
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.mf_holdings)
+        """)
+        mf_result = cursor.fetchone()
+        mf_pnl = float(mf_result['mf_pnl']) if mf_result and mf_result['mf_pnl'] else 0.0
+        
+        # Calculate Intraday trades P&L (from positions)
+        cursor.execute("""
+            SELECT 
+                COALESCE(SUM(pnl), 0) as intraday_pnl
+            FROM my_schema.positions 
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.positions)
+            AND position_type = 'day'
+        """)
+        intraday_result = cursor.fetchone()
+        intraday_pnl = float(intraday_result['intraday_pnl']) if intraday_result and intraday_result['intraday_pnl'] else 0.0
+        
+        # Calculate overall Equity P&L (total unrealized P&L from holdings)
+        cursor.execute("""
+            SELECT 
+                COALESCE(SUM(pnl), 0) as overall_equity_pnl
+            FROM my_schema.holdings 
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+        """)
+        equity_overall_result = cursor.fetchone()
+        equity_overall_pnl = float(equity_overall_result['overall_equity_pnl']) if equity_overall_result and equity_overall_result['overall_equity_pnl'] else 0.0
+        
+        # Calculate overall MF P&L (total P&L from mf_holdings)
+        cursor.execute("""
+            SELECT 
+                COALESCE(SUM(pnl), 0) as overall_mf_pnl
+            FROM my_schema.mf_holdings 
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.mf_holdings)
+        """)
+        mf_overall_result = cursor.fetchone()
+        mf_overall_pnl = float(mf_overall_result['overall_mf_pnl']) if mf_overall_result and mf_overall_result['overall_mf_pnl'] else 0.0
+        
+        # Calculate totals
+        total_today_pnl = equity_pnl + mf_pnl + intraday_pnl
+        total_overall_pnl = equity_overall_pnl + mf_overall_pnl
+        
+        conn.close()
+        
+        return {
+            "equity_pnl": equity_pnl,
+            "equity_overall_pnl": equity_overall_pnl,
+            "mf_pnl": mf_pnl,
+            "mf_overall_pnl": mf_overall_pnl,
+            "intraday_pnl": intraday_pnl,
+            "total_today_pnl": total_today_pnl,
+            "total_overall_pnl": total_overall_pnl
+        }
+    except Exception as e:
+        logging.error(f"Error fetching today's P&L summary: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "equity_pnl": 0.0,
+            "equity_overall_pnl": 0.0,
+            "mf_pnl": 0.0,
+            "mf_overall_pnl": 0.0,
+            "intraday_pnl": 0.0,
+            "total_today_pnl": 0.0,
+            "total_overall_pnl": 0.0,
+            "error": str(e)
+        }
+
+@app.get("/api/portfolio_history")
+async def api_portfolio_history(days: int = Query(30, ge=1, le=365)):
+    """API endpoint to get daily portfolio values for chart"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get daily equity balances
+        cursor.execute("""
+            SELECT 
+                run_date,
+                COALESCE(SUM(quantity * last_price), 0) as equity_value
+            FROM my_schema.holdings
+            WHERE run_date >= CURRENT_DATE - make_interval(days => %s)
+            GROUP BY run_date
+            ORDER BY run_date
+        """, (days,))
+        
+        equity_data = cursor.fetchall()
+        
+        # Get daily MF balances
+        cursor.execute("""
+            SELECT 
+                run_date,
+                COALESCE(SUM(current_value), 0) as mf_value
+            FROM my_schema.mf_holdings
+            WHERE run_date >= CURRENT_DATE - make_interval(days => %s)
+            GROUP BY run_date
+            ORDER BY run_date
+        """, (days,))
+        
+        mf_data = cursor.fetchall()
+        
+        # Create a map of dates to values
+        equity_map = {str(row['run_date']): float(row['equity_value']) for row in equity_data}
+        mf_map = {str(row['run_date']): float(row['mf_value']) for row in mf_data}
+        
+        # Get all unique dates
+        all_dates = sorted(set(list(equity_map.keys()) + list(mf_map.keys())))
+        
+        # Build chart data
+        chart_data = []
+        for date in all_dates:
+            equity_val = equity_map.get(date, 0.0)
+            mf_val = mf_map.get(date, 0.0)
+            total_val = equity_val + mf_val
+            chart_data.append({
+                "date": date,
+                "equity": equity_val,
+                "mutual_fund": mf_val,
+                "total": total_val
+            })
+        
+        conn.close()
+        
+        return {"portfolio_history": chart_data}
+    except Exception as e:
+        logging.error(f"Error fetching portfolio history: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"error": str(e), "portfolio_history": []}
 
 @app.get("/api/today_pnl")
 async def api_today_pnl():
@@ -1161,18 +1512,18 @@ async def api_cancel_all_gtts():
 
 @app.get("/api/futures_order_flow")
 async def api_futures_order_flow():
-    """API endpoint to get Nifty 50 futures order flow data - always shows most recent trading day"""
+    """API endpoint to get Nifty 50 futures order flow data - shows orders for the last 2 ticks"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Get the last 5 orders from futures_tick_depth for the most recent trading date (weekday)
-        # Always shows the most recent weekday with data, regardless of analysis date
+        # Get the last 2 distinct timestamps and all orders from those timestamps
         cursor.execute("""
-            WITH last_trading_date AS (
-                SELECT MAX(run_date) as last_date
+            WITH recent_ticks AS (
+                SELECT DISTINCT timestamp
                 FROM my_schema.futures_tick_depth 
-                WHERE EXTRACT(DOW FROM run_date) BETWEEN 1 AND 5  -- Monday(1) to Friday(5)
+                ORDER BY timestamp DESC
+                LIMIT 2
             )
             SELECT 
                 ftd.timestamp,
@@ -1182,10 +1533,8 @@ async def api_futures_order_flow():
                 ftd.orders,
                 ftd.run_date
             FROM my_schema.futures_tick_depth ftd
-            CROSS JOIN last_trading_date ltd
-            WHERE ftd.run_date = ltd.last_date
-            ORDER BY ftd.timestamp DESC
-            LIMIT 5
+            WHERE ftd.timestamp IN (SELECT timestamp FROM recent_ticks)
+            ORDER BY ftd.timestamp DESC, ftd.side DESC
         """)
         
         results = cursor.fetchall()
@@ -1210,4 +1559,432 @@ async def api_futures_order_flow():
         }
     except Exception as e:
         logging.error(f"Error fetching futures order flow: {e}")
+        return {"error": str(e)}
+
+
+# ==================== Download Endpoints ====================
+
+@app.get("/api/download/holdings/excel")
+async def download_holdings_excel():
+    """Download holdings data as Excel file"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cursor.execute("""
+            SELECT 
+                trading_symbol,
+                quantity,
+                average_price,
+                last_price,
+                (quantity * average_price) as invested_amount,
+                (quantity * last_price) as current_amount,
+                pnl
+            FROM my_schema.holdings
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+            ORDER BY trading_symbol
+        """)
+        
+        holdings = cursor.fetchall()
+        conn.close()
+        
+        df = pd.DataFrame([dict(row) for row in holdings])
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Holdings', index=False)
+        
+        output.seek(0)
+        
+        return StreamingResponse(
+            io.BytesIO(output.read()),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=holdings_{datetime.now().strftime('%Y%m%d')}.xlsx"}
+        )
+    except Exception as e:
+        logging.error(f"Error generating Excel file: {e}")
+        return {"error": str(e)}
+
+@app.get("/api/download/holdings/csv")
+async def download_holdings_csv():
+    """Download holdings data as CSV file"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cursor.execute("""
+            SELECT 
+                trading_symbol,
+                quantity,
+                average_price,
+                last_price,
+                (quantity * average_price) as invested_amount,
+                (quantity * last_price) as current_amount,
+                pnl
+            FROM my_schema.holdings
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+            ORDER BY trading_symbol
+        """)
+        
+        holdings = cursor.fetchall()
+        conn.close()
+        
+        df = pd.DataFrame([dict(row) for row in holdings])
+        output = io.StringIO()
+        df.to_csv(output, index=False)
+        
+        return StreamingResponse(
+            io.BytesIO(output.getvalue().encode('utf-8')),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=holdings_{datetime.now().strftime('%Y%m%d')}.csv"}
+        )
+    except Exception as e:
+        logging.error(f"Error generating CSV file: {e}")
+        return {"error": str(e)}
+
+@app.get("/api/download/mf/excel")
+async def download_mf_excel():
+    """Download MF holdings data as Excel file"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cursor.execute("""
+            SELECT 
+                folio, fund, tradingsymbol, quantity, average_price, last_price,
+                invested_amount, current_value, pnl,
+                net_change_percentage, day_change_percentage
+            FROM my_schema.mf_holdings 
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.mf_holdings)
+            ORDER BY fund, tradingsymbol
+        """)
+        
+        mf_holdings = cursor.fetchall()
+        conn.close()
+        
+        df = pd.DataFrame([dict(row) for row in mf_holdings])
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='MF Holdings', index=False)
+        
+        output.seek(0)
+        
+        return StreamingResponse(
+            io.BytesIO(output.read()),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=mf_holdings_{datetime.now().strftime('%Y%m%d')}.xlsx"}
+        )
+    except Exception as e:
+        logging.error(f"Error generating Excel file: {e}")
+        return {"error": str(e)}
+
+@app.get("/api/download/mf/csv")
+async def download_mf_csv():
+    """Download MF holdings data as CSV file"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cursor.execute("""
+            SELECT 
+                folio, fund, tradingsymbol, quantity, average_price, last_price,
+                invested_amount, current_value, pnl,
+                net_change_percentage, day_change_percentage
+            FROM my_schema.mf_holdings 
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.mf_holdings)
+            ORDER BY fund, tradingsymbol
+        """)
+        
+        mf_holdings = cursor.fetchall()
+        conn.close()
+        
+        df = pd.DataFrame([dict(row) for row in mf_holdings])
+        output = io.StringIO()
+        df.to_csv(output, index=False)
+        
+        return StreamingResponse(
+            io.BytesIO(output.getvalue().encode('utf-8')),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=mf_holdings_{datetime.now().strftime('%Y%m%d')}.csv"}
+        )
+    except Exception as e:
+        logging.error(f"Error generating CSV file: {e}")
+        return {"error": str(e)}
+
+@app.get("/api/download/pnl_summary/excel")
+async def download_pnl_summary_excel():
+    """ Downloaded complete P&L summary with equity and MF holdings as Excel file"""
+    try:
+        # Get all holdings data
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Fetch all data similar to api_today_pnl_summary
+        cursor.execute("SELECT CURRENT_DATE as today_date")
+        today = cursor.fetchone()['today_date']
+        today_str = today.strftime('%Y-%m-%d')
+        
+        cursor.execute("""
+            SELECT MAX(price_date) as prev_date FROM my_schema.rt_intraday_price WHERE price_date < %s
+        """, (today_str,))
+        prev_date_result = cursor.fetchone()
+        prev_date = prev_date_result['prev_date'] if prev_date_result and prev_date_result['prev_date'] else None
+        
+        equity_today, equity_overall = 0.0, 0.0
+        mf_today, mf_overall = 0.0, 0.0
+        intraday = 0.0
+        
+        if prev_date:
+            prev_date_str = prev_date.strftime('%Y-%m-%d') if hasattr(prev_date, 'strftime') else str(prev_date)
+            cursor.execute("""
+                WITH holdings_today AS (
+                    SELECT trading_symbol, quantity FROM my_schema.holdings
+                    WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+                ),
+                today_prices AS (SELECT scrip_id, price_close FROM my_schema.rt_intraday_price WHERE price_date = %s),
+                prev_prices AS (SELECT scrip_id, price_close FROM my_schema.rt_intraday_price WHERE price_date = %s)
+                SELECT COALESCE(SUM(h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0))), 0) as equity_today_pnl
+                FROM holdings_today h
+                LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
+                LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
+            """, (today_str, prev_date_str))
+            result = cursor.fetchone()
+            equity_today = float(result['equity_today_pnl']) if result else 0.0
+        
+        cursor.execute("SELECT COALESCE(SUM(pnl), 0) as equity_overall_pnl FROM my_schema.holdings WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)")
+        result = cursor.fetchone()
+        equity_overall = float(result['equity_overall_pnl']) if result else 0.0
+        
+        cursor.execute("SELECT COALESCE(SUM(day_change_percentage * invested_amount / 100), 0) as mf_today_pnl FROM my_schema.mf_holdings WHERE run_date = (SELECT MAX(run_date) FROM my_schema.mf_holdings)")
+        result = cursor.fetchone()
+        mf_today = float(result['mf_today_pnl']) if result else 0.0
+        
+        cursor.execute("SELECT COALESCE(SUM(pnl), 0) as mf_overall_pnl FROM my_schema.mf_holdings WHERE run_date = (SELECT MAX(run_date) FROM my_schema.mf_holdings)")
+        result = cursor.fetchone()
+        mf_overall = float(result['mf_overall_pnl']) if result else 0.0
+        
+        cursor.execute("SELECT COALESCE(SUM(pnl), 0) as intraday_pnl FROM my_schema.positions WHERE run_date = (SELECT MAX(run_date) FROM my_schema.positions) AND position_type = 'day'")
+        result = cursor.fetchone()
+        intraday = float(result['intraday_pnl']) if result else 0.0
+        
+        summary_data = [
+            {'Category': 'Equity Portfolio', "Today's P&L": equity_today, 'Overall P&L': equity_overall},
+            {'Category': 'Mutual Fund Portfolio', "Today's P&L": mf_today, 'Overall P&L': mf_overall},
+            {'Category': 'Intraday Trades', "Today's P&L": intraday, 'Overall P&L': '-'},
+            {'Category': 'Total', "Today's P&L": equity_today + mf_today + intraday, 'Overall P&L': equity_overall + mf_overall}
+        ]
+        
+        cursor.execute("""
+            SELECT trading_symbol, quantity, average_price, last_price,
+                   (quantity * average_price) as invested_amount,
+                   (quantity * last_price) as current_amount, pnl
+            FROM my_schema.holdings WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings) ORDER BY trading_symbol
+        """)
+        equity_holdings = cursor.fetchall()
+        
+        cursor.execute("""
+            SELECT folio, fund, tradingsymbol, quantity, average_price, last_price,
+                   invested_amount, current_value, pnl, net_change_percentage, day_change_percentage
+            FROM my_schema.mf_holdings WHERE run_date = (SELECT MAX(run_date) FROM my_schema.mf_holdings) ORDER BY fund, tradingsymbol
+        """)
+        mf_holdings = cursor.fetchall()
+        conn.close()
+        
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            pd.DataFrame(summary_data).to_excel(writer, sheet_name='P&L Summary', index=False)
+            pd.DataFrame([dict(row) for row in equity_holdings]).to_excel(writer, sheet_name='Equity Holdings', index=False)
+            pd.DataFrame([dict(row) for row in mf_holdings]).to_excel(writer, sheet_name='MF Holdings', index=False)
+        
+        output.seek(0)
+        return StreamingResponse(
+            io.BytesIO(output.read()),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=pnl_summary_{datetime.now().strftime('%Y%m%d')}.xlsx"}
+        )
+    except Exception as e:
+        logging.error(f"Error generating Excel file: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"error": str(e)}
+
+@app.get("/api/download/holdings/pdf")
+async def download_holdings_pdf():
+    """Download holdings data as PDF file"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cursor.execute("""
+            SELECT 
+                trading_symbol, quantity, average_price, last_price,
+                (quantity * average_price) as invested_amount,
+                (quantity * last_price) as current_amount, pnl
+            FROM my_schema.holdings
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+            ORDER BY trading_symbol
+        """)
+        
+        holdings = cursor.fetchall()
+        conn.close()
+        
+        # Create PDF in memory
+        output = io.BytesIO()
+        doc = SimpleDocTemplate(output, pagesize=letter, topMargin=0.5*inch)
+        
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor('#1a1a1a'), spaceAfter=12)
+        
+        # Calculate totals
+        total_invested = sum(row['invested_amount'] for row in holdings)
+        total_current = sum(row['current_amount'] for row in holdings)
+        total_pnl = sum(row['pnl'] for row in holdings)
+        
+        elements = []
+        elements.append(Paragraph("Equity Holdings Report", title_style))
+        elements.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Add summary box
+        summary_data = [
+            ['Total Invested:', f'Rs {total_invested:,.2f}'],
+            ['Current Value:', f'Rs {total_current:,.2f}'],
+            ['Total P&L:', f'Rs {total_pnl:,.2f}']
+        ]
+        summary_table = Table(summary_data, colWidths=[2*inch, 2*inch])
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.grey),
+            ('BACKGROUND', (1, 0), (1, -1), colors.beige),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(summary_table)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Create table data
+        data = [['Symbol', 'Qty', 'Avg Price', 'LTP', 'Invested', 'Current', 'P&L']]
+        for row in holdings:
+            row_dict = dict(row)
+            data.append([
+                row_dict['trading_symbol'],
+                str(row_dict['quantity']),
+                f"Rs {row_dict['average_price']:.2f}",
+                f"Rs {row_dict['last_price']:.2f}",
+                f"Rs {row_dict['invested_amount']:.2f}",
+                f"Rs {row_dict['current_amount']:.2f}",
+                f"Rs {row_dict['pnl']:.2f}"
+            ])
+        
+        # Add totals row
+        data.append([
+            'TOTAL',
+            '',
+            '',
+            '',
+            f'Rs {total_invested:,.2f}',
+            f'Rs {total_current:,.2f}',
+            f'Rs {total_pnl:,.2f}'
+        ])
+        
+        table = Table(data, repeatRows=1, colWidths=[1.5*inch, 0.6*inch, 0.9*inch, 0.9*inch, 1.1*inch, 1.1*inch, 1*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -2), colors.beige),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -2), 7),
+            ('FONTSIZE', (0, -1), (-1, -1), 9),
+        ]))
+        
+        elements.append(table)
+        doc.build(elements)
+        
+        output.seek(0)
+        return StreamingResponse(
+            io.BytesIO(output.read()),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=holdings_{datetime.now().strftime('%Y%m%d')}.pdf"}
+        )
+    except Exception as e:
+        logging.error(f"Error generating PDF: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"error": str(e)}
+
+@app.get("/api/download/mf/pdf")
+async def download_mf_pdf():
+    """Download MF holdings data as PDF file"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cursor.execute("""
+            SELECT folio, fund, tradingsymbol, invested_amount, current_value, pnl, net_change_percentage, day_change_percentage
+            FROM my_schema.mf_holdings WHERE run_date = (SELECT MAX(run_date) FROM my_schema.mf_holdings) ORDER BY fund, tradingsymbol
+        """)
+        
+        mf_holdings = cursor.fetchall()
+        conn.close()
+        
+        output = io.BytesIO()
+        doc = SimpleDocTemplate(output, pagesize=letter, topMargin=0.5*inch)
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor('#1a1a1a'), spaceAfter=12)
+        
+        elements = []
+        elements.append(Paragraph("Mutual Fund Holdings Report", title_style))
+        elements.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
+        elements.append(Spacer(1, 0.2*inch))
+        
+        data = [['Fund', 'Symbol', 'Invested', 'Current', 'P&L', 'Net %', 'Day %']]
+        for row in mf_holdings:
+            row_dict = dict(row)
+            data.append([
+                row_dict['fund'] or row_dict['tradingsymbol'],
+                row_dict['tradingsymbol'],
+                f"Rs {row_dict['invested_amount']:.2f}",
+                f"Rs {row_dict['current_value']:.2f}",
+                f"Rs {row_dict['pnl']:.2f}",
+                f"{row_dict['net_change_percentage']:.2f}%",
+                f"{row_dict['day_change_percentage']:.2f}%"
+            ])
+        
+        table = Table(data, repeatRows=1, colWidths=[2*inch, 1.2*inch, 1.1*inch, 1.1*inch, 0.9*inch, 1*inch, 1*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -1), 7),
+        ]))
+        
+        elements.append(table)
+        doc.build(elements)
+        output.seek(0)
+        
+        return StreamingResponse(
+            io.BytesIO(output.read()),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=mf_holdings_{datetime.now().strftime('%Y%m%d')}.pdf"}
+        )
+    except Exception as e:
+        logging.error(f"Error generating PDF: {e}")
         return {"error": str(e)}

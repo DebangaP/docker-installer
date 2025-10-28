@@ -1,3 +1,6 @@
 CRON_TZ=Asia/Kolkata
 4 9 * * * python KiteWS.py &
 16 9 * * * python CalculateTPO.py &
+# Refresh holdings every 5 minutes during market hours (9 AM to 3:30 PM, Monday to Friday)
+*/5 9-14 * * 1-5 python RefreshHoldings.py >> /app/logs/holdings_refresh.log 2>&1 &
+0,5,10,15,20,25,30 15 * * 1-5 python RefreshHoldings.py >> /app/logs/holdings_refresh.log 2>&1 &

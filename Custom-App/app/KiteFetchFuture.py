@@ -57,17 +57,54 @@ def insert_tick_data(conn, tick_data):
         conn.commit()
 
 
-symbols = ["NFO:NIFTY25OCTFUT"
-           ,"NFO:NIFTY25NOVFUT"
-           ,"NFO:NIFTY25DECFUT"]
+def fetch_and_save_futures():
+    """Fetch and save futures data for configured symbols"""
+    try:
+        symbols = ["NFO:NIFTY25OCTFUT"
+                   ,"NFO:NIFTY25NOVFUT"
+                   ,"NFO:NIFTY25DECFUT"]
+        
+        fetched_count = 0
+        for i in range(len(symbols)):
+            symbol = symbols[i]
+            try:
+                quote = kite.quote(symbol)
+                tick_data = quote.get(symbol, {})
+                
+                if not tick_data:
+                    logging.warning(f"No data returned for symbol {symbol}")
+                    continue
+                
+                # Validate that we have required fields
+                if 'instrument_token' not in tick_data:
+                    logging.warning(f"No instrument_token for symbol {symbol}")
+                    continue
+                
+                logging.info(f"Fetching futures data for {symbol}")
+                logging.info(f"Last Price: {tick_data.get('last_price')}")
+                logging.info(f"Volume: {tick_data.get('volume')}")
+                logging.info(f"Open Interest (OI): {tick_data.get('oi')}")
+                
+                # Add timestamp to tick_data if not present
+                if 'timestamp' not in tick_data:
+                    from datetime import datetime
+                    tick_data['timestamp'] = datetime.now()
+                
+                insert_tick_data(conn, tick_data)
+                fetched_count += 1
+            except Exception as e:
+                logging.error(f"Error fetching futures data for {symbol}: {e}")
+                import traceback
+                logging.error(traceback.format_exc())
+                continue
+        
+        logging.info(f"Successfully fetched futures data for {fetched_count} symbols")
+        return {"success": True, "fetched_count": fetched_count, "total_symbols": len(symbols)}
+    except Exception as e:
+        logging.error(f"Error in fetch_and_save_futures: {e}")
+        return {"success": False, "error": str(e)}
 
-for i in range(len(symbols)):
-    symbol = symbols[i]
-    quote = kite.quote(symbol)
-    tick_data = quote[symbol]
-    logging.info(f"Last Price: {tick_data['last_price']}")
-    logging.info(f"Volume: {tick_data['volume']}")
-    logging.info(f"Open Interest (OI): {tick_data['oi']}")
-    logging.info(tick_data)
 
-    insert_tick_data(conn, tick_data)
+# Allow running as script for backwards compatibility
+if __name__ == "__main__":
+    fetch_and_save_futures()

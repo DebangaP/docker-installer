@@ -298,6 +298,103 @@ def fetch_and_save_holdings1():
         logging.error(f"Error saving holdings: {e}")  
 
 
+def fetch_and_save_mf_holdings(kite: KiteConnect, cursor: psycopg2.extensions.cursor):
+    kite = kite
+    cursor = cursor
+    fetch_and_save_mf_holdings1()
+
+
+def fetch_and_save_mf_holdings1():
+    print('fetching MF holdings')
+    try:
+        mf_holdings = kite.mf_holdings()
+        logging.info(f"User MF holdings: {mf_holdings}")
+    except Exception as e:
+        logging.error(f"Error fetching MF holdings: {e}")
+        return
+
+    if not mf_holdings:
+        logging.warning("No MF holdings found")
+        return
+
+    valid_mf_holdings = []
+    try:
+        for mf in mf_holdings:
+            # Calculate values
+            quantity = float(mf.get('quantity', 0))
+            average_price = float(mf.get('average_price', 0))
+            last_price = float(mf.get('last_price', 0))
+            
+            invested_amount = quantity * average_price
+            current_value = quantity * last_price
+            pnl = current_value - invested_amount
+            
+            # Calculate percentages
+            net_change_percentage = 0.0
+            if invested_amount > 0:
+                net_change_percentage = ((current_value - invested_amount) / invested_amount) * 100
+            
+            # Day change percentage (if available in the API response)
+            day_change_percentage = float(mf.get('day_change', 0)) if mf.get('day_change') else 0.0
+            
+            mf_holding = {
+                'folio': mf.get('folio', ''),
+                'fund': mf.get('fund', ''),
+                'tradingsymbol': mf.get('tradingsymbol', ''),
+                'isin': mf.get('isin', ''),
+                'quantity': quantity,
+                'average_price': average_price,
+                'last_price': last_price,
+                'invested_amount': invested_amount,
+                'current_value': current_value,
+                'pnl': pnl,
+                'net_change_percentage': net_change_percentage,
+                'day_change_percentage': day_change_percentage
+            }
+            valid_mf_holdings.append(mf_holding)
+            logging.debug(f"Processed MF holding: {mf_holding}")
+    except Exception as e:
+        logging.error(f"Error in validating MF holdings: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+       
+    try:
+        print('saving MF holdings')
+        if valid_mf_holdings:
+            cursor.executemany("""
+                INSERT INTO my_schema.mf_holdings (
+                    folio, fund, tradingsymbol, isin, quantity, average_price, last_price,
+                    invested_amount, current_value, pnl, net_change_percentage, day_change_percentage
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (folio, tradingsymbol, run_date) DO UPDATE
+                SET fund = EXCLUDED.fund,
+                    isin = EXCLUDED.isin,
+                    quantity = EXCLUDED.quantity,
+                    average_price = EXCLUDED.average_price,
+                    last_price = EXCLUDED.last_price,
+                    invested_amount = EXCLUDED.invested_amount,
+                    current_value = EXCLUDED.current_value,
+                    pnl = EXCLUDED.pnl,
+                    net_change_percentage = EXCLUDED.net_change_percentage,
+                    day_change_percentage = EXCLUDED.day_change_percentage,
+                    fetch_timestamp = CURRENT_TIMESTAMP
+            """, [
+                (
+                    mf['folio'], mf['fund'], mf['tradingsymbol'], mf['isin'],
+                    mf['quantity'], mf['average_price'], mf['last_price'],
+                    mf['invested_amount'], mf['current_value'], mf['pnl'],
+                    mf['net_change_percentage'], mf['day_change_percentage']
+                ) for mf in valid_mf_holdings
+            ])
+            conn.commit()
+            logging.info(f"Stored {len(valid_mf_holdings)} MF holdings")
+    except Exception as e:
+        conn.rollback()
+        logging.error(f"Error saving MF holdings: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+
+
 def fetch_and_save_trades(kite: KiteConnect, cursor: psycopg2.extensions.cursor):
     kite = kite
     cursor = cursor
@@ -466,6 +563,8 @@ try:
     init_postgres_conn()
     print('1')
     fetch_and_save_holdings1()
+    print('1a')
+    fetch_and_save_mf_holdings1()
     print('2')
 
     fetch_and_save_orders1()

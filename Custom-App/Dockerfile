@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt kiteconnect
+RUN pip install --no-cache-dir -r requirements.txt kiteconnect openpyxl reportlab
 
 # Copy application code
 COPY app/ .

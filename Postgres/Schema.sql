@@ -176,6 +176,38 @@ CREATE TABLE IF NOT EXISTS my_schema.holdings (
     CONSTRAINT holdings_unique_key UNIQUE (instrument_token, run_date)
 );
 
+CREATE TABLE IF NOT EXISTS my_schema.mf_holdings (
+    fetch_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    run_date DATE DEFAULT CURRENT_DATE,
+    folio VARCHAR(100),
+    fund VARCHAR(200),
+    tradingsymbol VARCHAR(50),
+    isin VARCHAR(12),
+    quantity FLOAT,
+    average_price FLOAT,
+    last_price FLOAT,
+    invested_amount FLOAT,
+    current_value FLOAT,
+    pnl FLOAT,
+    net_change_percentage FLOAT,
+    day_change_percentage FLOAT,
+    CONSTRAINT mf_holdings_unique_key UNIQUE (folio, tradingsymbol, run_date)
+);
+
+-- Indexes for MF holdings table
+CREATE INDEX IF NOT EXISTS idx_mf_holdings_run_date ON my_schema.mf_holdings(run_date);
+CREATE INDEX IF NOT EXISTS idx_mf_holdings_tradingsymbol ON my_schema.mf_holdings(tradingsymbol);
+CREATE INDEX IF NOT EXISTS idx_mf_holdings_folio ON my_schema.mf_holdings(folio);
+
+-- Comments on MF holdings table
+COMMENT ON TABLE my_schema.mf_holdings IS 'Stores Mutual Fund holdings data fetched from Kite API';
+COMMENT ON COLUMN my_schema.mf_holdings.folio IS 'MF Folio number';
+COMMENT ON COLUMN my_schema.mf_holdings.fund IS 'Mutual Fund name';
+COMMENT ON COLUMN my_schema.mf_holdings.invested_amount IS 'Total amount invested in the MF';
+COMMENT ON COLUMN my_schema.mf_holdings.current_value IS 'Current value of the holding';
+COMMENT ON COLUMN my_schema.mf_holdings.net_change_percentage IS 'Overall change percentage from invested amount';
+COMMENT ON COLUMN my_schema.mf_holdings.day_change_percentage IS 'Change percentage for the day';
+
 CREATE TABLE IF NOT EXISTS my_schema.margins (
     fetch_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     run_date DATE DEFAULT CURRENT_DATE,

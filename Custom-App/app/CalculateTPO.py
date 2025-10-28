@@ -556,8 +556,22 @@ class RealTimeTPOProfile:
         }
     
     def plot_current_profile(self, ax=None, show_metrics=True, show_letters=True):
-        """Plot current TPO profile"""
-        return self.tpo_profile.plot_profile(ax=ax, show_metrics=show_metrics, show_letters=show_letters)
+        """Plot current TPO profile with latest tick line"""
+        ax_returned = self.tpo_profile.plot_profile(ax=ax, show_metrics=show_metrics, show_letters=show_letters)
+        
+        # Add latest tick line if we have data
+        if ax_returned is not None and not self.cumulative_data.empty:
+            # Get the latest tick
+            latest_tick = self.cumulative_data.iloc[-1]
+            latest_price = latest_tick['last_price']
+            
+            # Add a horizontal line for the latest tick price
+            ax_returned.axhline(y=latest_price, color='yellow', linewidth=4, 
+                              linestyle='-.', label=f'Nifty50: {latest_price:.2f}', 
+                              alpha=0.8, zorder=20)
+            ax_returned.legend(loc='upper right', fontsize=14)
+        
+        return ax_returned
     
     def reset_profile(self):
         """Reset the TPO profile and start fresh"""
