@@ -1145,7 +1145,7 @@ async def api_today_pnl_summary():
             prev_date_str = prev_date.strftime('%Y-%m-%d') if hasattr(prev_date, 'strftime') else str(prev_date)
             cursor.execute("""
                 WITH holdings_today AS (
-                    SELECT trading_symbol, quantity
+                    SELECT instrument_token, trading_symbol, quantity
                     FROM my_schema.holdings
                     WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
                 ),
@@ -1160,6 +1160,7 @@ async def api_today_pnl_summary():
                     WHERE price_date = %s
                 )
                 SELECT 
+                    h.instrument_token,
                     h.trading_symbol,
                     h.quantity,
                     COALESCE(today_p.price_close, 0) as today_price,
