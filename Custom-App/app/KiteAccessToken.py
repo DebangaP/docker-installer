@@ -241,7 +241,7 @@ def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, so
             LEFT JOIN (
                 SELECT scrip_id, price_close, ROW_NUMBER() OVER (PARTITION BY scrip_id ORDER BY price_date DESC) as rn
                 FROM my_schema.rt_intraday_price
-                WHERE price_date <= CURRENT_DATE
+                WHERE price_date::date <= CURRENT_DATE
             ) rt ON h.trading_symbol = rt.scrip_id AND rt.rn = 1
             WHERE h.run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
             ORDER BY {sort_by} {sort_dir}
@@ -344,7 +344,7 @@ def enrich_holdings_with_today_pnl(holdings_data):
                     SELECT scrip_id, price_close, 
                            ROW_NUMBER() OVER (PARTITION BY scrip_id ORDER BY price_date DESC) as rn
                     FROM my_schema.rt_intraday_price
-                    WHERE price_date <= CURRENT_DATE
+                    WHERE price_date::date <= CURRENT_DATE
                 ),
                 prev_prices AS (
                     SELECT scrip_id, price_close
@@ -1326,10 +1326,10 @@ async def api_today_pnl_summary():
         # Calculate Equity P&L - sum up individual holdings P&L
         equity_pnl = 0.0
         if prev_date:
-            # Convert prev_date to string format
+            # Convert prev_date to string format  #
             prev_date_str = prev_date.strftime('%Y-%m-%d') if hasattr(prev_date, 'strftime') else str(prev_date)
             cursor.execute("""
-                WITH holdings_today AS (
+                WITH holdings_today AS (  
                     SELECT instrument_token, trading_symbol, quantity, last_price
                     FROM my_schema.holdings
                     WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
@@ -1343,7 +1343,7 @@ async def api_today_pnl_summary():
                     SELECT scrip_id, price_close, 
                            ROW_NUMBER() OVER (PARTITION BY scrip_id ORDER BY price_date DESC) as rn
                     FROM my_schema.rt_intraday_price
-                    WHERE price_date <= CURRENT_DATE
+                    WHERE price_date::date <= CURRENT_DATE
                 ),
                 prev_prices AS (
                     SELECT scrip_id, price_close
