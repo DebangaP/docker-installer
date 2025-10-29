@@ -220,24 +220,30 @@ def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, so
         offset = (page - 1) * per_page
 
         # Fetch paginated holdings for the most recent run_date
-        # Calculate invested amount and current value
+        # Calculate invested amount and current value with coalesced prices
         cursor.execute("""
             SELECT 
-                trading_symbol,
-                instrument_token,
-                quantity,
-                average_price,
-                last_price,
-                pnl,
-                (quantity * average_price) as invested_amount,
-                (quantity * last_price) as current_amount,
-                round(case when (quantity * average_price) != 0 then
-                    (pnl / (quantity * average_price)) * 100
+                h.trading_symbol,
+                h.instrument_token,
+                h.quantity,
+                h.average_price,
+                h.last_price,
+                COALESCE(h.last_price, rt.price_close) as current_price,
+                h.pnl,
+                (h.quantity * h.average_price) as invested_amount,
+                (h.quantity * COALESCE(h.last_price, rt.price_close)) as current_amount,
+                round(case when (h.quantity * h.average_price) != 0 then
+                    (h.pnl / (h.quantity * h.average_price)) * 100
                 else 0
                 end::numeric, 2) as pnl_pct_change,
                 (SELECT MAX(run_date) FROM my_schema.holdings) as run_date
-            FROM my_schema.holdings
-            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+            FROM my_schema.holdings h
+            LEFT JOIN (
+                SELECT scrip_id, price_close, ROW_NUMBER() OVER (PARTITION BY scrip_id ORDER BY price_date DESC) as rn
+                FROM my_schema.rt_intraday_price
+                WHERE price_date <= CURRENT_DATE
+            ) rt ON h.trading_symbol = rt.scrip_id AND rt.rn = 1
+            WHERE h.run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
             ORDER BY {sort_by} {sort_dir}
             LIMIT %s OFFSET %s
         """.format(sort_by=sort_by, sort_dir=sort_dir.upper()), (per_page, offset))
@@ -300,19 +306,45 @@ def enrich_holdings_with_today_pnl(holdings_data):
         
         # Get today's P&L for all holdings - match by instrument_token
         today_pnl_map = {}
+        
+        # Always populate the map with holdings, even if prev_date doesn't exist (will default to 0)
+        # First, get all holdings to ensure we have entries for all of them
+        cursor.execute("""
+            SELECT instrument_token, trading_symbol, quantity
+            FROM my_schema.holdings
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+        """)
+        
+        for row in cursor.fetchall():
+            instrument_token = row['instrument_token']
+            # Initialize with 0 values for all holdings
+            today_pnl_map[instrument_token] = {
+                'today_pnl': 0.0,
+                'today_price': 0.0,
+                'prev_price': 0.0,
+                'pct_change': 0.0,
+                'today_change': '0 (0%)'
+            }
+        
         if prev_date:
             # Convert prev_date to string format
             prev_date_str = prev_date.strftime('%Y-%m-%d') if hasattr(prev_date, 'strftime') else str(prev_date)
             cursor.execute("""
                 WITH holdings_today AS (
-                    SELECT instrument_token, trading_symbol, quantity
+                    SELECT instrument_token, trading_symbol, quantity, last_price
                     FROM my_schema.holdings
                     WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
                 ),
                 today_prices AS (
-                    SELECT scrip_id, price_close
+                    SELECT scrip_id, price_close, price_date
                     FROM my_schema.rt_intraday_price
                     WHERE price_date = %s
+                ),
+                latest_prices AS (
+                    SELECT scrip_id, price_close, 
+                           ROW_NUMBER() OVER (PARTITION BY scrip_id ORDER BY price_date DESC) as rn
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date <= CURRENT_DATE
                 ),
                 prev_prices AS (
                     SELECT scrip_id, price_close
@@ -323,20 +355,28 @@ def enrich_holdings_with_today_pnl(holdings_data):
                     h.instrument_token,
                     h.trading_symbol,
                     h.quantity,
-                    COALESCE(today_p.price_close, 0) as today_price,
+                    COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) as today_price,
                     COALESCE(prev_p.price_close, 0) as prev_price,
-                    h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0)) as today_pnl,
-                    round(case when prev_p.price_close != 0 then 
-	                    ((COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
+                    -- If today's price is null/0, P&L should be 0 regardless of prev price
+                    CASE 
+                        WHEN (COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NULL OR COALESCE(h.last_price, today_p.price_close, latest_p.price_close) = 0) THEN 0
+                        ELSE h.quantity * (COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))
+                    END as today_pnl,
+                    round(case when prev_p.price_close != 0 AND COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NOT NULL AND COALESCE(h.last_price, today_p.price_close, latest_p.price_close) != 0 then 
+	                    ((COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
 	                else 0
 	                end::numeric, 2) as pct_change,
-                    concat(round(h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0))), ' (',
-                    round(case when prev_p.price_close != 0 then 
-	                    ((COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
+                    concat(round(CASE 
+                        WHEN (COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NULL OR COALESCE(h.last_price, today_p.price_close, latest_p.price_close) = 0) THEN 0
+                        ELSE h.quantity * (COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))
+                    END), ' (',
+                    round(case when prev_p.price_close != 0 AND COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NOT NULL AND COALESCE(h.last_price, today_p.price_close, latest_p.price_close) != 0 then 
+	                    ((COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
 	                else 0
 	                end::numeric, 2), '%%)') as "Todays_Change"
                 FROM holdings_today h
                 LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
+                LEFT JOIN latest_prices latest_p ON h.trading_symbol = latest_p.scrip_id AND latest_p.rn = 1
                 LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
                 
             """, (today_str, prev_date_str))
@@ -460,14 +500,24 @@ async def home(
 ):
     global token_access
     
-    if request_token and status == "success" and action == "login" and type == "login":
+    if request_token and request_token.strip() and status == "success" and action == "login" and type == "login":
         # Handle redirect from Zerodha with request_token
         redis_client.set("kite_request_token", request_token)
         logging.info(f"Received request_token: {request_token}")
         token_access = request_token
 
         # Trigger get_access_token to generate and save access token
-        access_token = get_access_token()  # Call your function here
+        # This will reuse existing token if valid, or generate new one
+        try:
+            access_token = get_access_token()  # Call your function here
+        except Exception as e:
+            logging.error(f"Error getting access token: {e}")
+            # If getting token fails, show login page
+            login_url = kite.login_url()
+            return templates.TemplateResponse("login.html", {
+                "request": request,
+                "login_url": login_url
+            })
 
         # Get system status for dashboard
         system_status = get_system_status()
@@ -484,6 +534,20 @@ async def home(
             "show_holdings": SHOW_HOLDINGS
         })
     else:
+        # Check if there's an existing valid token
+        existing_token = redis_client.get("kite_access_token")
+        if existing_token:
+            # Handle both string and bytes from Redis
+            if isinstance(existing_token, bytes):
+                existing_token = existing_token.decode('utf-8')
+            
+            # Check if token is still valid
+            if is_access_token_valid(existing_token):
+                logging.info("Valid access token found, redirecting to dashboard")
+                # Redirect to dashboard instead of showing login
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url="/dashboard", status_code=302)
+        
         # Show login page
         login_url = kite.login_url()
         return templates.TemplateResponse("login.html", {
@@ -723,30 +787,46 @@ async def handle_redirect(request_token: str = None):
 def get_access_token():
     logging.info('get access token')
     global ACCESS_TOKEN
+    
+    # First, check if we already have a valid access token
+    existing_token = redis_client.get("kite_access_token")
+    if existing_token:
+        # Handle both string and bytes from Redis
+        if isinstance(existing_token, bytes):
+            existing_token = existing_token.decode('utf-8')
+        
+        try:
+            # Validate the existing token
+            if is_access_token_valid(existing_token):
+                logging.info("Using existing valid access token")
+                ACCESS_TOKEN = existing_token
+                return existing_token
+        except TokenException:
+            logging.warning("Existing token is invalid, will generate new one")
+    
     ACCESS_TOKEN = ''
     
-    # Check if existing access token is provided and valid
-
-    #ACCESS_TOKEN = redis_client.get("kite_access_token")
-    #if is_access_token_valid(ACCESS_TOKEN):
-    #    return ACCESS_TOKEN
-    #else:
-    # Clear any existing request_token in Redis
-    #redis_client.delete("kite_request_token")
-    redis_client.delete("kite_access_token")
-    redis_client.delete("kite_access_token_timestamp")
-    print('2')
+    # Check if there's already a request_token in Redis
+    request_token = redis_client.get("kite_request_token")
     
-    # Wait for request_token from Redis
-    timeout = 600  # 10 minutes
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        request_token = redis_client.get("kite_request_token")
-        if request_token:
-            break
-        time.sleep(1)  # Poll every second
-    else:
-        raise Exception("Failed to receive request_token within timeout")
+    # If no request_token exists, wait for it to be set
+    if not request_token or not request_token.strip():
+        # Clear any existing request_token in Redis
+        redis_client.delete("kite_request_token")
+        redis_client.delete("kite_access_token")
+        redis_client.delete("kite_access_token_timestamp")
+        logging.info('Waiting for request_token...')
+        
+        # Wait for request_token from Redis
+        timeout = 600  # 10 minutes
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            request_token = redis_client.get("kite_request_token")
+            if request_token and request_token.strip():
+                break
+            time.sleep(1)  # Poll every second
+        else:
+            raise Exception("Failed to receive request_token within timeout")
     
     # Generate new access token
     logging.info("Calling generate new access token")
@@ -969,6 +1049,26 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
         
         # Create a map of today's P&L per holding by instrument_token
         today_pnl_map = {}
+        
+        # Always populate the map with holdings first, even if prev_date doesn't exist (will default to 0)
+        # First, get all holdings to ensure we have entries for all of them
+        cursor.execute("""
+            SELECT instrument_token, trading_symbol, quantity
+            FROM my_schema.holdings
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+        """)
+        
+        for row in cursor.fetchall():
+            instrument_token = row['instrument_token']
+            # Initialize with 0 values for all holdings
+            today_pnl_map[instrument_token] = {
+                'today_pnl': 0.0,
+                'today_price': 0.0,
+                'prev_price': 0.0,
+                'pct_change': 0.0,
+                'today_change': '0 (0%)'
+            }
+        
         if prev_date:
             # Convert prev_date to string format safely
             try:
@@ -985,7 +1085,7 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
             if prev_date_str:
                 cursor.execute("""
                     WITH holdings_today AS (
-                        SELECT instrument_token, trading_symbol, quantity
+                        SELECT instrument_token, trading_symbol, quantity, last_price
                         FROM my_schema.holdings
                         WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
                     ),
@@ -993,6 +1093,12 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                         SELECT scrip_id, price_close
                         FROM my_schema.rt_intraday_price
                         WHERE price_date = %s
+                    ),
+                    latest_prices AS (
+                        SELECT scrip_id, price_close, 
+                               ROW_NUMBER() OVER (PARTITION BY scrip_id ORDER BY price_date DESC) as rn
+                        FROM my_schema.rt_intraday_price
+                        WHERE price_date <= CURRENT_DATE
                     ),
                     prev_prices AS (
                         SELECT scrip_id, price_close
@@ -1003,20 +1109,21 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                         h.instrument_token,
                         h.trading_symbol,
                         h.quantity,
-                        COALESCE(today_p.price_close, 0) as today_price,
+                        COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) as today_price,
                         COALESCE(prev_p.price_close, 0) as prev_price,
-                        h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0)) as today_pnl,
+                        h.quantity * (COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0)) as today_pnl,
                         round(case when prev_p.price_close != 0 then 
-    	                    ((COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
+    	                    ((COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
     	                else 0
     	                end::numeric, 2) as pct_change,
-                        concat(round(h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0))), ' (',
+                        concat(round(h.quantity * (COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))), ' (',
                         round(case when prev_p.price_close != 0 then 
-    	                    ((COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
+    	                    ((COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
     	                else 0
     	                end::numeric, 2), '%%)') as "Todays_Change"
                     FROM holdings_today h
                     LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
+                    LEFT JOIN latest_prices latest_p ON h.trading_symbol = latest_p.scrip_id AND latest_p.rn = 1
                     LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
                 """, (today_str, prev_date_str))
                 
@@ -1223,7 +1330,7 @@ async def api_today_pnl_summary():
             prev_date_str = prev_date.strftime('%Y-%m-%d') if hasattr(prev_date, 'strftime') else str(prev_date)
             cursor.execute("""
                 WITH holdings_today AS (
-                    SELECT instrument_token, trading_symbol, quantity
+                    SELECT instrument_token, trading_symbol, quantity, last_price
                     FROM my_schema.holdings
                     WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
                 ),
@@ -1231,6 +1338,12 @@ async def api_today_pnl_summary():
                     SELECT scrip_id, price_close
                     FROM my_schema.rt_intraday_price
                     WHERE price_date = %s
+                ),
+                latest_prices AS (
+                    SELECT scrip_id, price_close, 
+                           ROW_NUMBER() OVER (PARTITION BY scrip_id ORDER BY price_date DESC) as rn
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date <= CURRENT_DATE
                 ),
                 prev_prices AS (
                     SELECT scrip_id, price_close
@@ -1241,11 +1354,16 @@ async def api_today_pnl_summary():
                     h.instrument_token,
                     h.trading_symbol,
                     h.quantity,
-                    COALESCE(today_p.price_close, 0) as today_price,
+                    COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) as today_price,
                     COALESCE(prev_p.price_close, 0) as prev_price,
-                    h.quantity * (COALESCE(today_p.price_close, 0) - COALESCE(prev_p.price_close, 0)) as today_pnl
+                    -- If today's price is null/0, P&L should be 0 regardless of prev price
+                    CASE 
+                        WHEN (COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NULL OR COALESCE(h.last_price, today_p.price_close, latest_p.price_close) = 0) THEN 0
+                        ELSE h.quantity * (COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))
+                    END as today_pnl
                 FROM holdings_today h
                 LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
+                LEFT JOIN latest_prices latest_p ON h.trading_symbol = latest_p.scrip_id AND latest_p.rn = 1
                 LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
             """, (today_str, prev_date_str))
             

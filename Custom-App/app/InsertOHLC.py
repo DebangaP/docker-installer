@@ -57,15 +57,41 @@ else:
             print(quote)
             
             for date, dailyrow in quote.iterrows():
-                _insert_RT_OHLC = "INSERT INTO my_schema.RT_INTRADAY_PRICE (scrip_id, price_close, price_high, price_low, price_open, price_date, country, volume) VALUES( '" + _scrip_id + "', " + str(dailyrow.values[0])  + ", " + str(dailyrow.values[1])  + ", " + str(dailyrow.values[2])  + ", " + str(dailyrow.values[3]) + ",'" + date.strftime('%Y-%m-%d') + "', "+ _scrip_country + ", " + str(dailyrow.values[4]) + ")"
+                # Use ON CONFLICT to update existing records instead of failing
+                _insert_RT_OHLC = """
+                    INSERT INTO my_schema.RT_INTRADAY_PRICE 
+                    (scrip_id, price_close, price_high, price_low, price_open, price_date, country, volume) 
+                    VALUES (:param1, :param2, :param3, :param4, :param5, :param6, :param7, :param8)
+                    ON CONFLICT (scrip_id, price_date) 
+                    DO UPDATE SET 
+                        price_close = EXCLUDED.price_close,
+                        price_high = EXCLUDED.price_high,
+                        price_low = EXCLUDED.price_low,
+                        price_open = EXCLUDED.price_open,
+                        country = EXCLUDED.country,
+                        volume = EXCLUDED.volume
+                """
 
                 try:
-                    _DBconnection.execute(_insert_RT_OHLC)
-                except errors.lookup(UNIQUE_VIOLATION) as uniqueKeyViolation:
-                    print('Added Duplicate exists error in log table')
-                    continue
+                    from sqlalchemy import text
+                    # Convert numpy types to Python native types
+                    _DBconnection.execute(
+                        text(_insert_RT_OHLC), 
+                        {
+                            'param1': str(_scrip_id),
+                            'param2': float(dailyrow.values[0]),
+                            'param3': float(dailyrow.values[1]),
+                            'param4': float(dailyrow.values[2]),
+                            'param5': float(dailyrow.values[3]),
+                            'param6': date.strftime('%Y-%m-%d'),
+                            'param7': 'IN',
+                            'param8': int(dailyrow.values[4]) if not pd.isna(dailyrow.values[4]) else 0
+                        }
+                    )
+                    print(f'Successfully inserted/updated data for {_scrip_id} on {date.strftime("%Y-%m-%d")}')
                 except Exception as e:
-                    print('Exception -> ' + _scrip_id + ' ->' + str(e))
+                    print(f'Exception -> {_scrip_id} -> {str(e)}')
+                    # SQLAlchemy Connection doesn't have rollback method on connection object
                     continue
                 
     except Exception as exception:

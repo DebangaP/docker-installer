@@ -623,12 +623,22 @@
                                 {% endif %}
                             </td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
-                                {% if holding.today_pnl >= 0 %}
-                                    <div style="color: #28a745; font-weight: bold;">₹{{ "%.2f"|format(holding.today_pnl) }}</div>
-                                    <div style="font-size: 10px; color: #28a745;">{{ "+%.2f"|format(holding.pct_change) }}%</div>
+                                {%- if holding.today_pnl is defined -%}
+                                    {% set today_pnl = holding.today_pnl %}
+                                {%- else -%}
+                                    {% set today_pnl = 0 %}
+                                {%- endif -%}
+                                {%- if holding.pct_change is defined -%}
+                                    {% set pct_change = holding.pct_change %}
+                                {%- else -%}
+                                    {% set pct_change = 0 %}
+                                {%- endif -%}
+                                {% if today_pnl >= 0 %}
+                                    <div style="color: #28a745; font-weight: bold;">₹{{ "%.2f"|format(today_pnl) }}</div>
+                                    <div style="font-size: 10px; color: #28a745;">{{ "+%.2f"|format(pct_change) }}%</div>
                                 {% else %}
-                                    <div style="color: #dc3545; font-weight: bold;">₹{{ "%.2f"|format(holding.today_pnl) }}</div>
-                                    <div style="font-size: 10px; color: #dc3545;">{{ "%.2f"|format(holding.pct_change) }}%</div>
+                                    <div style="color: #dc3545; font-weight: bold;">₹{{ "%.2f"|format(today_pnl) }}</div>
+                                    <div style="font-size: 10px; color: #dc3545;">{{ "%.2f"|format(pct_change) }}%</div>
                                 {% endif %}
                             </td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 11px;">
@@ -856,6 +866,11 @@
             
             // Only update holdings if enabled
             {% if show_holdings %}
+            // Refresh holdings table with current page
+            if (typeof currentHoldingsPage !== 'undefined') {
+                loadHoldingsPage(currentHoldingsPage);
+            }
+            
             // Update MF holdings
             loadMFHoldings();
             
@@ -1092,6 +1107,7 @@
         // Global variable for sort settings
         let sortColumn = 'trading_symbol';
         let sortDirection = 'asc';
+        let currentHoldingsPage = {% if holdings_info %}{{ holdings_info.page }}{% else %}1{% endif %};
         
         // Sort holdings function
         function sortHoldings(column) {
@@ -1225,6 +1241,9 @@
                         `;
                         tbody.innerHTML += row;
                     });
+                    
+                    // Update current page tracker
+                    currentHoldingsPage = data.page;
                     
                     // Update pagination controls
                     const total_pages = Math.ceil(data.total_count / data.per_page);
