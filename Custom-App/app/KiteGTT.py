@@ -108,7 +108,7 @@ class KiteGTTManager:
         transaction_type: str = kite.TRANSACTION_TYPE_SELL,
         product: str = kite.PRODUCT_CNC,
         order_type: str = kite.ORDER_TYPE_LIMIT
-    ) -> Optional[Dict[str, Any]]:
+        ) -> Optional[Dict[str, Any]]:
         """
         Add a new GTT (Good Till Triggered) order
         
@@ -126,6 +126,14 @@ class KiteGTTManager:
         Returns:
             GTT response dictionary with trigger_id or None if failed
         """
+        # Check if trading is allowed
+        import os
+        allow_trades = os.getenv('ALLOW_TRADES', 'True').lower() == 'true'
+        if not allow_trades:
+            error_msg = "Trading is disabled. Set ALLOW_TRADES=True in .env to enable trading."
+            self.logger.warning(f"GTT request blocked: {error_msg} for {tradingsymbol}")
+            raise Exception(error_msg)
+        
         try:
             orders = [{
                 "transaction_type": transaction_type,

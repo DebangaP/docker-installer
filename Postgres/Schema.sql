@@ -359,6 +359,38 @@ CREATE TABLE my_schema.futures_tick_depth (
     run_date date default current_date
 );
 
+                CREATE TABLE IF NOT EXISTS my_schema.tpo_analysis (
+                    analysis_date DATE,
+                    instrument_token INTEGER,
+                    session_type VARCHAR(20),
+                    poc FLOAT,
+                    value_area_high FLOAT,
+                    value_area_low FLOAT,
+                    initial_balance_high FLOAT,
+                    initial_balance_low FLOAT,
+                    confidence_score FLOAT,
+                    created_at TIMESTAMP DEFAULT current_timestamp,
+                    CONSTRAINT tpo_analysis_unique_key UNIQUE (analysis_date, instrument_token, session_type)
+            	);
+
+				                CREATE TABLE IF NOT EXISTS my_schema.holdings (
+                    fetch_timestamp TIMESTAMP DEFAULT current_timestamp,
+                    run_date DATE DEFAULT CURRENT_DATE,
+                    trading_symbol VARCHAR(50),
+                    instrument_token INTEGER,
+                    isin VARCHAR(12),
+                    quantity INTEGER,
+                    t1_quantity INTEGER,
+                    authorised_quantity INTEGER,
+                    average_price FLOAT,
+                    close_price FLOAT,
+                    last_price FLOAT,
+                    pnl FLOAT,
+                    collateral_quantity INTEGER,
+                    collateral_type VARCHAR(20),
+                    CONSTRAINT holdings_unique_key UNIQUE (instrument_token, run_date)
+                );
+
 
 INSERT INTO my_schema.master_scrips (scrip_id,scrip_screener_code,sector_code,created_at,yahoo_code,scrip_group,scrip_mcap,scrip_country,ownership,fno,hist_roce,debt_to_equity,ps_ratio,updated_at) VALUES
 	 ('E2E',NULL,NULL,'2023-08-30 19:45:11.761776','E2E.NS',NULL,3953,'IN',NULL,NULL,25.0,0.37,NULL,'2025-06-08 11:08:26.642493');

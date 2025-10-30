@@ -811,22 +811,22 @@ def get_access_token():
     
     # If no request_token exists, wait for it to be set
     if not request_token or not request_token.strip():
-        # Clear any existing request_token in Redis
+    # Clear any existing request_token in Redis
         redis_client.delete("kite_request_token")
-        redis_client.delete("kite_access_token")
-        redis_client.delete("kite_access_token_timestamp")
-        logging.info('Waiting for request_token...')
-        
-        # Wait for request_token from Redis
-        timeout = 600  # 10 minutes
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            request_token = redis_client.get("kite_request_token")
-            if request_token and request_token.strip():
-                break
-            time.sleep(1)  # Poll every second
-        else:
-            raise Exception("Failed to receive request_token within timeout")
+    redis_client.delete("kite_access_token")
+    redis_client.delete("kite_access_token_timestamp")
+    logging.info('Waiting for request_token...')
+    
+    # Wait for request_token from Redis
+    timeout = 600  # 10 minutes
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        request_token = redis_client.get("kite_request_token")
+        if request_token and request_token.strip():
+            break
+        time.sleep(1)  # Poll every second
+    else:
+        raise Exception("Failed to receive request_token within timeout")
     
     # Generate new access token
     logging.info("Calling generate new access token")
@@ -1098,7 +1098,7 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                         SELECT scrip_id, price_close, 
                                ROW_NUMBER() OVER (PARTITION BY scrip_id ORDER BY price_date DESC) as rn
                         FROM my_schema.rt_intraday_price
-                        WHERE price_date <= CURRENT_DATE
+                        WHERE price_date::date <= CURRENT_DATE
                     ),
                     prev_prices AS (
                         SELECT scrip_id, price_close
@@ -1111,13 +1111,23 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                         h.quantity,
                         COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) as today_price,
                         COALESCE(prev_p.price_close, 0) as prev_price,
-                        h.quantity * (COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0)) as today_pnl,
-                        round(case when prev_p.price_close != 0 then 
+                        -- If today's price is null/0, P&L should be 0 regardless of prev price
+                        -- If prev_price is 0, P&L should be 0 (no previous data to compare)
+                        CASE 
+                            WHEN (COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NULL OR COALESCE(h.last_price, today_p.price_close, latest_p.price_close) = 0) THEN 0
+                            WHEN (COALESCE(prev_p.price_close, 0) = 0) THEN 0
+                            ELSE h.quantity * (COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))
+                        END as today_pnl,
+                        round(case when prev_p.price_close != 0 AND COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NOT NULL AND COALESCE(h.last_price, today_p.price_close, latest_p.price_close) != 0 then 
     	                    ((COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
     	                else 0
     	                end::numeric, 2) as pct_change,
-                        concat(round(h.quantity * (COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))), ' (',
-                        round(case when prev_p.price_close != 0 then 
+                        concat(round(CASE 
+                            WHEN (COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NULL OR COALESCE(h.last_price, today_p.price_close, latest_p.price_close) = 0) THEN 0
+                            WHEN (COALESCE(prev_p.price_close, 0) = 0) THEN 0
+                            ELSE h.quantity * (COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))
+                        END), ' (',
+                        round(case when prev_p.price_close != 0 AND COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NOT NULL AND COALESCE(h.last_price, today_p.price_close, latest_p.price_close) != 0 then 
     	                    ((COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
     	                else 0
     	                end::numeric, 2), '%%)') as "Todays_Change"
@@ -1329,7 +1339,7 @@ async def api_today_pnl_summary():
             # Convert prev_date to string format  #
             prev_date_str = prev_date.strftime('%Y-%m-%d') if hasattr(prev_date, 'strftime') else str(prev_date)
             cursor.execute("""
-                WITH holdings_today AS (  
+                WITH holdings_today AS (
                     SELECT instrument_token, trading_symbol, quantity, last_price
                     FROM my_schema.holdings
                     WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
@@ -1356,10 +1366,11 @@ async def api_today_pnl_summary():
                     h.quantity,
                     COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) as today_price,
                     COALESCE(prev_p.price_close, 0) as prev_price,
-                    -- If today's price is null/0, P&L should be 0 regardless of prev price
+                    -- If either today's or previous price is missing/0, P&L should be 0
                     CASE 
                         WHEN (COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NULL OR COALESCE(h.last_price, today_p.price_close, latest_p.price_close) = 0) THEN 0
-                        ELSE h.quantity * (COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))
+                        WHEN (COALESCE(prev_p.price_close, 0) = 0) THEN 0
+                        ELSE h.quantity * (COALESCE(h.last_price, today_p.price_close, latest_p.price_close) - prev_p.price_close)
                     END as today_pnl
                 FROM holdings_today h
                 LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
@@ -1875,6 +1886,81 @@ async def api_cancel_all_gtts():
     except Exception as e:
         logging.error(f"Error cancelling all GTTs: {e}")
         return {"success": False, "error": str(e)}
+
+@app.get("/api/derivatives_suggestions")
+async def api_derivatives_suggestions(
+    instrument_token: int = Query(256265, description="Instrument token (default: 256265 for Nifty 50)"),
+    analysis_date: str = Query(None, description="Analysis date in YYYY-MM-DD format (default: today)")
+):
+    """API endpoint to get TPO-based derivatives trading suggestions"""
+    try:
+        from CalculateTPO import PostgresDataFetcher
+        from DerivativesTPOAnalyzer import DerivativesTPOAnalyzer
+        from DerivativesSuggestionEngine import DerivativesSuggestionEngine
+        
+        # Get database configuration from Boilerplate
+        db_config = {
+            'host': os.getenv('PG_HOST', 'postgres'),
+            'database': os.getenv('PG_DATABASE', 'mydb'),
+            'user': os.getenv('PG_USER', 'postgres'),
+            'password': os.getenv('PG_PASSWORD', 'postgres'),
+            'port': int(os.getenv('PG_PORT', 5432))
+        }
+        
+        # Initialize components
+        db_fetcher = PostgresDataFetcher(**db_config)
+        tpo_analyzer = DerivativesTPOAnalyzer(db_fetcher, instrument_token=instrument_token)
+        suggestion_engine = DerivativesSuggestionEngine(tpo_analyzer)
+        
+        # Get current price from latest tick or quote
+        current_price = None
+        try:
+            # Try to get current price from Kite quote
+            quote = kite.quote([f"NFO:NIFTY{datetime.now().strftime('%y%b').upper()}FUT"])
+            if quote:
+                inst_key = list(quote.keys())[0]
+                current_price = quote[inst_key].get('last_price', None)
+        except Exception as e:
+            logging.warning(f"Could not fetch current price from Kite: {e}")
+        
+        # If no price from quote, try database
+        if not current_price:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            try:
+                cursor.execute("""
+                    SELECT last_price FROM my_schema.ticks
+                    WHERE instrument_token = %s
+                    ORDER BY timestamp DESC LIMIT 1
+                """, (instrument_token,))
+                result = cursor.fetchone()
+                if result:
+                    current_price = float(result[0])
+            except Exception as e:
+                logging.warning(f"Could not fetch current price from database: {e}")
+            finally:
+                conn.close()
+        
+        # Generate suggestions
+        suggestions = suggestion_engine.generate_suggestions(analysis_date, current_price)
+        
+        return {
+            "success": True,
+            "analysis_date": analysis_date or datetime.now().strftime('%Y-%m-%d'),
+            "instrument_token": instrument_token,
+            "current_price": current_price,
+            "suggestions": suggestions,
+            "total_suggestions": len(suggestions)
+        }
+    except Exception as e:
+        logging.error(f"Error generating derivatives suggestions: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "suggestions": []
+        }
 
 @app.get("/api/futures_order_flow")
 async def api_futures_order_flow():
@@ -2608,6 +2694,134 @@ async def download_holdings_pdf():
         import traceback
         logging.error(traceback.format_exc())
         return {"error": str(e)}
+
+@app.get("/api/portfolio_hedge_analysis")
+async def api_portfolio_hedge_analysis(
+    target_hedge_ratio: float = Query(0.5, ge=0.0, le=1.0, description="Target hedge ratio (0.0 to 1.0)")
+):
+    """API endpoint to get portfolio hedge analysis"""
+    try:
+        from PortfolioHedgeAnalyzer import PortfolioHedgeAnalyzer
+        
+        db_config = {
+            'host': os.getenv('PG_HOST', 'postgres'),
+            'database': os.getenv('PG_DATABASE', 'mydb'),
+            'user': os.getenv('PG_USER', 'postgres'),
+            'password': os.getenv('PG_PASSWORD', 'postgres'),
+            'port': int(os.getenv('PG_PORT', 5432))
+        }
+        
+        analyzer = PortfolioHedgeAnalyzer(db_config)
+        
+        # Calculate portfolio beta
+        beta_result = analyzer.calculate_portfolio_beta()
+        
+        # Get hedge suggestions
+        hedge_suggestions = analyzer.suggest_hedge(target_hedge_ratio=target_hedge_ratio)
+        
+        # Calculate VaR
+        var_result = analyzer.calculate_var()
+        
+        return {
+            "success": True,
+            "portfolio_metrics": beta_result,
+            "hedge_suggestions": hedge_suggestions,
+            "var_metrics": var_result,
+            "target_hedge_ratio": target_hedge_ratio
+        }
+    except Exception as e:
+        logging.error(f"Error generating portfolio hedge analysis: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/api/margin/calculate")
+async def api_margin_calculate(
+    instrument_token: int = Query(..., description="Instrument token"),
+    quantity: int = Query(..., description="Quantity in lots"),
+    entry_price: float = Query(..., description="Entry price"),
+    instrument_type: str = Query("FUTURES", description="FUTURES or OPTIONS"),
+    product: str = Query("MIS", description="MIS/CNC/NRML"),
+    strike_price: float = Query(None, description="Strike price (for options)"),
+    premium: float = Query(None, description="Premium per share (for options)"),
+    option_type: str = Query(None, description="CE or PE (for options)"),
+    is_long: bool = Query(True, description="Long or Short position")
+):
+    """API endpoint to calculate margin requirements"""
+    try:
+        from MarginCalculator import MarginCalculator
+        
+        calculator = MarginCalculator()
+        
+        if instrument_type.upper() == "FUTURES":
+            result = calculator.calculate_futures_margin(
+                instrument_token=instrument_token,
+                quantity=quantity,
+                entry_price=entry_price,
+                product=product
+            )
+        elif instrument_type.upper() == "OPTIONS":
+            if not strike_price or not premium or not option_type:
+                return {
+                    "success": False,
+                    "error": "strike_price, premium, and option_type are required for options"
+                }
+            result = calculator.calculate_options_margin(
+                instrument_token=instrument_token,
+                quantity=quantity,
+                strike_price=strike_price,
+                premium=premium,
+                option_type=option_type,
+                is_long=is_long,
+                product=product
+            )
+        else:
+            return {
+                "success": False,
+                "error": "instrument_type must be FUTURES or OPTIONS"
+            }
+        
+        # Check margin sufficiency
+        required_margin = result.get('total_margin', result.get('total_required', 0))
+        margin_check = calculator.check_margin_sufficiency(required_margin)
+        
+        return {
+            "success": True,
+            "margin_calculation": result,
+            "margin_check": margin_check,
+            "available_margin": calculator.get_available_margin()
+        }
+    except Exception as e:
+        logging.error(f"Error calculating margin: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/api/margin/available")
+async def api_margin_available():
+    """API endpoint to get available margin"""
+    try:
+        from MarginCalculator import MarginCalculator
+        
+        calculator = MarginCalculator()
+        available = calculator.get_available_margin()
+        
+        return {
+            "success": True,
+            "margin_data": available
+        }
+    except Exception as e:
+        logging.error(f"Error fetching available margin: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 @app.get("/api/download/mf/pdf")
 async def download_mf_pdf():

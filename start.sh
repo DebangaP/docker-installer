@@ -8,7 +8,12 @@ cron
 echo "Cron service started."
 
 echo "Waiting for 2 minutes for dependencies (like Postgres) to be ready..."
-sleep 2m
+#sleep 2m
+
+# Start Uvicorn server as the main foreground process.
+# This will keep the container running.
+echo "Starting Uvicorn server on 0.0.0.0:8000..."
+uvicorn KiteAccessToken:app --host 0.0.0.0 --port 8000
 
 # Start all scripts in the background
 echo "Starting background Python scripts..."
@@ -16,8 +21,3 @@ python KiteFetchData.py &
 python KiteFetchFuture.py &
 python KiteWS.py &
 #python InsertOHLC.py &
-
-# Start Uvicorn server as the main foreground process.
-# This will keep the container running.
-echo "Starting Uvicorn server on 0.0.0.0:8000..."
-uvicorn KiteAccessToken:app --host 0.0.0.0 --port 8000

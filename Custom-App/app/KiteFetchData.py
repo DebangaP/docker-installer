@@ -24,6 +24,24 @@ def init_postgres_conn():
                     CONSTRAINT holdings_unique_key UNIQUE (instrument_token, run_date)
                 );
             """)
+        
+        # Create TPO Analysis table for derivatives suggestions
+        cursor.execute("""
+                CREATE TABLE IF NOT EXISTS my_schema.tpo_analysis (
+                    analysis_date DATE,
+                    instrument_token INTEGER,
+                    session_type VARCHAR(20),
+                    poc FLOAT,
+                    value_area_high FLOAT,
+                    value_area_low FLOAT,
+                    initial_balance_high FLOAT,
+                    initial_balance_low FLOAT,
+                    confidence_score FLOAT,
+                    created_at TIMESTAMP DEFAULT current_timestamp,
+                    CONSTRAINT tpo_analysis_unique_key UNIQUE (analysis_date, instrument_token, session_type)
+                );
+            """)
+        
         conn.commit()
         logging.info("Connected to PostgreSQL and initialized tables")
     except Exception as e:

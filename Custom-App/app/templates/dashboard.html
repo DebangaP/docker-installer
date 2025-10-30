@@ -307,6 +307,55 @@
             100% { transform: rotate(360deg); }
         }
 
+        /* Tab Navigation Styles */
+        .tab-navigation {
+            background: white;
+            border-bottom: 2px solid #e0e0e0;
+            padding: 0;
+            margin: 0;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
+
+        .tab-nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            gap: 0;
+        }
+
+        .tab-button {
+            padding: 15px 30px;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            font-size: 16px;
+            font-weight: 600;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .tab-button:hover {
+            color: #667eea;
+            background: #f8f9fa;
+        }
+
+        .tab-button.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: #f8f9fa;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
         @media (max-width: 768px) {
             .dashboard-grid {
                 grid-template-columns: 1fr;
@@ -320,6 +369,11 @@
             .status-bar {
                 flex-wrap: wrap;
                 justify-content: center;
+            }
+
+            .tab-button {
+                padding: 12px 20px;
+                font-size: 14px;
             }
         }
     </style>
@@ -368,7 +422,21 @@
         </div>
     </div>
 
+    <!-- Tab Navigation -->
+    <div class="tab-navigation">
+        <div class="tab-nav-container">
+            <button class="tab-button active" onclick="switchTab('live-market')">
+                📊 Live Market
+            </button>
+            <button class="tab-button" onclick="switchTab('holdings')">
+                💼 Holdings
+            </button>
+        </div>
+    </div>
+
     <div class="container">
+        <!-- Live Market Tab Content -->
+        <div id="live-market-tab" class="tab-content active">
         <!-- Backtesting Controls -->
         <div class="backtest-controls">
             <div class="backtest-header">
@@ -399,7 +467,6 @@
             </div>
             
         </div>
-
 
         <!-- Market Bias Analysis Section -->
         <div class="card" style="margin-bottom: 10px;">
@@ -438,6 +505,22 @@
             </div>
         </div>
 
+        <!-- TPO-Based Derivatives Suggestions Section -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header" style="padding: 15px 25px;">
+                <h3 class="card-title" style="font-size: 16px;">🎯 TPO-Based Derivatives Suggestions</h3>
+                <span class="card-icon" style="font-size: 20px;">💡</span>
+                <button onclick="loadDerivativesSuggestions()" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; margin-left: 10px;">
+                    🔄 Refresh Suggestions
+                </button>
+            </div>
+            <div id="derivativesSuggestionsContainer" style="padding: 15px;">
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    Click "Refresh Suggestions" to load TPO-based trading suggestions
+                </div>
+            </div>
+        </div>
+
         <!-- Futures Order Flow Section -->
         <div class="card" style="margin-bottom: 20px;">
             <div class="card-header" style="padding: 15px 25px;">
@@ -464,6 +547,39 @@
             </div>
         </div>
 
+        <!-- Current Positions Section -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header">
+                <h3 class="card-title">📊 Active Positions</h3>
+                <span class="card-icon">📈</span>
+            </div>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <thead>
+                        <tr style="background-color: #f8f9fa;">
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Timestamp</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Type</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Symbol</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Product</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Exchange</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Avg. Price</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">P&L</th>
+                        </tr>
+                    </thead>
+                    <tbody id="positionsTableBody">
+                        <tr>
+                            <td colspan="7" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading positions...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        </div>
+        <!-- End Live Market Tab Content -->
+
+        <!-- Holdings Tab Content -->
+        <div id="holdings-tab" class="tab-content">
         {% if show_holdings %}
         <!-- Today's P&L Summary Section -->
         <div class="card" style="margin-bottom: 20px;">
@@ -518,37 +634,29 @@
                 <canvas id="portfolioChart" style="max-height: 400px;"></canvas>
             </div>
         </div>
-        {% endif %}
 
-        <!-- Current Positions Section -->
+        <!-- Portfolio Hedging Recommendations Section -->
         <div class="card" style="margin-bottom: 20px;">
-            <div class="card-header">
-                <h3 class="card-title">📊 Active Positions</h3>
-                <span class="card-icon">📈</span>
+            <div class="card-header" style="padding: 15px 25px;">
+                <h3 class="card-title" style="font-size: 16px;">🛡️ Portfolio Hedging Recommendations</h3>
+                <span class="card-icon" style="font-size: 20px;">🔒</span>
+                <button onclick="loadPortfolioHedgeAnalysis()" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; margin-left: 10px;">
+                    🔄 Refresh Analysis
+                </button>
+                <select id="hedgeRatioSelector" onchange="loadPortfolioHedgeAnalysis()" style="padding: 5px 10px; font-size: 12px; margin-left: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="0.25">25% Hedge</option>
+                    <option value="0.5" selected>50% Hedge</option>
+                    <option value="0.75">75% Hedge</option>
+                    <option value="1.0">100% Hedge</option>
+                </select>
             </div>
-            <div style="overflow-x: auto;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                    <thead>
-                        <tr style="background-color: #f8f9fa;">
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Timestamp</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Type</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Symbol</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Product</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Exchange</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Avg. Price</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">P&L</th>
-                        </tr>
-                    </thead>
-                    <tbody id="positionsTableBody">
-                        <tr>
-                            <td colspan="7" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading positions...</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div id="portfolioHedgeContainer" style="padding: 15px;">
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    Click "Refresh Analysis" to load portfolio hedge recommendations
+                </div>
             </div>
         </div>
 
-        {% if show_holdings %}
         <!-- Current Holdings Section -->
         <div class="card" style="margin-bottom: 20px;">
             <div class="card-header" style="justify-content: space-between;">
@@ -863,6 +971,8 @@
             // Update market bias analysis and futures order flow
             loadMarketBiasAnalysis();
             loadFuturesOrderFlow();
+            
+            // Note: Derivatives suggestions refresh separately every minute (see below)
             
             // Only update holdings if enabled
             {% if show_holdings %}
@@ -1508,6 +1618,111 @@
             return rounded.toLocaleString('en-IN');
         }
         
+        // Load Derivatives Suggestions
+        function loadDerivativesSuggestions() {
+            const container = document.getElementById('derivativesSuggestionsContainer');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading suggestions...</div>';
+            
+            fetch('/api/derivatives_suggestions')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load suggestions'}</div>`;
+                        return;
+                    }
+                    
+                    if (!data.suggestions || data.suggestions.length === 0) {
+                        container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">No suggestions available at this time</div>';
+                        return;
+                    }
+                    
+                    let html = `<div style="margin-bottom: 15px; font-size: 12px; color: #666;">
+                        Analysis Date: ${data.analysis_date} | Current Price: ₹${data.current_price ? data.current_price.toFixed(2) : 'N/A'} | Total Suggestions: ${data.total_suggestions}
+                    </div>`;
+                    
+                    data.suggestions.forEach((suggestion, index) => {
+                        const actionColor = suggestion.action === 'BUY' ? '#28a745' : suggestion.action === 'SELL' ? '#dc3545' : '#ffc107';
+                        const confidenceWidth = suggestion.confidence_score || 0;
+                        
+                        html += `
+                            <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 15px; background: #f9f9f9;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <div>
+                                        <span style="font-weight: bold; font-size: 16px; color: ${actionColor};">
+                                            ${suggestion.action} ${suggestion.derivative_type}
+                                        </span>
+                                        <span style="margin-left: 10px; color: #666;">${suggestion.instrument}</span>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="font-size: 12px; color: #666;">Confidence</div>
+                                        <div style="background: #e0e0e0; border-radius: 10px; height: 20px; width: 100px; position: relative; margin-top: 5px;">
+                                            <div style="background: ${confidenceWidth >= 70 ? '#28a745' : confidenceWidth >= 40 ? '#ffc107' : '#dc3545'}; height: 100%; width: ${confidenceWidth}%; border-radius: 10px; text-align: center; line-height: 20px; color: white; font-size: 10px; font-weight: bold;">
+                                                ${confidenceWidth.toFixed(0)}%
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 10px; font-size: 12px;">
+                                    <div><strong>Entry Level:</strong> ₹${suggestion.entry_level ? suggestion.entry_level.toFixed(2) : 'N/A'}</div>
+                                    <div><strong>Stop Loss:</strong> ${suggestion.stop_loss ? '₹' + suggestion.stop_loss.toFixed(2) : 'N/A'}</div>
+                                    <div><strong>Position Size:</strong> ${suggestion.position_size || 'N/A'}</div>
+                                    ${suggestion.strike_price ? `<div><strong>Strike Price:</strong> ${suggestion.strike_price}</div>` : ''}
+                                    ${suggestion.required_margin ? `
+                                        <div style="grid-column: 1 / -1; background: #fff3cd; padding: 8px; border-radius: 5px; border-left: 3px solid #ffc107;">
+                                            <strong>💰 Required Margin/Money:</strong><br>
+                                            ${suggestion.derivative_type === 'FUTURES' ? `
+                                                Contract Value: ₹${suggestion.required_margin.contract_value ? suggestion.required_margin.contract_value.toFixed(2) : 'N/A'}<br>
+                                                SPAN: ₹${suggestion.required_margin.span_margin ? suggestion.required_margin.span_margin.toFixed(2) : 'N/A'} | 
+                                                Exposure: ₹${suggestion.required_margin.exposure_margin ? suggestion.required_margin.exposure_margin.toFixed(2) : 'N/A'}<br>
+                                                <strong>Total Margin Required: ₹${suggestion.required_margin.total_margin ? suggestion.required_margin.total_margin.toFixed(2) : 'N/A'}</strong>
+                                            ` : suggestion.required_margin.margin_type === 'Premium' ? `
+                                                Premium per Lot: ₹${suggestion.estimated_premium ? (suggestion.estimated_premium * 50).toFixed(2) : 'N/A'}<br>
+                                                <strong>Total Premium Required: ₹${suggestion.required_margin.total_required ? suggestion.required_margin.total_required.toFixed(2) : 'N/A'}</strong>
+                                            ` : suggestion.derivative_type === 'STRADDLE' ? `
+                                                CALL Premium: ₹${suggestion.required_margin.call_premium ? suggestion.required_margin.call_premium.toFixed(2) : 'N/A'} | 
+                                                PUT Premium: ₹${suggestion.required_margin.put_premium ? suggestion.required_margin.put_premium.toFixed(2) : 'N/A'}<br>
+                                                <strong>Total Required: ₹${suggestion.required_margin.total_required ? suggestion.required_margin.total_required.toFixed(2) : 'N/A'}</strong>
+                                            ` : `
+                                                <strong>Total Required: ₹${suggestion.required_margin.total_required ? suggestion.required_margin.total_required.toFixed(2) : 'N/A'}</strong>
+                                            `}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                                
+                                <div style="margin-bottom: 10px;">
+                                    <strong style="font-size: 12px;">Target Levels:</strong>
+                                    <ul style="margin: 5px 0; padding-left: 20px; font-size: 12px;">
+                                        ${suggestion.target_levels ? suggestion.target_levels.map(t => 
+                                            `<li>₹${t.level.toFixed(2)} (${t.type}) - ${t.probability} probability</li>`
+                                        ).join('') : '<li>No targets specified</li>'}
+                                    </ul>
+                                </div>
+                                
+                                <div style="background: #fff; padding: 10px; border-radius: 5px; font-size: 11px; color: #555; border-left: 3px solid ${actionColor};">
+                                    <strong>Rationale:</strong> ${suggestion.rationale || 'No rationale provided'}
+                                </div>
+                                
+                                ${suggestion.tpo_levels_used ? `
+                                    <div style="margin-top: 10px; font-size: 11px; color: #666;">
+                                        <strong>TPO Levels Used:</strong> 
+                                        POC: ${suggestion.tpo_levels_used.poc ? '₹' + suggestion.tpo_levels_used.poc.toFixed(2) : 'N/A'},
+                                        VAH: ${suggestion.tpo_levels_used.vah ? '₹' + suggestion.tpo_levels_used.vah.toFixed(2) : 'N/A'},
+                                        VAL: ${suggestion.tpo_levels_used.val ? '₹' + suggestion.tpo_levels_used.val.toFixed(2) : 'N/A'}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    });
+                    
+                    container.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error fetching derivatives suggestions:', error);
+                    container.innerHTML = '<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading suggestions</div>';
+                });
+        }
+        
         // Load P&L Summary sdfsdf
         function loadPnlSummary() {
             fetch('/api/today_pnl_summary')
@@ -1729,6 +1944,270 @@
                 });
         }
         
+        // Derivatives suggestions refresh timer (every 1 minute)
+        let derivativesSuggestionsTimer = null;
+        
+        function startDerivativesSuggestionsRefresh() {
+            // Clear existing timer if any
+            if (derivativesSuggestionsTimer) {
+                clearInterval(derivativesSuggestionsTimer);
+            }
+            
+            // Load immediately
+            loadDerivativesSuggestions();
+            
+            // Then refresh every 1 minute (60000 ms)
+            derivativesSuggestionsTimer = setInterval(function() {
+                loadDerivativesSuggestions();
+            }, 60000);
+        }
+        
+        // Load Portfolio Hedge Analysis
+        function loadPortfolioHedgeAnalysis() {
+            const container = document.getElementById('portfolioHedgeContainer');
+            const hedgeRatio = document.getElementById('hedgeRatioSelector').value;
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading hedge analysis...</div>';
+            
+            fetch(`/api/portfolio_hedge_analysis?target_hedge_ratio=${hedgeRatio}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load hedge analysis'}</div>`;
+                        return;
+                    }
+                    
+                    const metrics = data.portfolio_metrics || {};
+                    const suggestions = data.hedge_suggestions || {};
+                    const varMetrics = data.var_metrics || {};
+                    
+                    let html = `
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 20px;">
+                            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px;">
+                                <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Portfolio Value</div>
+                                <div style="font-size: 20px; font-weight: bold; color: #333;">₹${(metrics.portfolio_value || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                            </div>
+                            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px;">
+                                <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Portfolio Beta</div>
+                                <div style="font-size: 20px; font-weight: bold; color: #333;">${(metrics.beta || 0).toFixed(2)}</div>
+                            </div>
+                            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px;">
+                                <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Correlation with Nifty</div>
+                                <div style="font-size: 20px; font-weight: bold; color: #333;">${((metrics.correlation || 0) * 100).toFixed(1)}%</div>
+                            </div>
+                            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px;">
+                                <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Hedge Effectiveness</div>
+                                <div style="font-size: 20px; font-weight: bold; color: #333;">${(suggestions.hedge_effectiveness_score || 0).toFixed(1)}%</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    if (suggestions.suggested_instruments && suggestions.suggested_instruments.length > 0) {
+                        html += `
+                            <div style="background: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107; margin-bottom: 15px;">
+                                <h4 style="margin: 0 0 10px 0; font-size: 14px;">🛡️ Recommended Hedge Strategy</h4>
+                        `;
+                        
+                        suggestions.suggested_instruments.forEach(instrument => {
+                            html += `
+                                <div style="margin-bottom: 10px; padding: 10px; background: white; border-radius: 3px;">
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                        <strong>${instrument.instrument}</strong>
+                                        <span style="color: #dc3545; font-weight: bold;">${instrument.direction}</span>
+                                    </div>
+                                    <div style="font-size: 12px; color: #666;">
+                                        <div>Quantity: ${instrument.quantity} (Lot Size: ${instrument.lot_size})</div>
+                                        <div>Entry Price: ₹${instrument.entry_price.toFixed(2)}</div>
+                                        <div>Hedge Value: ₹${instrument.hedge_value.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                        <div><strong>Estimated Margin Required: ₹${instrument.estimated_margin.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong></div>
+                                        <div style="margin-top: 5px; font-style: italic; color: #666;">${instrument.rationale}</div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        html += `
+                                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd;">
+                                    <div style="font-size: 12px;"><strong>Unhedged Exposure:</strong> ₹${(suggestions.unhedged_exposure || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                    <div style="font-size: 12px;"><strong>Cost of Hedging:</strong> ₹${(suggestions.cost_of_hedging || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    if (varMetrics.var_95) {
+                        html += `
+                            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin-top: 15px;">
+                                <h4 style="margin: 0 0 10px 0; font-size: 14px;">📊 Value at Risk (VaR)</h4>
+                                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                                    <div>
+                                        <div style="font-size: 11px; color: #666;">VaR (95% Confidence)</div>
+                                        <div style="font-size: 16px; font-weight: bold;">₹${(varMetrics.var_95 || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 11px; color: #666;">VaR (99% Confidence)</div>
+                                        <div style="font-size: 16px; font-weight: bold;">₹${(varMetrics.var_99 || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    container.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error fetching portfolio hedge analysis:', error);
+                    container.innerHTML = '<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading hedge analysis</div>';
+                });
+        }
+        
+        // Load Margin Calculator
+        function loadMarginCalculator() {
+            const container = document.getElementById('availableMarginDisplay');
+            if (!container) {
+                console.warn('availableMarginDisplay element not found');
+                return;
+            }
+            container.innerHTML = '<div style="text-align: center; color: #666; font-size: 12px;">Loading margin data...</div>';
+            
+            fetch('/api/margin/available')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        container.innerHTML = `<div style="color: #dc3545; font-size: 12px;">Error: ${data.error || 'Failed to load margin data'}</div>`;
+                        return;
+                    }
+                    
+                    const marginData = data.margin_data || {};
+                    const utilizationPct = marginData.utilization_percentage || 0;
+                    const utilizationColor = utilizationPct > 80 ? '#dc3545' : utilizationPct > 60 ? '#ffc107' : '#28a745';
+                    
+                    container.innerHTML = `
+                        <div style="font-size: 12px;">
+                            <div style="margin-bottom: 10px;">
+                                <div style="color: #666; margin-bottom: 3px;">Available Cash</div>
+                                <div style="font-size: 16px; font-weight: bold; color: #333;">₹${(marginData.available_cash || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <div style="color: #666; margin-bottom: 3px;">Available Live Balance</div>
+                                <div style="font-size: 16px; font-weight: bold; color: #333;">₹${(marginData.available_live_balance || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <div style="color: #666; margin-bottom: 3px;">Total Utilised</div>
+                                <div style="font-size: 16px; font-weight: bold; color: #333;">₹${(marginData.total_utilised || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                            </div>
+                            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd;">
+                                <div style="color: #666; margin-bottom: 5px;">Margin Utilization</div>
+                                <div style="background: #e0e0e0; border-radius: 10px; height: 20px; position: relative; margin-top: 5px;">
+                                    <div style="background: ${utilizationColor}; height: 100%; width: ${Math.min(100, utilizationPct)}%; border-radius: 10px; text-align: center; line-height: 20px; color: white; font-size: 10px; font-weight: bold;">
+                                        ${utilizationPct.toFixed(1)}%
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                })
+                .catch(error => {
+                    console.error('Error fetching margin data:', error);
+                    container.innerHTML = '<div style="color: #dc3545; font-size: 12px;">Error loading margin data</div>';
+                });
+        }
+        
+        // Calculate Margin
+        function calculateMargin() {
+            const container = document.getElementById('marginCalculationResult');
+            container.innerHTML = '<div style="text-align: center; color: #666; font-size: 12px;">Calculating margin...</div>';
+            
+            const instrumentType = document.getElementById('marginInstrumentType').value;
+            const instrumentToken = parseInt(document.getElementById('marginInstrumentToken').value);
+            const quantity = parseInt(document.getElementById('marginQuantity').value);
+            const entryPrice = parseFloat(document.getElementById('marginEntryPrice').value);
+            const product = document.getElementById('marginProduct').value;
+            
+            if (!instrumentToken || !quantity || !entryPrice) {
+                container.innerHTML = '<div style="color: #dc3545; font-size: 12px;">Please fill all required fields</div>';
+                return;
+            }
+            
+            let url = `/api/margin/calculate?instrument_token=${instrumentToken}&quantity=${quantity}&entry_price=${entryPrice}&instrument_type=${instrumentType}&product=${product}`;
+            
+            if (instrumentType === 'OPTIONS') {
+                const strikePrice = parseFloat(document.getElementById('marginStrikePrice').value);
+                const premium = parseFloat(document.getElementById('marginPremium').value);
+                const optionType = document.getElementById('marginOptionType').value;
+                const isLong = document.getElementById('marginIsLong').value === 'true';
+                
+                if (!strikePrice || !premium) {
+                    container.innerHTML = '<div style="color: #dc3545; font-size: 12px;">Strike price and premium are required for options</div>';
+                    return;
+                }
+                
+                url += `&strike_price=${strikePrice}&premium=${premium}&option_type=${optionType}&is_long=${isLong}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        container.innerHTML = `<div style="color: #dc3545; font-size: 12px;">Error: ${data.error || 'Failed to calculate margin'}</div>`;
+                        return;
+                    }
+                    
+                    const calc = data.margin_calculation || {};
+                    const check = data.margin_check || {};
+                    const isSufficient = check.is_sufficient || false;
+                    
+                    let html = `
+                        <div style="font-size: 12px;">
+                            <div style="margin-bottom: 10px; padding: 10px; background: ${isSufficient ? '#d4edda' : '#f8d7da'}; border-radius: 5px; border-left: 4px solid ${isSufficient ? '#28a745' : '#dc3545'};">
+                                <strong>Margin Status: ${isSufficient ? '✓ Sufficient' : '✗ Insufficient'}</strong>
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <div style="color: #666; margin-bottom: 3px;">Required Margin</div>
+                                <div style="font-size: 16px; font-weight: bold;">₹${(calc.total_margin || calc.total_required || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                            </div>
+                            ${calc.span_margin ? `
+                                <div style="margin-bottom: 5px;">
+                                    <div style="color: #666; font-size: 11px;">SPAN Margin: ₹${calc.span_margin.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                </div>
+                            ` : ''}
+                            ${calc.exposure_margin ? `
+                                <div style="margin-bottom: 5px;">
+                                    <div style="color: #666; font-size: 11px;">Exposure Margin: ₹${calc.exposure_margin.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                </div>
+                            ` : ''}
+                            ${calc.contract_value ? `
+                                <div style="margin-bottom: 5px;">
+                                    <div style="color: #666; font-size: 11px;">Contract Value: ₹${calc.contract_value.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                </div>
+                            ` : ''}
+                            ${!isSufficient && check.shortfall ? `
+                                <div style="margin-top: 10px; padding: 10px; background: #fff3cd; border-radius: 5px;">
+                                    <div style="color: #856404; font-size: 11px;">Shortfall: ₹${check.shortfall.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                    
+                    container.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error calculating margin:', error);
+                    container.innerHTML = '<div style="color: #dc3545; font-size: 12px;">Error calculating margin</div>';
+                });
+        }
+        
+        // Toggle options fields based on instrument type
+        document.addEventListener('DOMContentLoaded', function() {
+            const instrumentTypeSelect = document.getElementById('marginInstrumentType');
+            const optionsFields = document.getElementById('optionsFields');
+            
+            if (instrumentTypeSelect && optionsFields) {
+                instrumentTypeSelect.addEventListener('change', function() {
+                    optionsFields.style.display = this.value === 'OPTIONS' ? 'block' : 'none';
+                });
+            }
+        });
+        
         // Load initial data
         document.addEventListener('DOMContentLoaded', function() {
             loadMarketBiasAnalysis();
@@ -1740,8 +2219,49 @@
             loadPortfolioChart(30);
             {% endif %}
             initializeRefreshSystem();
+            
+            // Start derivatives suggestions refresh (every 1 minute)
+            startDerivativesSuggestionsRefresh();
         });
+
+        // Tab Switching Functionality
+        function switchTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Remove active class from all tab buttons
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            const selectedTab = document.getElementById(tabName + '-tab');
+            if (selectedTab) {
+                selectedTab.classList.add('active');
+                
+                // Load Holdings tab data when switching to it
+                if (tabName === 'holdings') {
+                    {% if show_holdings %}
+                    // Load P&L, Portfolio chart, and Portfolio Hedge Analysis when Holdings tab is shown
+                    loadPnlSummary();
+                    const daysSelector = document.getElementById('portfolioDaysSelector');
+                    if (daysSelector) {
+                        loadPortfolioChart(daysSelector.value || 30);
+                    }
+                    // Load portfolio hedge analysis
+                    loadPortfolioHedgeAnalysis();
+                    {% endif %}
+                }
+            }
+            
+            // Add active class to clicked button
+            event.target.classList.add('active');
+        }
     </script>
+    
+    <!-- End Holdings Tab Content -->
 
     <!-- Candlestick Chart Modal -->
     <div id="candlestickModal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
