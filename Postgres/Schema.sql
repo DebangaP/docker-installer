@@ -1,3 +1,9 @@
+-- Performance indexes (idempotent)
+CREATE INDEX IF NOT EXISTS idx_holdings_run_date ON my_schema.holdings(run_date);
+CREATE INDEX IF NOT EXISTS idx_mf_holdings_run_date ON my_schema.mf_holdings(run_date);
+CREATE INDEX IF NOT EXISTS idx_positions_run_date_type ON my_schema.positions(run_date, position_type);
+CREATE INDEX IF NOT EXISTS idx_rt_price_scrip_date ON my_schema.rt_intraday_price(scrip_id, price_date DESC);
+CREATE INDEX IF NOT EXISTS idx_ticks_inst_ts ON my_schema.ticks(instrument_token, timestamp DESC);
 CREATE SCHEMA my_schema;
 
 CREATE TABLE IF NOT EXISTS my_schema.raw_ticks (

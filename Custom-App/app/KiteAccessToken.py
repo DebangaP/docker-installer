@@ -1,6 +1,7 @@
 from Boilerplate import *
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi import Request
 from fastapi.responses import StreamingResponse, FileResponse
 import os
@@ -122,11 +123,32 @@ templates = Jinja2Templates(directory="templates")
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Response compression to reduce payload size
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
 # Global ANALYSIS_DATE configuration - can be set via API or environment
 ANALYSIS_DATE = None  # Set to None for current date, or specify date like '2025-10-20'
 
 # Global SHOW_HOLDINGS configuration - controls visibility of holdings sections
 SHOW_HOLDINGS = os.getenv("SHOW_HOLDINGS", "True").lower() == "true"
+
+# Small JSON cache helpers using Redis
+def cache_get_json(key: str):
+    try:
+        val = redis_client.get(key)
+        if not val:
+            return None
+        if isinstance(val, bytes):
+            val = val.decode("utf-8")
+        return json.loads(val)
+    except Exception:
+        return None
+
+def cache_set_json(key: str, value: dict, ttl_seconds: int = 5):
+    try:
+        redis_client.setex(key, ttl_seconds, json.dumps(value))
+    except Exception:
+        pass
 
 # Function to check if access token was fetched today
 def is_token_fetched_today():
@@ -254,10 +276,11 @@ def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, so
                 (SELECT MAX(run_date) FROM my_schema.holdings) as run_date
             FROM my_schema.holdings h
             LEFT JOIN (
-                SELECT scrip_id, price_close, ROW_NUMBER() OVER (PARTITION BY scrip_id ORDER BY price_date DESC) as rn
+                SELECT DISTINCT ON (scrip_id) scrip_id, price_close, price_date
                 FROM my_schema.rt_intraday_price
                 WHERE price_date::date <= CURRENT_DATE
-            ) rt ON h.trading_symbol = rt.scrip_id AND rt.rn = 1
+                ORDER BY scrip_id, price_date DESC
+            ) rt ON h.trading_symbol = rt.scrip_id
             WHERE h.run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
             ORDER BY {sort_by} {sort_dir}
             LIMIT %s OFFSET %s
@@ -1032,6 +1055,11 @@ async def api_market_bias_chart(analysis_date: str = Query(None)):
 async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=1), sort_by: str = Query(None), sort_dir: str = Query("asc")):
     """API endpoint to get paginated holdings data with sorting and GTT info"""
     try:
+        # Small cache for hot endpoint
+        cache_key = f"holdings:{page}:{per_page}:{sort_by}:{sort_dir}"
+        cached = cache_get_json(cache_key)
+        if cached:
+            return cached
         # If sorting by today_pnl, we need to get all holdings, enrich them, sort, then paginate
         if sort_by == 'today_pnl':
             # Get all holdings without pagination
@@ -1221,12 +1249,14 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
         else:
             total_count = holdings_info["total_count"]
         
-        return {
+        result = {
             "holdings": holdings_list,
             "total_count": total_count,
             "page": page,
             "per_page": per_page
         }
+        cache_set_json(cache_key, result, ttl_seconds=5)
+        return result
     except Exception as e:
         logging.error(f"Error fetching holdings: {e}")
         import traceback
@@ -1343,6 +1373,9 @@ async def api_mf_holdings():
 async def api_today_pnl_summary():
     """API endpoint to get today's P&L summary for Equity, MF, and Intraday trades"""
     try:
+        cached = cache_get_json("today_pnl_summary")
+        if cached:
+            return cached
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
@@ -1457,7 +1490,7 @@ async def api_today_pnl_summary():
         
         conn.close()
         
-        return {
+        result = {
             "equity_pnl": equity_pnl,
             "equity_overall_pnl": equity_overall_pnl,
             "mf_pnl": mf_pnl,
@@ -1466,6 +1499,8 @@ async def api_today_pnl_summary():
             "total_today_pnl": total_today_pnl,
             "total_overall_pnl": total_overall_pnl
         }
+        cache_set_json("today_pnl_summary", result, ttl_seconds=5)
+        return result
     except Exception as e:
         logging.error(f"Error fetching today's P&L summary: {e}")
         import traceback

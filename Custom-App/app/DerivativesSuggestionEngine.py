@@ -213,7 +213,8 @@ class DerivativesSuggestionEngine:
                     'val': val,
                     'ib_low': ib_low
                 },
-                'required_margin': margin_info
+                'required_margin': margin_info,
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             
             # Adjust if pre-market showed different structure
@@ -249,7 +250,8 @@ class DerivativesSuggestionEngine:
                     'val': val,
                     'ib_high': ib_high
                 },
-                'required_margin': margin_info
+                'required_margin': margin_info,
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             
             # Adjust if pre-market showed different structure
@@ -281,7 +283,8 @@ class DerivativesSuggestionEngine:
                     'poc': poc,
                     'vah': vah,
                     'val': val
-                }
+                },
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             suggestions.append(suggestion)
         
@@ -346,7 +349,8 @@ class DerivativesSuggestionEngine:
                     'suggested_strike': call_strike
                 },
                 'required_margin': margin_info,
-                'estimated_premium': estimated_premium
+                'estimated_premium': estimated_premium,
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             suggestions.append(suggestion)
         
@@ -381,7 +385,8 @@ class DerivativesSuggestionEngine:
                     'suggested_strike': put_strike
                 },
                 'required_margin': margin_info,
-                'estimated_premium': estimated_premium
+                'estimated_premium': estimated_premium,
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             suggestions.append(suggestion)
         
@@ -427,7 +432,8 @@ class DerivativesSuggestionEngine:
                     'call_premium': call_margin['total_required'],
                     'put_premium': put_margin['total_required']
                 },
-                'estimated_premium': estimated_premium * 2  # Both CALL and PUT
+                'estimated_premium': estimated_premium * 2,  # Both CALL and PUT
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             suggestions.append(suggestion)
         

@@ -853,6 +853,49 @@
     <script src="/static/tpo-charts.js"></script>
     
     <script>
+        // IST market-hours helpers
+        function getISTNow() {
+            try {
+                const fmt = new Intl.DateTimeFormat('en-GB', {
+                    timeZone: 'Asia/Kolkata',
+                    hour12: false,
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit'
+                });
+                const parts = fmt.formatToParts(new Date());
+                const get = k => parts.find(p => p.type === k).value;
+                return {
+                    year: parseInt(get('year'), 10),
+                    month: parseInt(get('month'), 10),
+                    day: parseInt(get('day'), 10),
+                    hour: parseInt(get('hour'), 10),
+                    minute: parseInt(get('minute'), 10)
+                };
+            } catch (e) {
+                const d = new Date();
+                return { year: d.getFullYear(), month: d.getMonth()+1, day: d.getDate(), hour: d.getHours(), minute: d.getMinutes() };
+            }
+        }
+
+        function isWeekendIST() {
+            try {
+                const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', weekday: 'short' });
+                const wd = fmt.format(new Date());
+                return wd === 'Sat' || wd === 'Sun';
+            } catch (e) {
+                const d = new Date();
+                const wd = d.getDay();
+                return wd === 0 || wd === 6;
+            }
+        }
+
+        function isMarketClosedIST() {
+            if (isWeekendIST()) return true;
+            const t = getISTNow();
+            if (t.hour > 15) return true;
+            if (t.hour === 15 && t.minute >= 30) return true;
+            return false;
+        }
         // Global variables for market bias analysis
         let currentAnalysisDate = null;
         let marketBiasData = null;
@@ -950,7 +993,7 @@
                 });
             
             // Update margin data
-            if (window.tpoChartRenderer) {
+            if (window.tpoChartRenderer && !isMarketClosedIST()) {
                 window.tpoChartRenderer.loadMarginData();
             }
             
@@ -977,19 +1020,23 @@
             // Only update holdings if enabled
             {% if show_holdings %}
             // Refresh holdings table with current page
-            if (typeof currentHoldingsPage !== 'undefined') {
+            if (!isMarketClosedIST() && typeof currentHoldingsPage !== 'undefined') {
                 loadHoldingsPage(currentHoldingsPage);
             }
             
             // Update MF holdings
-            loadMFHoldings();
+            if (!isMarketClosedIST()) {
+                loadMFHoldings();
+            }
             
             // Update P&L Summary
-            loadPnlSummary();
+            if (!isMarketClosedIST()) {
+                loadPnlSummary();
+            }
             
             // Update Portfolio Chart
             const daysSelector = document.getElementById('portfolioDaysSelector');
-            if (daysSelector) {
+            if (daysSelector && !isMarketClosedIST()) {
                 loadPortfolioChart(daysSelector.value || 30);
             }
             {% endif %}
@@ -1666,6 +1713,7 @@
                                         <span style="margin-left: 10px; color: #666;">${suggestion.instrument}</span>
                                     </div>
                                     <div style="text-align: right;">
+                                        ${suggestion.timestamp ? `<div style="font-size: 11px; color: #666; margin-bottom: 4px;">🕒 ${suggestion.timestamp}</div>` : ''}
                                         <div style="font-size: 12px; color: #666;">Confidence</div>
                                         <div style="background: #e0e0e0; border-radius: 10px; height: 20px; width: 100px; position: relative; margin-top: 5px;">
                                             <div style="background: ${confidenceWidth >= 70 ? '#28a745' : confidenceWidth >= 40 ? '#ffc107' : '#dc3545'}; height: 100%; width: ${confidenceWidth}%; border-radius: 10px; text-align: center; line-height: 20px; color: white; font-size: 10px; font-weight: bold;">
@@ -1966,10 +2014,20 @@
             }
             
             // Load immediately
+            if (isMarketClosedIST()) {
+                // Ensure no further refreshes after close
+                derivativesSuggestionsTimer = null;
+                return;
+            }
             loadDerivativesSuggestions();
             
             // Then refresh every 1 minute (60000 ms)
             derivativesSuggestionsTimer = setInterval(function() {
+                if (isMarketClosedIST()) {
+                    clearInterval(derivativesSuggestionsTimer);
+                    derivativesSuggestionsTimer = null;
+                    return;
+                }
                 loadDerivativesSuggestions();
             }, 60000);
         }
