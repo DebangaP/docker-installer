@@ -394,11 +394,11 @@
                 </div>
                 <div class="status-item">
                     <span class="status-indicator status-online"></span>
-                    <span>Last Update: {{ last_update }}</span>
+                    <span id="lastUpdateText">Last Update: {{ last_update }}</span>
                 </div>
                 <div class="status-item">
                     <span class="status-indicator status-online"></span>
-                    <span>Total Ticks today: {{ total_ticks }}</span>
+                    <span id="totalTicksText">Total Ticks today: {{ total_ticks }}</span>
                 </div>
                 <div class="status-item">
                     <span class="status-indicator status-online"></span>
@@ -1003,6 +1003,18 @@
             // Update tick status
             const tickIndicator = document.querySelector('.status-item:nth-child(2) .status-indicator');
             tickIndicator.className = `status-indicator ${data.tick_active ? 'status-online' : 'status-offline'}`;
+
+            // Update Last Update text
+            const lastUpdateEl = document.getElementById('lastUpdateText');
+            if (lastUpdateEl && data.last_update) {
+                lastUpdateEl.textContent = `Last Update: ${data.last_update}`;
+            }
+
+            // Update total ticks
+            const totalTicksEl = document.getElementById('totalTicksText');
+            if (totalTicksEl && typeof data.total_ticks !== 'undefined') {
+                totalTicksEl.textContent = `Total Ticks today: ${data.total_ticks}`;
+            }
         }
         
         // Load market bias analysis

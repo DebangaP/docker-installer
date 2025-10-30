@@ -174,19 +174,34 @@ def get_tick_data_status():
         """)
         total_ticks = cursor.fetchone()[0]
         
+        # Get latest tick timestamp as pre-formatted IST string directly from DB to avoid timezone drift
+        cursor.execute("""
+            SELECT 
+                to_char(MAX(timestamp AT TIME ZONE 'Asia/Kolkata'), 'YYYY-MM-DD HH24:MI:SS') AS latest_ts_ist_str
+            FROM my_schema.ticks
+            WHERE instrument_token = 256265
+        """)
+        latest_row = cursor.fetchone()
+        latest_ts_ist_str = latest_row[0] if latest_row else None
+
+        # Debug: log DB output
+        logging.info(f"TickStatus DB latest_ts_ist_str={latest_ts_ist_str}, recent_ticks={recent_ticks}, total_ticks={total_ticks}")
+
         conn.close()
         
         return {
             'active': recent_ticks > 0,
             'recent_ticks': recent_ticks,
-            'total_ticks': total_ticks
+            'total_ticks': total_ticks,
+            'latest_tick_str': latest_ts_ist_str
         }
     except Exception as e:
         logging.error(f"Error checking tick data status: {e}")
         return {
             'active': False,
             'recent_ticks': 0,
-            'total_ticks': 0
+            'total_ticks': 0,
+            'latest_tick_str': None
         }
 
 
@@ -275,11 +290,19 @@ def get_system_status():
     from datetime import datetime, timedelta
     ist_now = datetime.now() + timedelta(hours=5, minutes=30)
     
+    tick_status = get_tick_data_status()
+    last_update_value = tick_status.get('latest_tick_str') or ist_now.strftime('%H:%M:%S IST')
+    # Debug: log what will be sent to UI
+    logging.info(
+        f"SystemStatus last_update={last_update_value}, tick_active={tick_status['active']}, "
+        f"total_ticks={tick_status['total_ticks']}, raw_latest={tick_status.get('latest_tick_str')}"
+    )
+    
     return {
         'token_fetched_today': is_token_fetched_today(),
         'token_valid': is_token_currently_valid(),
-        'tick_data': get_tick_data_status(),
-        'last_update': ist_now.strftime('%H:%M:%S IST')
+        'tick_data': tick_status,
+        'last_update': last_update_value
     }
 
 # Helper function to enrich holdings with today's P&L
@@ -468,6 +491,10 @@ async def dashboard(request: Request, page: int = Query(1, ge=1)):
             # Get system status for dashboard
             system_status = get_system_status()
             tick_data = system_status['tick_data']
+            # Debug: log values being passed to template
+            logging.info(
+                f"DashboardRender last_update={system_status['last_update']}, total_ticks={tick_data['total_ticks']}"
+            )
             holdings_info = get_holdings_data(page=page, per_page=10)
             
             # Enrich holdings with today's P&L

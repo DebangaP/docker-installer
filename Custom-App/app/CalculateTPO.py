@@ -244,19 +244,20 @@ class PostgresDataFetcher:
         if not table_name.isidentifier():
             raise ValueError("Invalid table name")
         
-        # Build query
-        query = "SELECT last_price, open, high, low, close, timestamp FROM my_schema.\"{}\"".format(table_name)
+        # Build query: only select columns actually required for TPO (timestamp, last_price)
+        query = "SELECT timestamp, last_price FROM my_schema.\"{}\"".format(table_name)
         params = {}
         
         conditions = []
         if instrument_token:
             conditions.append("instrument_token = :instrument_token")
             params['instrument_token'] = instrument_token
-        if start_time:  # Tick timestamp seems to be UTC, adjust accordingly
-            conditions.append("timestamp + interval '5 hours 30 minutes'>= :start_time")
+        # Compare directly against stored timestamps; no offset applied
+        if start_time:
+            conditions.append("timestamp >= :start_time")
             params['start_time'] = start_time
         if end_time:
-            conditions.append("timestamp + interval '5 hours 30 minutes' <= :end_time")
+            conditions.append("timestamp <= :end_time")
             params['end_time'] = end_time
         
         if conditions:
@@ -269,6 +270,13 @@ class PostgresDataFetcher:
             with self.engine.connect() as conn:
                 result = conn.execute(text(query), params)
                 df = pd.DataFrame(result.fetchall(), columns=result.keys())
+                logging.info(f"Fetched {len(df)} tick rows for instrument_token={params.get('instrument_token')} from {table_name}")
+                if not df.empty:
+                    try:
+                        ts = pd.to_datetime(df['timestamp'])
+                        logging.info(f"Tick time window (DB UTC): min={ts.min()}, max={ts.max()}")
+                    except Exception:
+                        pass
                 return df
         except Exception as e:
             print(f"Error fetching data: {e}")

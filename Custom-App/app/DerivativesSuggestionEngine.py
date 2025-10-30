@@ -129,6 +129,7 @@ class DerivativesSuggestionEngine:
             tpo_data = tpo_data[0]  # Take first if list
         
         if not tpo_data:
+            logging.info("TPO data missing after analysis (both live and pre-market)")
             return suggestions
         
         # Get current price if not provided
@@ -139,6 +140,11 @@ class DerivativesSuggestionEngine:
             logging.warning("Unable to determine current price for suggestions")
             return suggestions
         
+        # Debug: log TPO metrics and current price
+        logging.info(
+            f"TPO metrics for suggestions - POC={tpo_data.get('poc')}, VAH={tpo_data.get('value_area_high')}, VAL={tpo_data.get('value_area_low')}, current_price={current_price}"
+        )
+
         # Generate futures suggestions
         futures_suggestions = self._generate_futures_suggestions(tpo_data, current_price, pre_market_tpo)
         suggestions.extend(futures_suggestions)
@@ -147,6 +153,7 @@ class DerivativesSuggestionEngine:
         options_suggestions = self._generate_options_suggestions(tpo_data, current_price, pre_market_tpo)
         suggestions.extend(options_suggestions)
         
+        logging.info(f"Suggestions generated: futures={len(futures_suggestions)}, options={len(options_suggestions)}, total={len(suggestions)}")
         return suggestions
     
     def _generate_futures_suggestions(self, tpo_data: Dict, current_price: float, pre_market_tpo: Optional[Dict] = None) -> List[Dict]:

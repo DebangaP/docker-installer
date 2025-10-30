@@ -87,8 +87,8 @@ class DerivativesTPOAnalyzer:
         pre_market_data = self.db_fetcher.fetch_tick_data(
             table_name='ticks',
             instrument_token=self.instrument_token,
-            start_time=f'{analysis_date} 09:05:00.000 +0530',
-            end_time=f'{analysis_date} 09:15:00.000 +0530'
+            start_time=f'{analysis_date} 09:05:00.000',
+            end_time=f'{analysis_date} 09:15:00.000'
         )
         
         if pre_market_data.empty:
@@ -96,8 +96,10 @@ class DerivativesTPOAnalyzer:
             return None
         
         # Calculate TPO profile
+        logging.info(f"Pre-market ticks fetched: {len(pre_market_data)} for {analysis_date}")
         tpo_profile = TPOProfile(tick_size=self.tick_size)
         tpo_profile.calculate_tpo(pre_market_data)
+        logging.info(f"Pre-market TPO metrics: POC={tpo_profile.poc}, VAH={tpo_profile.value_area_high}, VAL={tpo_profile.value_area_low}")
         
         # Extract key metrics - ensure all values are native Python types, not NumPy
         result = {
@@ -141,14 +143,19 @@ class DerivativesTPOAnalyzer:
             analysis_date = datetime.now().strftime('%Y-%m-%d')
         
         if not current_time:
-            current_time = datetime.now().strftime('%H:%M:%S')
+            try:
+                from pytz import timezone as _tz
+                current_time = datetime.now(_tz('Asia/Kolkata')).strftime('%H:%M:%S')
+                logging.info(f"Current time DerivativesTPOAnalyzer:{current_time}")
+            except Exception:
+                current_time = datetime.now().strftime('%H:%M:%S')
         
         # Fetch live market data (9:15 AM to current time)
         live_market_data = self.db_fetcher.fetch_tick_data(
             table_name='ticks',
             instrument_token=self.instrument_token,
-            start_time=f'{analysis_date} 09:15:00.000 +0530',
-            end_time=f'{analysis_date} {current_time}.000 +0530'
+            start_time=f'{analysis_date} 09:15:00.000',
+            end_time=f'{analysis_date} {current_time}.000'
         )
         
         if live_market_data.empty:
@@ -156,8 +163,10 @@ class DerivativesTPOAnalyzer:
             return None
         
         # Calculate TPO profile
+        logging.info(f"Live-market ticks fetched: {len(live_market_data)} for {analysis_date} upto {current_time}")
         tpo_profile = TPOProfile(tick_size=self.tick_size)
         tpo_profile.calculate_tpo(live_market_data)
+        logging.info(f"Live TPO metrics: POC={tpo_profile.poc}, VAH={tpo_profile.value_area_high}, VAL={tpo_profile.value_area_low}")
         
         # Extract key metrics - ensure all values are native Python types, not NumPy
         result = {

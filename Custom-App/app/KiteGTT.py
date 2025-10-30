@@ -286,7 +286,7 @@ class KiteGTTManager:
         """
         try:
             # Get all active GTT orders
-            gtt_orders = self.kite.gtts()
+            gtt_orders = self.kite.get_gtts()
             
             success_count = 0
             failed_count = 0
@@ -346,7 +346,7 @@ class KiteGTTManager:
             existing_gtts = {}
             if not overwrite_existing:
                 try:
-                    gtt_list = self.kite.gtts()
+                    gtt_list = self.kite.get_gtts()
                     for gtt in gtt_list:
                         symbol = gtt.get('tradingsymbol', '')
                         if symbol:
@@ -431,7 +431,7 @@ class KiteGTTManager:
             List of GTT order dictionaries
         """
         try:
-            gtt_list = self.kite.gtts()
+            gtt_list = self.kite.get_gtts()
             self.logger.info(f"Fetched {len(gtt_list)} GTT orders")
             return gtt_list
             
