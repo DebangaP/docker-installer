@@ -3,6 +3,10 @@
 # Change to the application directory
 cd /app
 
+# Ensure logs directory exists (for cron jobs)
+mkdir -p /app/logs
+chmod 755 /app/logs
+
 # Start the cron service in the background
 cron
 echo "Cron service started."

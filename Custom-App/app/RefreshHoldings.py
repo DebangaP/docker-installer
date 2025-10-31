@@ -6,10 +6,49 @@ This script is called by cron every 5 minutes during market hours
 
 from Boilerplate import *
 import logging
+import sys
+import traceback
 
 def refresh_holdings():
     """Fetch and save current holdings from Kite API to database"""
     try:
+        # Ensure database connection is initialized
+        global conn, cursor
+        try:
+            if 'conn' not in globals() or conn is None:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+            else:
+                # Try to check if connection is still alive
+                try:
+                    cursor.execute("SELECT 1")
+                except:
+                    # Connection is dead, recreate it
+                    try:
+                        conn.close()
+                    except:
+                        pass
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+        except Exception as db_err:
+            logging.error(f"Database connection error: {db_err}")
+            logging.error(traceback.format_exc())
+            print(f"✗ Database connection error: {db_err}")
+            return
+        
+        # Ensure Kite connection is initialized
+        try:
+            from Boilerplate import get_access_token
+            access_token = get_access_token()
+            if not access_token:
+                logging.error("No valid Kite access token available")
+                print("✗ No valid Kite access token available")
+                return
+        except Exception as kite_err:
+            logging.error(f"Kite initialization error: {kite_err}")
+            print(f"✗ Kite initialization error: {kite_err}")
+            return
+        
         print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Fetching holdings from Kite...')
         holdings = kite.holdings()
         logging.info(f"User holdings: {holdings}")
@@ -79,11 +118,25 @@ def refresh_holdings():
             print("No valid holdings to save")
             
     except Exception as e:
-        if 'conn' in locals():
-            conn.rollback()
+        if 'conn' in locals() and conn:
+            try:
+                conn.rollback()
+            except:
+                pass
         logging.error(f"Error refreshing holdings: {e}")
+        logging.error(traceback.format_exc())
         print(f"✗ Error refreshing holdings: {e}")
+        sys.exit(1)
+    finally:
+        # Close database connection
+        if 'conn' in globals() and conn:
+            try:
+                cursor.close()
+                conn.close()
+            except:
+                pass
 
 if __name__ == "__main__":
     refresh_holdings()
+    sys.exit(0)
 
