@@ -229,20 +229,28 @@ def get_tick_data_status():
 
 
 # Function to get holdings data
-def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, sort_dir: str = "asc"):
+def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, sort_dir: str = "asc", search: str = None):
     """Fetch current holdings from the database with pagination and sorting."""
     try:
         conn = get_db_connection()
         # Use RealDictCursor to get results as dictionaries
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+        # Build WHERE clause with search filter
+        where_clause = "WHERE h.run_date = (SELECT MAX(run_date) FROM my_schema.holdings)"
+        search_params = []
+        if search and search.strip():
+            where_clause += " AND h.trading_symbol ILIKE %s"
+            search_params.append(f"%{search.strip()}%")
+
         # Fetch holdings for the most recent run_date
         # Get total count for pagination
-        cursor.execute("""
+        count_query = f"""
             SELECT COUNT(*) as total_count
-            FROM my_schema.holdings
-            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
-        """)
+            FROM my_schema.holdings h
+            {where_clause}
+        """
+        cursor.execute(count_query, search_params)
         total_count = cursor.fetchone()['total_count']
 
         # Validate and set sort column
@@ -282,10 +290,10 @@ def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, so
                 WHERE price_date::date <= CURRENT_DATE
                 ORDER BY scrip_id, price_date DESC
             ) rt ON h.trading_symbol = rt.scrip_id
-            WHERE h.run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+            {where_clause}
             ORDER BY {sort_by} {sort_dir}
             LIMIT %s OFFSET %s
-        """.format(sort_by=sort_by, sort_dir=sort_dir.upper()), (per_page, offset))
+        """.format(where_clause=where_clause, sort_by=sort_by, sort_dir=sort_dir.upper()), search_params + [per_page, offset])
         holdings = cursor.fetchall()
         
         # Convert RealDictRow objects to regular dictionaries for Jinja2 template compatibility
@@ -1052,21 +1060,128 @@ async def api_market_bias_chart(analysis_date: str = Query(None)):
         logging.error(f"Error generating market bias chart: {e}")
         return {"error": str(e)}
 
+@app.get("/api/gainers")
+async def api_gainers():
+    """API endpoint to get top 15 gainers from last trading day"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cursor.execute("""
+            select "Curr".scrip_id, 
+                   100*("Curr".price_close - "Prev".price_close)/"Prev".price_close "Gain",
+                   "Curr".price_close as current_price,
+                   "Prev".price_close as previous_price
+            from my_schema.master_scrips ms,
+            (
+                select SCRIP_ID, PRICE_CLOSE from my_schema.rt_intraday_price rip 
+                where PRICE_DATE = (select mAX(PRICE_DATE) from my_schema.rt_intraday_price rip2 where country = 'IN' 
+                                    and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH'))
+                and country = 'IN'
+                and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+            ) "Curr",
+            (
+                select SCRIP_ID, PRICE_CLOSE from my_schema.rt_intraday_price rip 
+                where PRICE_DATE = (select DATE(mAX(PRICE_DATE))::text from my_schema.rt_intraday_price rip2 
+                                    where price_date < (select max(price_date) from my_schema.rt_intraday_price rip5 
+                                                        where country = 'IN' 
+                                                        and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')) )
+                and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+                and country = 'IN'
+            ) "Prev"
+            where "Curr".scrip_id = "Prev".scrip_id
+            and "Curr".scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH') 
+            and "Curr".scrip_id = ms.scrip_id
+            and ms.scrip_country = 'IN'
+            order by 100*("Curr".price_close - "Prev".price_close)/"Prev".price_close desc
+            limit 15
+        """)
+        
+        gainers = cursor.fetchall()
+        gainers_list = []
+        for row in gainers:
+            gainers_list.append({
+                "scrip_id": row['scrip_id'],
+                "gain": float(row['Gain']) if row['Gain'] else 0.0,
+                "current_price": float(row['current_price']) if row['current_price'] else 0.0,
+                "previous_price": float(row['previous_price']) if row['previous_price'] else 0.0
+            })
+        
+        conn.close()
+        return {"gainers": gainers_list}
+    except Exception as e:
+        logging.error(f"Error fetching gainers: {e}")
+        return {"error": str(e), "gainers": []}
+
+@app.get("/api/losers")
+async def api_losers():
+    """API endpoint to get top 15 losers from last trading day"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cursor.execute("""
+            select "Curr".scrip_id, 
+                   100*("Curr".price_close - "Prev".price_close)/"Prev".price_close "Gain",
+                   "Curr".price_close as current_price,
+                   "Prev".price_close as previous_price
+            from my_schema.master_scrips ms,
+            (
+                select SCRIP_ID, PRICE_CLOSE from my_schema.rt_intraday_price rip 
+                where PRICE_DATE = (select mAX(PRICE_DATE) from my_schema.rt_intraday_price rip2 where country = 'IN' 
+                                    and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH'))
+                and country = 'IN'
+                and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+            ) "Curr",
+            (
+                select SCRIP_ID, PRICE_CLOSE from my_schema.rt_intraday_price rip 
+                where PRICE_DATE = (select DATE(mAX(PRICE_DATE))::text from my_schema.rt_intraday_price rip2 
+                                    where price_date < (select max(price_date) from my_schema.rt_intraday_price rip5 
+                                                        where country = 'IN' 
+                                                        and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')) )
+                and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+                and country = 'IN'
+            ) "Prev"
+            where "Curr".scrip_id = "Prev".scrip_id
+            and "Curr".scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH') 
+            and "Curr".scrip_id = ms.scrip_id
+            and ms.scrip_country = 'IN'
+            order by 100*("Prev".price_close - "Curr".price_close)/"Prev".price_close desc
+            limit 15
+        """)
+        
+        losers = cursor.fetchall()
+        losers_list = []
+        for row in losers:
+            losers_list.append({
+                "scrip_id": row['scrip_id'],
+                "gain": float(row['Gain']) if row['Gain'] else 0.0,
+                "current_price": float(row['current_price']) if row['current_price'] else 0.0,
+                "previous_price": float(row['previous_price']) if row['previous_price'] else 0.0
+            })
+        
+        conn.close()
+        return {"losers": losers_list}
+    except Exception as e:
+        logging.error(f"Error fetching losers: {e}")
+        return {"error": str(e), "losers": []}
+
 @app.get("/api/holdings")
-async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=1), sort_by: str = Query(None), sort_dir: str = Query("asc")):
+async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=1), sort_by: str = Query(None), sort_dir: str = Query("asc"), search: str = Query(None)):
     """API endpoint to get paginated holdings data with sorting and GTT info"""
     try:
-        # Small cache for hot endpoint
-        cache_key = f"holdings:{page}:{per_page}:{sort_by}:{sort_dir}"
-        cached = cache_get_json(cache_key)
-        if cached:
-            return cached
+        # Small cache for hot endpoint (exclude search from cache key for real-time search)
+        if not search:
+            cache_key = f"holdings:{page}:{per_page}:{sort_by}:{sort_dir}"
+            cached = cache_get_json(cache_key)
+            if cached:
+                return cached
         # If sorting by today_pnl, we need to get all holdings, enrich them, sort, then paginate
         if sort_by == 'today_pnl':
             # Get all holdings without pagination
-            holdings_info = get_holdings_data(page=1, per_page=10000, sort_by='trading_symbol', sort_dir='asc')
+            holdings_info = get_holdings_data(page=1, per_page=10000, sort_by='trading_symbol', sort_dir='asc', search=search)
         else:
-            holdings_info = get_holdings_data(page=page, per_page=per_page, sort_by=sort_by, sort_dir=sort_dir)
+            holdings_info = get_holdings_data(page=page, per_page=per_page, sort_by=sort_by, sort_dir=sort_dir, search=search)
         
         # Get all active GTTs for holdings lookup
         from KiteGTT import KiteGTTManager
