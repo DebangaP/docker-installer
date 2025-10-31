@@ -27,6 +27,10 @@ To be noted that this is not a Production grade app.
 **Todays' Positions**
 **<img width="930" height="180" alt="image" src="https://github.com/user-attachments/assets/f187eca5-32f2-400d-b5c1-cbf4f65d3c77" />
 
+**TPO-based Derivative Suggestions**
+<img width="1327" height="956" alt="image" src="https://github.com/user-attachments/assets/f0e9350f-979a-46b4-b159-d7218601a8be" />
+
+
 **Latest Trades**
 **<img width="952" height="187" alt="image" src="https://github.com/user-attachments/assets/be7a4b30-3045-4ed5-b907-3d0a006f88a8" />
 
