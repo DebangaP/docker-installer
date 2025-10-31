@@ -1060,6 +1060,42 @@ async def api_market_bias_chart(analysis_date: str = Query(None)):
         logging.error(f"Error generating market bias chart: {e}")
         return {"error": str(e)}
 
+@app.get("/api/premarket_analysis")
+async def api_premarket_analysis(analysis_date: str = Query(None)):
+    """API endpoint to get comprehensive pre-market TPO analysis"""
+    try:
+        from PremarketAnalyzer import PremarketAnalyzer
+        from CalculateTPO import PostgresDataFetcher
+        
+        DB_CONFIG = {
+            'host': 'postgres',
+            'database': 'mydb',
+            'user': 'postgres',
+            'password': 'postgres',
+            'port': 5432
+        }
+        
+        db_fetcher = PostgresDataFetcher(**DB_CONFIG)
+        premarket_analyzer = PremarketAnalyzer(db_fetcher, instrument_token=256265, tick_size=5.0)
+        
+        # Determine analysis date
+        if analysis_date:
+            target_date = analysis_date
+        elif ANALYSIS_DATE:
+            target_date = ANALYSIS_DATE
+        else:
+            target_date = datetime.now().strftime("%Y-%m-%d")
+        
+        # Generate comprehensive pre-market analysis
+        analysis = premarket_analyzer.generate_comprehensive_premarket_analysis(target_date)
+        
+        return analysis
+    except Exception as e:
+        logging.error(f"Error generating pre-market analysis: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/gainers")
 async def api_gainers():
     """API endpoint to get top 15 gainers from last trading day"""
@@ -3030,6 +3066,95 @@ async def api_derivatives_history(
         import traceback
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
+
+@app.get("/api/options_scanner")
+async def api_options_scanner(
+    expiry: str = Query(None, description="Expiry date in YYYY-MM-DD format"),
+    strike_range_min: float = Query(None, description="Minimum strike price"),
+    strike_range_max: float = Query(None, description="Maximum strike price"),
+    option_type: str = Query(None, description="Option type: CE or PE"),
+    strategy_type: str = Query("covered_call", description="Strategy type: covered_call, cash_secured_put, iron_condor, strangle, straddle, vertical_spread"),
+    min_iv_rank: float = Query(50.0, description="Minimum IV Rank (0-100)"),
+    max_iv_rank: float = Query(100.0, description="Maximum IV Rank (0-100)"),
+    min_liquidity_score: float = Query(0.5, description="Minimum liquidity score (0-1)"),
+    min_volume: int = Query(0, description="Minimum daily volume"),
+    min_oi: int = Query(0, description="Minimum open interest"),
+    max_days_to_expiry: int = Query(60, description="Maximum days to expiry"),
+    min_days_to_expiry: int = Query(7, description="Minimum days to expiry"),
+    min_delta: float = Query(None, description="Minimum delta"),
+    max_delta: float = Query(None, description="Maximum delta"),
+    limit: int = Query(50, description="Maximum number of results to return")
+):
+    """API endpoint for advanced options chain scanning with Greeks and IV Rank"""
+    try:
+        from OptionsScanner import OptionsScanner
+        from datetime import datetime, date
+        
+        scanner = OptionsScanner()
+        
+        # Parse expiry date
+        expiry_date = None
+        if expiry:
+            try:
+                expiry_date = datetime.strptime(expiry, '%Y-%m-%d').date()
+            except:
+                pass
+        
+        # Get strike range
+        strike_range = None
+        if strike_range_min is not None and strike_range_max is not None:
+            strike_range = (strike_range_min, strike_range_max)
+        
+        # Scan options chain
+        candidates = scanner.scan_options_chain(
+            expiry=expiry_date,
+            strike_range=strike_range,
+            option_type=option_type,
+            strategy_type=strategy_type,
+            min_iv_rank=min_iv_rank,
+            max_iv_rank=max_iv_rank,
+            min_liquidity_score=min_liquidity_score,
+            min_volume=min_volume,
+            min_oi=min_oi,
+            max_days_to_expiry=max_days_to_expiry,
+            min_days_to_expiry=min_days_to_expiry,
+            min_delta=min_delta,
+            max_delta=max_delta,
+            current_spot=None  # Auto-fetch
+        )
+        
+        # Limit results to top 5 for display
+        candidates = candidates[:5] if candidates else []
+        
+        return {
+            "success": True,
+            "candidates": candidates,
+            "total_candidates": len(candidates),
+            "filters_applied": {
+                "expiry": expiry,
+                "strike_range": strike_range,
+                "option_type": option_type,
+                "strategy_type": strategy_type,
+                "min_iv_rank": min_iv_rank,
+                "max_iv_rank": max_iv_rank,
+                "min_liquidity_score": min_liquidity_score,
+                "min_volume": min_volume,
+                "min_oi": min_oi,
+                "max_days_to_expiry": max_days_to_expiry,
+                "min_days_to_expiry": min_days_to_expiry,
+                "min_delta": min_delta,
+                "max_delta": max_delta
+            }
+        }
+    except Exception as e:
+        logging.error(f"Error scanning options chain: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "candidates": []
+        }
 
 @app.get("/api/options_chain")
 async def api_options_chain(

@@ -426,6 +426,9 @@
             <button class="tab-button" onclick="switchTab('holdings')">
                 💼 Holdings
             </button>
+            <button class="tab-button" onclick="switchTab('gainers-losers')">
+                📈 Gainers/Losers
+            </button>
         </div>
     </div>
 
@@ -500,6 +503,93 @@
             </div>
         </div>
 
+        <!-- Pre-market TPO Analysis Section -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header" style="background-color: #007bff; color: white;">
+                <h3 class="card-title" style="color: white;">🌅 Pre-Market TPO Analysis (9:05 AM - 9:15 AM)</h3>
+                <button onclick="loadPremarketAnalysis()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #007bff; border: none; margin-left: 10px;">
+                    🔄 Refresh Analysis
+                </button>
+            </div>
+            <div id="premarketAnalysisContainer" style="padding: 15px;">
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    Click "Refresh Analysis" to load pre-market TPO analysis
+                </div>
+            </div>
+        </div>
+
+        <!-- Options Chain Scanner Section -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header" style="padding: 15px 25px; background-color: #6f42c1; color: white;">
+                <h3 class="card-title" style="font-size: 16px; color: white;">🔍 Options Chain Scanner</h3>
+                <button onclick="loadOptionsScanner()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #6f42c1; border: none; margin-left: 10px;">
+                    🔄 Scan Options
+                </button>
+            </div>
+            <div style="padding: 15px; background-color: #f8f9fa; border-bottom: 1px solid #ddd;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Strategy Type:</label>
+                        <select id="scannerStrategyType" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                            <option value="covered_call">Covered Call</option>
+                            <option value="cash_secured_put">Cash-Secured Put</option>
+                            <option value="iron_condor">Iron Condor</option>
+                            <option value="strangle">Strangle</option>
+                            <option value="straddle">Straddle</option>
+                            <option value="vertical_spread">Vertical Spread</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Expiry:</label>
+                        <input type="date" id="scannerExpiry" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Option Type:</label>
+                        <select id="scannerOptionType" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                            <option value="">All</option>
+                            <option value="CE">Call (CE)</option>
+                            <option value="PE">Put (PE)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Min IV Rank:</label>
+                        <input type="number" id="scannerMinIVRank" value="50" min="0" max="100" step="1" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Max Days to Expiry:</label>
+                        <input type="number" id="scannerMaxDays" value="60" min="1" max="365" step="1" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Min Liquidity Score:</label>
+                        <input type="number" id="scannerMinLiquidity" value="0.5" min="0" max="1" step="0.1" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Min Volume:</label>
+                        <input type="number" id="scannerMinVolume" value="0" min="0" step="100" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Min OI:</label>
+                        <input type="number" id="scannerMinOI" value="0" min="0" step="1000" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Min Strike:</label>
+                        <input type="number" id="scannerMinStrike" step="50" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Max Strike:</label>
+                        <input type="number" id="scannerMaxStrike" step="50" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                    </div>
+                </div>
+            </div>
+            <div id="optionsScannerContainer" style="padding: 15px;">
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    Configure filters above and click "Scan Options" to find candidates
+                </div>
+            </div>
+        </div>
+
         <!-- TPO-Based Derivatives Suggestions Section -->
         <div class="card" style="margin-bottom: 20px;">
             <div class="card-header" style="padding: 15px 25px;">
@@ -570,61 +660,65 @@
             </div>
         </div>
 
-        <!-- Gainers and Losers Section -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-            <!-- Top Gainers -->
-            <div class="card">
-                <div class="card-header" style="justify-content: space-between; background-color: #28a745; color: white;">
-                    <h3 class="card-title" style="color: white;">📈 Top 15 Gainers (Last Trading Day)</h3>
-                </div>
-                <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                        <thead>
-                            <tr style="background-color: #f8f9fa;">
-                                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Rank</th>
-                                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Symbol</th>
-                                <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Previous Price</th>
-                                <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Current Price</th>
-                                <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Change %</th>
-                            </tr>
-                        </thead>
-                        <tbody id="gainersTableBody">
-                            <tr>
-                                <td colspan="5" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Top Losers -->
-            <div class="card">
-                <div class="card-header" style="justify-content: space-between; background-color: #dc3545; color: white;">
-                    <h3 class="card-title" style="color: white;">📉 Top 15 Losers (Last Trading Day)</h3>
-                </div>
-                <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                        <thead>
-                            <tr style="background-color: #f8f9fa;">
-                                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Rank</th>
-                                <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Symbol</th>
-                                <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Previous Price</th>
-                                <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Current Price</th>
-                                <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Change %</th>
-                            </tr>
-                        </thead>
-                        <tbody id="losersTableBody">
-                            <tr>
-                                <td colspan="5" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
         </div>
         <!-- End Live Market Tab Content -->
+
+        <!-- Gainers/Losers Tab Content -->
+        <div id="gainers-losers-tab" class="tab-content">
+            <!-- Gainers and Losers Section -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                <!-- Top Gainers -->
+                <div class="card">
+                    <div class="card-header" style="justify-content: space-between; background-color: #28a745; color: white;">
+                        <h3 class="card-title" style="color: white;">📈 Top 15 Gainers (Last Trading Day)</h3>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                            <thead>
+                                <tr style="background-color: #f8f9fa;">
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Rank</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Symbol</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Previous Price</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Current Price</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Change %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="gainersTableBody">
+                                <tr>
+                                    <td colspan="5" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Top Losers -->
+                <div class="card">
+                    <div class="card-header" style="justify-content: space-between; background-color: #dc3545; color: white;">
+                        <h3 class="card-title" style="color: white;">📉 Top 15 Losers (Last Trading Day)</h3>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                            <thead>
+                                <tr style="background-color: #f8f9fa;">
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Rank</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Symbol</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Previous Price</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Current Price</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Change %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="losersTableBody">
+                                <tr>
+                                    <td colspan="5" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- End Gainers/Losers Tab Content -->
 
         <!-- Holdings Tab Content -->
         <div id="holdings-tab" class="tab-content">
@@ -1208,6 +1302,246 @@
             });
             
             tbody.innerHTML = html;
+        }
+        
+        // Load pre-market analysis
+        function loadPremarketAnalysis() {
+            const analysisDate = document.getElementById('analysisDate').value || null;
+            let url = '/api/premarket_analysis';
+            if (analysisDate) {
+                url += `?analysis_date=${analysisDate}`;
+            }
+            
+            document.getElementById('premarketAnalysisContainer').innerHTML = 
+                '<div style="text-align: center; padding: 20px; color: #666;">Loading pre-market analysis...</div>';
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        console.error('Error loading pre-market analysis:', data.error || 'Unknown error');
+                        document.getElementById('premarketAnalysisContainer').innerHTML = 
+                            `<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading pre-market analysis: ${data.error || 'No data available'}</div>`;
+                        return;
+                    }
+                    
+                    updatePremarketAnalysisDisplay(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching pre-market analysis:', error);
+                    document.getElementById('premarketAnalysisContainer').innerHTML = 
+                        '<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading pre-market analysis</div>';
+                });
+        }
+        
+        // Update pre-market analysis display
+        function updatePremarketAnalysisDisplay(data) {
+            const container = document.getElementById('premarketAnalysisContainer');
+            
+            if (!data.success || !data.premarket_tpo) {
+                container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">No pre-market data available</div>';
+                return;
+            }
+            
+            const pm = data.premarket_tpo || {};
+            const prior = data.prior_day_structure || {};
+            const overnight = data.overnight_data || {};
+            const gap = data.gap_analysis || {};
+            const zones = data.key_zones || {};
+            const bias = data.market_bias || {};
+            const context = data.directional_context || {};
+            const auction = data.auction_structure || {};
+            
+            let html = '';
+            
+            // Summary Section
+            html += `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; opacity: 0.9; margin-bottom: 5px;">Opening Bias</div>
+                        <div style="font-size: 20px; font-weight: bold;">${context.opening_bias || 'Neutral'}</div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; opacity: 0.9; margin-bottom: 5px;">Gap Type</div>
+                        <div style="font-size: 18px; font-weight: bold;">${gap.gap_type || 'No Gap'}</div>
+                        ${gap.gap_size ? `<div style="font-size: 11px; opacity: 0.9; margin-top: 5px;">${gap.gap_size.toFixed(2)} (${gap.gap_percentage.toFixed(2)}%)</div>` : ''}
+                    </div>
+                    <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; opacity: 0.9; margin-bottom: 5px;">Market Bias</div>
+                        <div style="font-size: 18px; font-weight: bold;">${bias.bias_direction || 'Neutral'}</div>
+                        <div style="font-size: 11px; opacity: 0.9; margin-top: 5px;">${bias.bias_strength || 'Weak'}</div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; opacity: 0.9; margin-bottom: 5px;">Inventory Position</div>
+                        <div style="font-size: 16px; font-weight: bold;">${gap.inventory_position || 'Neutral'}</div>
+                    </div>
+                </div>
+            `;
+            
+            // Pre-market TPO Metrics
+            html += `
+                <div style="margin-bottom: 20px;">
+                    <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">📊 Pre-Market TPO Metrics</h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 3px solid #dc3545;">
+                            <div style="font-size: 11px; color: #666; margin-bottom: 3px;">POC</div>
+                            <div style="font-size: 14px; font-weight: bold;">${pm.poc ? pm.poc.toFixed(2) : 'N/A'}</div>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 3px solid #28a745;">
+                            <div style="font-size: 11px; color: #666; margin-bottom: 3px;">VAH</div>
+                            <div style="font-size: 14px; font-weight: bold;">${pm.value_area_high ? pm.value_area_high.toFixed(2) : 'N/A'}</div>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 3px solid #dc3545;">
+                            <div style="font-size: 11px; color: #666; margin-bottom: 3px;">VAL</div>
+                            <div style="font-size: 14px; font-weight: bold;">${pm.value_area_low ? pm.value_area_low.toFixed(2) : 'N/A'}</div>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 3px solid #ffc107;">
+                            <div style="font-size: 11px; color: #666; margin-bottom: 3px;">IBH</div>
+                            <div style="font-size: 14px; font-weight: bold;">${pm.initial_balance_high ? pm.initial_balance_high.toFixed(2) : 'N/A'}</div>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 3px solid #ffc107;">
+                            <div style="font-size: 11px; color: #666; margin-bottom: 3px;">IBL</div>
+                            <div style="font-size: 14px; font-weight: bold;">${pm.initial_balance_low ? pm.initial_balance_low.toFixed(2) : 'N/A'}</div>
+                        </div>
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 3px solid #6c757d;">
+                            <div style="font-size: 11px; color: #666; margin-bottom: 3px;">VA Range</div>
+                            <div style="font-size: 14px; font-weight: bold;">${pm.session_range ? pm.session_range.toFixed(2) : 'N/A'}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Prior Day Comparison
+            if (prior.poc || prior.vah || prior.val) {
+                html += `
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">📅 Prior Day Comparison</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                            ${prior.poc ? `<div style="background: #f8f9fa; padding: 10px; border-radius: 5px;"><div style="font-size: 11px; color: #666;">Prior POC</div><div style="font-size: 14px; font-weight: bold;">${prior.poc.toFixed(2)}</div></div>` : ''}
+                            ${prior.vah ? `<div style="background: #f8f9fa; padding: 10px; border-radius: 5px;"><div style="font-size: 11px; color: #666;">Prior VAH</div><div style="font-size: 14px; font-weight: bold;">${prior.vah.toFixed(2)}</div></div>` : ''}
+                            ${prior.val ? `<div style="background: #f8f9fa; padding: 10px; border-radius: 5px;"><div style="font-size: 11px; color: #666;">Prior VAL</div><div style="font-size: 14px; font-weight: bold;">${prior.val.toFixed(2)}</div></div>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Overnight Data
+            if (overnight.overnight_high || overnight.overnight_low) {
+                html += `
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">🌙 Overnight Data</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                            ${overnight.overnight_high ? `<div style="background: #fff3cd; padding: 10px; border-radius: 5px; border-left: 3px solid #ffc107;"><div style="font-size: 11px; color: #666;">Overnight High</div><div style="font-size: 14px; font-weight: bold;">${overnight.overnight_high.toFixed(2)}</div></div>` : ''}
+                            ${overnight.overnight_low ? `<div style="background: #fff3cd; padding: 10px; border-radius: 5px; border-left: 3px solid #ffc107;"><div style="font-size: 11px; color: #666;">Overnight Low</div><div style="font-size: 14px; font-weight: bold;">${overnight.overnight_low.toFixed(2)}</div></div>` : ''}
+                            ${gap.gap_description ? `<div style="background: #d1ecf1; padding: 10px; border-radius: 5px; grid-column: 1/-1;"><div style="font-size: 11px; color: #666;">Gap Analysis</div><div style="font-size: 12px; font-weight: bold; margin-top: 5px;">${gap.gap_description}</div></div>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Key Zones (Support/Resistance)
+            if ((zones.support_levels && zones.support_levels.length > 0) || 
+                (zones.resistance_levels && zones.resistance_levels.length > 0) ||
+                (zones.pivot_levels && zones.pivot_levels.length > 0)) {
+                html += `
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">🎯 Key Zones (Support/Resistance)</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+                            <div>
+                                <div style="font-size: 12px; font-weight: 600; color: #dc3545; margin-bottom: 8px;">Support Levels</div>
+                                ${zones.support_levels && zones.support_levels.length > 0 ? 
+                                    zones.support_levels.map(level => `
+                                        <div style="background: #f8d7da; padding: 8px; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid #dc3545;">
+                                            <div style="font-size: 13px; font-weight: bold;">₹${level.price.toFixed(2)}</div>
+                                            <div style="font-size: 10px; color: #666;">${level.type} - ${level.description}</div>
+                                        </div>
+                                    `).join('') : 
+                                    '<div style="color: #999; font-size: 11px;">None identified</div>'
+                                }
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; font-weight: 600; color: #28a745; margin-bottom: 8px;">Resistance Levels</div>
+                                ${zones.resistance_levels && zones.resistance_levels.length > 0 ? 
+                                    zones.resistance_levels.map(level => `
+                                        <div style="background: #d4edda; padding: 8px; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid #28a745;">
+                                            <div style="font-size: 13px; font-weight: bold;">₹${level.price.toFixed(2)}</div>
+                                            <div style="font-size: 10px; color: #666;">${level.type} - ${level.description}</div>
+                                        </div>
+                                    `).join('') : 
+                                    '<div style="color: #999; font-size: 11px;">None identified</div>'
+                                }
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; font-weight: 600; color: #007bff; margin-bottom: 8px;">Pivot Levels</div>
+                                ${zones.pivot_levels && zones.pivot_levels.length > 0 ? 
+                                    zones.pivot_levels.map(level => `
+                                        <div style="background: #d1ecf1; padding: 8px; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid #007bff;">
+                                            <div style="font-size: 13px; font-weight: bold;">₹${level.price.toFixed(2)}</div>
+                                            <div style="font-size: 10px; color: #666;">${level.type} - ${level.description}</div>
+                                        </div>
+                                    `).join('') : 
+                                    '<div style="color: #999; font-size: 11px;">None identified</div>'
+                                }
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Opening Expectations & Risk Factors
+            if ((context.opening_expectations && context.opening_expectations.length > 0) ||
+                (context.risk_factors && context.risk_factors.length > 0) ||
+                (context.key_levels_to_watch && context.key_levels_to_watch.length > 0)) {
+                html += `
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">📋 Directional Context</h4>
+                        ${context.opening_expectations && context.opening_expectations.length > 0 ? `
+                            <div style="margin-bottom: 10px;">
+                                <div style="font-size: 12px; font-weight: 600; margin-bottom: 5px;">Opening Expectations:</div>
+                                <ul style="margin: 0; padding-left: 20px; font-size: 12px;">
+                                    ${context.opening_expectations.map(exp => `<li style="margin-bottom: 3px;">${exp}</li>`).join('')}
+                                </ul>
+                            </div>
+                        ` : ''}
+                        ${context.risk_factors && context.risk_factors.length > 0 ? `
+                            <div style="margin-bottom: 10px;">
+                                <div style="font-size: 12px; font-weight: 600; color: #dc3545; margin-bottom: 5px;">Risk Factors:</div>
+                                <ul style="margin: 0; padding-left: 20px; font-size: 12px; color: #dc3545;">
+                                    ${context.risk_factors.map(risk => `<li style="margin-bottom: 3px;">${risk}</li>`).join('')}
+                                </ul>
+                            </div>
+                        ` : ''}
+                        ${context.key_levels_to_watch && context.key_levels_to_watch.length > 0 ? `
+                            <div>
+                                <div style="font-size: 12px; font-weight: 600; margin-bottom: 5px;">Key Levels to Watch:</div>
+                                <ul style="margin: 0; padding-left: 20px; font-size: 12px;">
+                                    ${context.key_levels_to_watch.map(level => `
+                                        <li style="margin-bottom: 3px;">
+                                            <strong>₹${level.level.toFixed(2)}</strong> (${level.type}) - ${level.significance}
+                                        </li>
+                                    `).join('')}
+                                </ul>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+            
+            // Auction Structure
+            if (auction.poc_strength || auction.balance_quality) {
+                html += `
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">⚖️ Auction Structure Basis</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                            ${auction.value_area_range ? `<div style="background: #f8f9fa; padding: 10px; border-radius: 5px;"><div style="font-size: 11px; color: #666;">VA Range</div><div style="font-size: 14px; font-weight: bold;">${auction.value_area_range.toFixed(2)}</div></div>` : ''}
+                            ${auction.poc_strength ? `<div style="background: #f8f9fa; padding: 10px; border-radius: 5px;"><div style="font-size: 11px; color: #666;">POC Strength</div><div style="font-size: 14px; font-weight: bold;">${auction.poc_strength}</div></div>` : ''}
+                            ${auction.balance_quality ? `<div style="background: #f8f9fa; padding: 10px; border-radius: 5px;"><div style="font-size: 11px; color: #666;">Balance Quality</div><div style="font-size: 14px; font-weight: bold;">${auction.balance_quality}</div></div>` : ''}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = html;
         }
         
         // Update market bias display
@@ -1851,6 +2185,186 @@
         }
         
         // Load Derivatives Suggestions
+        // Load Options Scanner
+        function loadOptionsScanner() {
+            const container = document.getElementById('optionsScannerContainer');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Scanning options chain...</div>';
+            
+            // Get filter values
+            const strategyType = document.getElementById('scannerStrategyType').value;
+            const expiry = document.getElementById('scannerExpiry').value;
+            const optionType = document.getElementById('scannerOptionType').value;
+            const minIVRank = parseFloat(document.getElementById('scannerMinIVRank').value) || 50;
+            const maxDays = parseInt(document.getElementById('scannerMaxDays').value) || 60;
+            const minLiquidity = parseFloat(document.getElementById('scannerMinLiquidity').value) || 0.5;
+            const minVolume = parseInt(document.getElementById('scannerMinVolume').value) || 0;
+            const minOI = parseInt(document.getElementById('scannerMinOI').value) || 0;
+            const minStrike = document.getElementById('scannerMinStrike').value ? parseFloat(document.getElementById('scannerMinStrike').value) : null;
+            const maxStrike = document.getElementById('scannerMaxStrike').value ? parseFloat(document.getElementById('scannerMaxStrike').value) : null;
+            
+            // Build query string
+            let url = `/api/options_scanner?strategy_type=${encodeURIComponent(strategyType)}`;
+            url += `&min_iv_rank=${minIVRank}&max_iv_rank=100`;
+            url += `&max_days_to_expiry=${maxDays}&min_days_to_expiry=7`;
+            url += `&min_liquidity_score=${minLiquidity}`;
+            url += `&min_volume=${minVolume}&min_oi=${minOI}`;
+            
+            if (expiry) url += `&expiry=${encodeURIComponent(expiry)}`;
+            if (optionType) url += `&option_type=${encodeURIComponent(optionType)}`;
+            if (minStrike !== null && maxStrike !== null) {
+                url += `&strike_range_min=${minStrike}&strike_range_max=${maxStrike}`;
+            }
+            
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Options scanner response:', data); // Debug log
+                    
+                    if (data.error || !data.success) {
+                        console.error('Error loading options scanner:', data.error || 'Unknown error');
+                        container.innerHTML = 
+                            `<div style="text-align: center; padding: 20px; color: #dc3545;">
+                                <strong>Error:</strong> ${data.error || 'No data available'}<br>
+                                <small>Check console for details</small>
+                            </div>`;
+                        return;
+                    }
+                    
+                    if (!data.candidates || data.candidates.length === 0) {
+                        console.log('No candidates returned from scanner');
+                        container.innerHTML = 
+                            `<div style="text-align: center; padding: 20px; color: #666;">
+                                No options found matching the criteria.<br>
+                                <small>Try adjusting filters (e.g., lower IV Rank threshold, increase max days to expiry)</small>
+                            </div>`;
+                        return;
+                    }
+                    
+                    displayOptionsScannerResults(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching options scanner:', error);
+                    container.innerHTML = 
+                        `<div style="text-align: center; padding: 20px; color: #dc3545;">
+                            <strong>Error loading options scanner</strong><br>
+                            <small>${error.message || 'Unknown error'}</small><br>
+                            Check browser console for details.
+                        </div>`;
+                });
+        }
+        
+        // Display Options Scanner Results
+        function displayOptionsScannerResults(data) {
+            console.log('Displaying scanner results:', data); // Debug log
+            const container = document.getElementById('optionsScannerContainer');
+            const candidates = data.candidates || [];
+            
+            if (!candidates || candidates.length === 0) {
+                container.innerHTML = 
+                    '<div style="text-align: center; padding: 20px; color: #666;">No candidates found matching the criteria</div>';
+                return;
+            }
+            
+            console.log(`Found ${candidates.length} candidates to display`);
+            
+            // Limit to top 5 candidates
+            const top5Candidates = candidates.slice(0, 5);
+            const totalFound = candidates.length;
+            const displayCount = top5Candidates.length;
+            
+            let html = `
+                <div style="margin-bottom: 15px; padding: 10px; background-color: #e7f3ff; border-radius: 5px;">
+                    <strong>Top ${displayCount} Options</strong> (showing latest ${displayCount} out of ${totalFound} total candidates) sorted by overall score
+                </div>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                        <thead>
+                            <tr style="background-color: #6f42c1; color: white;">
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: left; font-size: 11px;">Symbol</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 11px;">Type</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Strike</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Price</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">IV (%)</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">IV Rank</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Delta</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Gamma</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Theta</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Vega</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Rho</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Liquidity</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Score</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 11px;">Days</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 11px;">Moneyness</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            top5Candidates.forEach((candidate, index) => {
+                const ivRank = candidate.iv_rank !== null ? candidate.iv_rank.toFixed(1) : 'N/A';
+                const ivRankColor = candidate.iv_rank !== null ? 
+                    (candidate.iv_rank >= 70 ? '#28a745' : candidate.iv_rank >= 50 ? '#ffc107' : '#dc3545') : '#6c757d';
+                const scoreColor = candidate.overall_score >= 80 ? '#28a745' : candidate.overall_score >= 60 ? '#ffc107' : '#dc3545';
+                const ivPercentage = candidate.implied_volatility !== undefined ? candidate.implied_volatility.toFixed(2) : 'N/A';
+                const moneyness = candidate.moneyness || 'N/A';
+                const moneynessColor = moneyness === 'ITM' ? '#28a745' : moneyness === 'ATM' ? '#ffc107' : '#6c757d';
+                
+                html += `
+                    <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : '#f8f9fa'};">
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; font-weight: 600; font-size: 10px;">${candidate.tradingsymbol || 'N/A'}</td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: center;">
+                            <span style="padding: 2px 6px; border-radius: 3px; background-color: ${candidate.option_type === 'CE' ? '#d4edda' : '#f8d7da'}; color: ${candidate.option_type === 'CE' ? '#155724' : '#721c24'}; font-weight: 600; font-size: 10px;">
+                                ${candidate.option_type}
+                            </span>
+                        </td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 10px;">₹${candidate.strike_price.toFixed(2)}</td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 10px;">₹${candidate.last_price.toFixed(2)}</td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 10px; font-weight: 600;">${ivPercentage}%</td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; color: ${ivRankColor}; font-weight: 600; font-size: 10px;">${ivRank}%</td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 10px;">${candidate.delta !== undefined ? candidate.delta.toFixed(3) : 'N/A'}</td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 10px;">${candidate.gamma !== undefined ? candidate.gamma.toFixed(4) : 'N/A'}</td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; color: ${candidate.theta !== undefined && candidate.theta > 0 ? '#28a745' : '#dc3545'}; font-size: 10px;">
+                            ${candidate.theta !== undefined ? `₹${candidate.theta.toFixed(4)}/d` : 'N/A'}
+                        </td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 10px;">${candidate.vega !== undefined ? candidate.vega.toFixed(4) : 'N/A'}</td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 10px;">${candidate.rho !== undefined ? candidate.rho.toFixed(4) : 'N/A'}</td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 10px;">
+                            <span style="color: ${candidate.liquidity_score >= 0.7 ? '#28a745' : candidate.liquidity_score >= 0.5 ? '#ffc107' : '#dc3545'};">
+                                ${candidate.liquidity_score !== undefined ? candidate.liquidity_score.toFixed(2) : 'N/A'}
+                            </span>
+                        </td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; color: ${scoreColor}; font-weight: 600; font-size: 10px;">
+                            ${candidate.overall_score !== undefined ? candidate.overall_score.toFixed(1) : 'N/A'}
+                        </td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-size: 10px;">${candidate.days_to_expiry}</td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: center;">
+                            <span style="padding: 2px 6px; border-radius: 3px; background-color: ${moneynessColor === '#28a745' ? '#d4edda' : moneynessColor === '#ffc107' ? '#fff3cd' : '#e2e3e5'}; color: ${moneynessColor}; font-weight: 600; font-size: 9px;">
+                                ${moneyness}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+                ${totalFound > 5 ? `
+                    <div style="margin-top: 10px; padding: 10px; background-color: #fff3cd; border-radius: 5px; font-size: 11px; color: #856404;">
+                        <strong>Note:</strong> Showing top 5 options out of ${totalFound} total candidates. Results are sorted by overall score.
+                    </div>
+                ` : ''}
+            `;
+            
+            container.innerHTML = html;
+        }
+        
         function loadDerivativesSuggestions() {
             const container = document.getElementById('derivativesSuggestionsContainer');
             container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading suggestions...</div>';
@@ -2598,6 +3112,7 @@
             loadFuturesOrderFlow();
             loadPositions();
             loadGainersLosers();
+            loadPremarketAnalysis(); // Load pre-market analysis on page load
             {% if show_holdings %}
             loadMFHoldings();
             loadPnlSummary();
@@ -2626,8 +3141,10 @@
             if (selectedTab) {
                 selectedTab.classList.add('active');
                 
-                // Load Holdings tab data when switching to it
-                if (tabName === 'holdings') {
+                // Load tab-specific data when switching
+                if (tabName === 'gainers-losers') {
+                    loadGainersLosers();
+                } else if (tabName === 'holdings') {
                     {% if show_holdings %}
                     // Load P&L, Portfolio chart, and Portfolio Hedge Analysis when Holdings tab is shown
                     loadPnlSummary();

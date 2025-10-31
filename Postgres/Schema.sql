@@ -456,6 +456,23 @@ CREATE INDEX IF NOT EXISTS idx_options_ticks_timestamp ON my_schema.options_tick
 CREATE INDEX IF NOT EXISTS idx_options_ticks_run_date ON my_schema.options_ticks(run_date);
 CREATE INDEX IF NOT EXISTS idx_options_ticks_expiry_strike_type ON my_schema.options_ticks(expiry, strike_price, option_type);
 
+-- IV History Table for IV Rank calculation
+CREATE TABLE IF NOT EXISTS my_schema.iv_history (
+    instrument_token BIGINT NOT NULL,
+    strike_price DOUBLE PRECISION NOT NULL,
+    option_type VARCHAR(2) CHECK (option_type IN ('CE', 'PE')) NOT NULL,
+    expiry DATE NOT NULL,
+    iv DOUBLE PRECISION NOT NULL,
+    price_date DATE NOT NULL,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (instrument_token, strike_price, option_type, expiry, price_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_iv_history_instrument_token ON my_schema.iv_history(instrument_token);
+CREATE INDEX IF NOT EXISTS idx_iv_history_expiry ON my_schema.iv_history(expiry);
+CREATE INDEX IF NOT EXISTS idx_iv_history_price_date ON my_schema.iv_history(price_date DESC);
+CREATE INDEX IF NOT EXISTS idx_iv_history_strike_type_expiry ON my_schema.iv_history(strike_price, option_type, expiry);
+
 -- Indexes for options_tick_depth table
 CREATE INDEX IF NOT EXISTS idx_options_tick_depth_tick_id ON my_schema.options_tick_depth(tick_id);
 
