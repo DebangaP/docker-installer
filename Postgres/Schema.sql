@@ -101,6 +101,41 @@ CREATE TABLE IF NOT EXISTS my_schema.profile (
     CONSTRAINT profile_key UNIQUE (user_id)
 );
 
+-- Derivative suggestions history (persist strategy suggestions for audit and analysis)
+CREATE TABLE IF NOT EXISTS my_schema.derivative_suggestions (
+    id SERIAL PRIMARY KEY,
+    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    analysis_date DATE,
+    source VARCHAR(20) DEFAULT 'TPO',
+    strategy_type VARCHAR(40),
+    strategy_name VARCHAR(80),
+    instrument VARCHAR(100),
+    instrument_token BIGINT,
+    direction VARCHAR(10),
+    quantity INT,
+    lot_size INT,
+    entry_price DOUBLE PRECISION,
+    strike_price DOUBLE PRECISION,
+    expiry DATE,
+    total_premium DOUBLE PRECISION,
+    total_premium_income DOUBLE PRECISION,
+    margin_required DOUBLE PRECISION,
+    hedge_value DOUBLE PRECISION,
+    coverage_percentage DOUBLE PRECISION,
+    portfolio_value DOUBLE PRECISION,
+    beta DOUBLE PRECISION,
+    rationale TEXT,
+    tpo_context JSONB,
+    diagnostics JSONB,
+    potential_profit DOUBLE PRECISION,
+    max_potential_profit DOUBLE PRECISION,
+    run_date DATE DEFAULT CURRENT_DATE
+);
+
+CREATE INDEX IF NOT EXISTS idx_deriv_sugg_generated_at ON my_schema.derivative_suggestions(generated_at);
+CREATE INDEX IF NOT EXISTS idx_deriv_sugg_strategy ON my_schema.derivative_suggestions(strategy_type);
+CREATE INDEX IF NOT EXISTS idx_deriv_sugg_instrument ON my_schema.derivative_suggestions(instrument);
+
 CREATE TABLE my_schema.orders (
     order_id VARCHAR(50) NOT NULL, -- Adjust length based on actual data
     parent_order_id VARCHAR(50),   -- Nullable, as it can be None

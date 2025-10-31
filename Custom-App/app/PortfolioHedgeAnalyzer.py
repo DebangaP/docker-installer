@@ -6,6 +6,7 @@ Calculates portfolio Beta, correlation with indices, and suggests hedging strate
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, date
+import json
 from typing import Dict, List, Optional
 import logging
 from Boilerplate import get_db_connection
@@ -984,6 +985,12 @@ class PortfolioHedgeAnalyzer:
             if diagnostic_message:
                 result['diagnostic_message'] = diagnostic_message
             
+            # Persist suggestions history
+            try:
+                self._save_suggestions_history(all_suggestions, diagnostics, analysis_date=datetime.now().strftime('%Y-%m-%d'))
+            except Exception as e:
+                logging.error(f"Failed to persist suggestions history: {e}")
+
             return result
             
         except Exception as e:
@@ -1082,4 +1089,72 @@ class PortfolioHedgeAnalyzer:
                 'var_99': 0.0,
                 'error': str(e)
             }
+
+    def _save_suggestions_history(self, suggestions: List[Dict], diagnostics: Dict, analysis_date: Optional[str] = None) -> None:
+        """Persist generated derivative suggestions to database for history/audit."""
+        try:
+            if not suggestions:
+                return
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            rows = []
+            for s in suggestions:
+                expiry_val = s.get('expiry')
+                if isinstance(expiry_val, str):
+                    try:
+                        expiry_dt = datetime.strptime(expiry_val, '%Y-%m-%d').date()
+                    except Exception:
+                        expiry_dt = None
+                elif isinstance(expiry_val, date):
+                    expiry_dt = expiry_val
+                else:
+                    expiry_dt = None
+
+                rows.append((
+                    (datetime.now().date() if analysis_date is None else (datetime.strptime(analysis_date, '%Y-%m-%d').date() if isinstance(analysis_date, str) else analysis_date)),
+                    'TPO',
+                    s.get('strategy_type'),
+                    s.get('strategy_name') or s.get('strategy_type'),
+                    s.get('instrument'),
+                    s.get('instrument_token'),
+                    s.get('direction'),
+                    s.get('quantity'),
+                    s.get('lot_size'),
+                    s.get('entry_price'),
+                    s.get('strike_price'),
+                    expiry_dt,
+                    s.get('total_premium'),
+                    s.get('total_premium_income'),
+                    s.get('margin_required') or s.get('estimated_margin'),
+                    s.get('hedge_value'),
+                    s.get('coverage_percentage'),
+                    float(diagnostics.get('portfolio_value') or 0.0),
+                    float(diagnostics.get('beta') or 0.0),
+                    s.get('rationale'),
+                    json.dumps(s.get('tpo_levels_used') or {}),
+                    json.dumps(diagnostics or {})
+                ))
+
+            if rows:
+                cursor.executemany(
+                    """
+                    INSERT INTO my_schema.derivative_suggestions (
+                        analysis_date, source, strategy_type, strategy_name, instrument, instrument_token,
+                        direction, quantity, lot_size, entry_price, strike_price, expiry, total_premium,
+                        total_premium_income, margin_required, hedge_value, coverage_percentage,
+                        portfolio_value, beta, rationale, tpo_context, diagnostics
+                    ) VALUES (
+                        %s,%s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,
+                        %s,%s,%s,%s,%s
+                    )
+                    """,
+                    rows
+                )
+                conn.commit()
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            logging.error(f"Error saving derivative suggestions history: {e}")
 

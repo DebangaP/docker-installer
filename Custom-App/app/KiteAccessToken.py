@@ -2,12 +2,13 @@ from Boilerplate import *
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi import Request
+from fastapi import Request, Query
 from fastapi.responses import StreamingResponse, FileResponse
 import os
 from datetime import datetime, timedelta
 import json
 import io
+import psycopg2
 import pandas as pd
 import numpy as np
 try:
@@ -2781,6 +2782,38 @@ async def api_portfolio_hedge_analysis(
         
         # Get hedge suggestions with strategy filtering
         hedge_suggestions = analyzer.suggest_hedge(target_hedge_ratio=target_hedge_ratio, strategy_type=strategy_type)
+
+        # Ensure diagnostics are always included, even if missing
+        if 'diagnostics' not in hedge_suggestions:
+            logging.warning("hedge_suggestions missing diagnostics, adding default diagnostics")
+            # Get holdings for diagnostics if missing
+            try:
+                holdings = analyzer.get_current_holdings()
+                equity_count = len(holdings[holdings['holding_type'] == 'EQUITY']) if not holdings.empty and 'holding_type' in holdings.columns else 0
+                mf_count = len(holdings[holdings['holding_type'] == 'MF']) if not holdings.empty and 'holding_type' in holdings.columns and 'MF' in holdings['holding_type'].values else 0
+                equity_value = float(holdings[holdings['holding_type'] == 'EQUITY']['current_value'].sum()) if not holdings.empty and 'holding_type' in holdings.columns and 'EQUITY' in holdings['holding_type'].values else 0.0
+                mf_value = float(holdings[holdings['holding_type'] == 'MF']['current_value'].sum()) if not holdings.empty and 'holding_type' in holdings.columns and 'MF' in holdings['holding_type'].values else 0.0
+            except Exception as e:
+                logging.error(f"Failed to compute diagnostics fallback: {e}")
+                equity_count = mf_count = 0
+                equity_value = mf_value = 0.0
+
+            hedge_suggestions['diagnostics'] = {
+                'holdings_count': equity_count + mf_count,
+                'equity_count': equity_count,
+                'mf_count': mf_count,
+                'portfolio_value': float(beta_result.get('portfolio_value', equity_value + mf_value)),
+                'equity_value': float(equity_value),
+                'mf_value': float(mf_value),
+                'beta': float(beta_result.get('beta', 0.0)),
+                'correlation': float(beta_result.get('correlation', 0.0)),
+                'nifty_price': 0.0,
+                'expiries_available': 0,
+                'futures_strategies': 0,
+                'puts_strategies': 0,
+                'calls_strategies': 0,
+                'collars_strategies': 0
+            }
         
         # Ensure diagnostics are always included, even if missing
         if 'diagnostics' not in hedge_suggestions:
@@ -2832,6 +2865,56 @@ async def api_portfolio_hedge_analysis(
             "success": False,
             "error": str(e)
         }
+
+@app.get("/api/derivatives_history")
+async def api_derivatives_history(
+    start: str = Query(None, description="Start date YYYY-MM-DD"),
+    end: str = Query(None, description="End date YYYY-MM-DD"),
+    strategy: str = Query(None, description="Strategy type filter"),
+    instrument: str = Query(None, description="Instrument (tradingsymbol) filter"),
+    limit: int = Query(200, ge=1, le=1000)
+):
+    """Return saved derivative suggestions history with optional filters."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        where_clauses = []
+        params = []
+        if start:
+            where_clauses.append("generated_at::date >= %s")
+            params.append(start)
+        if end:
+            where_clauses.append("generated_at::date <= %s")
+            params.append(end)
+        if strategy:
+            where_clauses.append("strategy_type = %s")
+            params.append(strategy.upper())
+        if instrument:
+            where_clauses.append("instrument = %s")
+            params.append(instrument)
+
+        sql = f"""
+            SELECT id, generated_at, analysis_date, source, strategy_type, strategy_name,
+                   instrument, instrument_token, direction, quantity, lot_size, entry_price,
+                   strike_price, expiry, total_premium, total_premium_income, margin_required,
+                   hedge_value, coverage_percentage, portfolio_value, beta, rationale,
+                   tpo_context, diagnostics
+            FROM my_schema.derivative_suggestions
+            {('WHERE ' + ' AND '.join(where_clauses)) if where_clauses else ''}
+            ORDER BY generated_at DESC
+            LIMIT %s
+        """
+        params.append(limit)
+        cursor.execute(sql, tuple(params))
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return {"success": True, "rows": rows}
+    except Exception as e:
+        logging.error(f"Error fetching derivative suggestions history: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
 
 @app.get("/api/options_chain")
 async def api_options_chain(

@@ -24,4 +24,4 @@ python KiteWS.py &
 # Start Uvicorn server as the main foreground process.
 # This will keep the container running.
 echo "Starting Uvicorn server on 0.0.0.0:8000..."
-uvicorn KiteAccessToken:app --host 0.0.0.0 --port 8000
+uvicorn KiteAccessToken:app --host 0.0.0.0 --port 8000 --reload # reload for Development only

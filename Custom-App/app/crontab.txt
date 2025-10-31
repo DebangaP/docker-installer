@@ -4,20 +4,14 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 4 9 * * * root cd /app && python /app/KiteWS.py &
 16 9 * * * root cd /app && python /app/CalculateTPO.py &
+
 # Refresh holdings every 5 minutes during market hours (9 AM to 3:30 PM, Monday to Friday)
-*/5 9-14 * * 1-5 root cd /app && python /app/RefreshHoldings.py >> /app/logs/holdings_refresh.log 2>&1 &
+*/5 9-16 * * 1-5 root cd /app && python /app/RefreshHoldings.py >> /app/logs/holdings_refresh.log 2>&1 &
 0,5,10,15,20,25,30 15 * * 1-5 root cd /app && python /app/RefreshHoldings.py >> /app/logs/holdings_refresh.log 2>&1 &
+
 # Fetch options data every 5 minutes during market hours (9 AM to 3:30 PM, Monday to Friday)
-*/5 9-14 * * 1-5 root cd /app && python /app/KiteFetchOptions.py >> /app/logs/options_fetch.log 2>&1 &
+*/5 9-16 * * 1-5 root cd /app && python /app/KiteFetchOptions.py >> /app/logs/options_fetch.log 2>&1 &
 0,5,10,15,20,25,30 15 * * 1-5 root cd /app && python /app/KiteFetchOptions.py >> /app/logs/options_fetch.log 2>&1 &
-# Update OHLC price data 3 times during market hours (9:30 AM, 12:00 PM, and 3:30 PM)
-30 9 * * 1-5 root python /app/InsertOHLC.py >> /app/logs/ohlc_update.log 2>&1 &
-0 10 * * 1-5 root python /app/InsertOHLC.py >> /app/logs/ohlc_update.log 2>&1 &
-30 10 * * 1-5 root python /app/InsertOHLC.py >> /app/logs/ohlc_update.log 2>&1 &
-0 11 * * 1-5 root python /app/InsertOHLC.py >> /app/logs/ohlc_update.log 2>&1 &
-30 11 * * 1-5 root python /app/InsertOHLC.py >> /app/logs/ohlc_update.log 2>&1 &
-0 12 * * 1-5 root python /app/InsertOHLC.py >> /app/logs/ohlc_update.log 2>&1 &
-30 12 * * 1-5 root python /app/InsertOHLC.py >> /app/logs/ohlc_update.log 2>&1 &
-0 13 * * 1-5 root python /app/InsertOHLC.py >> /app/logs/ohlc_update.log 2>&1 &
-30 14 * * 1-5 root python /app/InsertOHLC.py >> /app/logs/ohlc_update.log 2>&1 &
-30 15 * * 1-5 root python /app/InsertOHLC.py >> /app/logs/ohlc_update.log 2>&1 &
+
+# Update OHLC price data every 30 minutes during market hours
+*/30 9-16 * * 1-5 root python /app/InsertOHLC.py &
