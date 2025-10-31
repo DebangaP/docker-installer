@@ -13,6 +13,8 @@ from datetime import datetime
 from typing import List, Dict, Optional
 
 
+# add usage to this file -- how to add new table DDLs?  
+
 class DBInit:
     """
     Database initialization and schema update utility

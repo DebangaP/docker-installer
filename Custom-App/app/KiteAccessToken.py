@@ -1472,6 +1472,32 @@ async def api_import_data(
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
 
+@app.post("/api/refresh_stock_prices")
+async def api_refresh_stock_prices():
+    """API endpoint to refresh stock price data from Yahoo Finance"""
+    try:
+        from InsertOHLC import refresh_stock_prices
+        
+        # Get database config from environment or use defaults
+        db_config = {
+            'host': os.getenv('DB_HOST', 'postgres'),
+            'database': os.getenv('DB_NAME', 'mydb'),
+            'user': os.getenv('DB_USER', 'postgres'),
+            'password': os.getenv('DB_PASSWORD', 'postgres'),
+            'port': int(os.getenv('DB_PORT', 5432))
+        }
+        
+        # Call the refresh function
+        result = refresh_stock_prices(db_config)
+        
+        return result
+        
+    except Exception as e:
+        logging.error(f"Error refreshing stock prices: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/scanner_with_confirmation")
 async def api_scanner_with_confirmation(
     strategy_type: str = Query("covered_call", description="Strategy type"),
