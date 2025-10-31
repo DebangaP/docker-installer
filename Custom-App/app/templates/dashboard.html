@@ -429,6 +429,9 @@
             <button class="tab-button" onclick="switchTab('gainers-losers')">
                 📈 Gainers/Losers
             </button>
+            <button class="tab-button" onclick="switchTab('utilities')">
+                🔧 Utilities
+            </button>
         </div>
     </div>
 
@@ -514,6 +517,51 @@
             <div id="premarketAnalysisContainer" style="padding: 15px;">
                 <div style="text-align: center; padding: 20px; color: #666;">
                     Click "Refresh Analysis" to load pre-market TPO analysis
+                </div>
+            </div>
+        </div>
+
+        <!-- Order Flow Analysis Section -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header" style="background-color: #17a2b8; color: white;">
+                <h3 class="card-title" style="color: white;">🌊 Order Flow Analysis</h3>
+                <button onclick="loadOrderFlowAnalysis()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #17a2b8; border: none; margin-left: 10px;">
+                    🔄 Refresh Analysis
+                </button>
+            </div>
+            <div id="orderFlowAnalysisContainer" style="padding: 15px;">
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    Click "Refresh Analysis" to load order flow analysis
+                </div>
+            </div>
+        </div>
+
+        <!-- Footprint Analysis Section -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header" style="background-color: #28a745; color: white;">
+                <h3 class="card-title" style="color: white;">📊 Footprint Analysis</h3>
+                <button onclick="loadFootprintAnalysis()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #28a745; border: none; margin-left: 10px;">
+                    🔄 Refresh Analysis
+                </button>
+            </div>
+            <div id="footprintAnalysisContainer" style="padding: 15px;">
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    Click "Refresh Analysis" to load footprint analysis
+                </div>
+            </div>
+        </div>
+
+        <!-- Critical Micro Levels Section -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header" style="background-color: #ffc107; color: #333;">
+                <h3 class="card-title" style="color: #333;">🎯 Critical Micro Levels</h3>
+                <button onclick="loadMicroLevels()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #333; color: #ffc107; border: none; margin-left: 10px;">
+                    🔄 Refresh Levels
+                </button>
+            </div>
+            <div id="microLevelsContainer" style="padding: 15px;">
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    Click "Refresh Levels" to identify critical support/resistance levels
                 </div>
             </div>
         </div>
@@ -719,6 +767,128 @@
             </div>
         </div>
         <!-- End Gainers/Losers Tab Content -->
+
+        <!-- Utilities Tab Content -->
+        <div id="utilities-tab" class="tab-content">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                <!-- Export Data Section -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-header" style="background-color: #28a745; color: white;">
+                        <h3 class="card-title" style="color: white;">📤 Export Data</h3>
+                    </div>
+                    <div style="padding: 15px;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Type of Data (Table Name):</label>
+                            <select id="exportTableName" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                <option value="">-- Select Table --</option>
+                                <option value="ticks">ticks</option>
+                                <option value="futures_ticks">futures_ticks</option>
+                                <option value="options_ticks">options_ticks</option>
+                                <option value="holdings">holdings</option>
+                                <option value="mf_holdings">mf_holdings</option>
+                                <option value="positions">positions</option>
+                                <option value="orders">orders</option>
+                                <option value="trades">trades</option>
+                                <option value="market_structure">market_structure</option>
+                                <option value="rt_intraday_price">rt_intraday_price</option>
+                                <option value="iv_history">iv_history</option>
+                                <option value="market_depth">market_depth</option>
+                                <option value="futures_tick_depth">futures_tick_depth</option>
+                            </select>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                            <div>
+                                <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">From Date:</label>
+                                <input type="date" id="exportFromDate" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                            </div>
+                            <div>
+                                <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">To Date:</label>
+                                <input type="date" id="exportToDate" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Columns (Leave empty for all columns):</label>
+                            <input type="text" id="exportColumns" placeholder="e.g., id,instrument_token,last_price (comma-separated)" 
+                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                            <small style="color: #666; font-size: 11px;">Optional: Specify columns to export, separated by commas</small>
+                        </div>
+                        
+                        <div style="margin-bottom: 10px;">
+                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Export Format:</label>
+                            <select id="exportFormat" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                <option value="csv">CSV</option>
+                                <option value="excel">Excel (XLSX)</option>
+                                <option value="json">JSON</option>
+                            </select>
+                        </div>
+                        
+                        <button onclick="exportData()" class="btn" style="width: 100%; padding: 10px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                            📥 Export Data
+                        </button>
+                        
+                        <div id="exportStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                    </div>
+                </div>
+                
+                <!-- Import Data Section -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-header" style="background-color: #007bff; color: white;">
+                        <h3 class="card-title" style="color: white;">📥 Import Data</h3>
+                    </div>
+                    <div style="padding: 15px;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Type of Data (Table Name):</label>
+                            <select id="importTableName" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                <option value="">-- Select Table --</option>
+                                <option value="ticks">ticks</option>
+                                <option value="futures_ticks">futures_ticks</option>
+                                <option value="options_ticks">options_ticks</option>
+                                <option value="holdings">holdings</option>
+                                <option value="mf_holdings">mf_holdings</option>
+                                <option value="positions">positions</option>
+                                <option value="orders">orders</option>
+                                <option value="trades">trades</option>
+                                <option value="market_structure">market_structure</option>
+                                <option value="rt_intraday_price">rt_intraday_price</option>
+                                <option value="iv_history">iv_history</option>
+                                <option value="market_depth">market_depth</option>
+                                <option value="futures_tick_depth">futures_tick_depth</option>
+                            </select>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">CSV File:</label>
+                            <input type="file" id="importCsvFile" accept=".csv" 
+                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                            <small style="color: #666; font-size: 11px;">Select a CSV file to import. On conflict, new data will be skipped (not updated).</small>
+                        </div>
+                        
+                        <div style="margin-bottom: 10px; padding: 10px; background-color: #fff3cd; border-radius: 4px; border-left: 3px solid #ffc107;">
+                            <div style="font-size: 11px; font-weight: 600; color: #856404; margin-bottom: 5px;">⚠️ Import Behavior:</div>
+                            <div style="font-size: 10px; color: #856404;">
+                                • On conflict (duplicate rows), new data will be <strong>skipped</strong> (not updated)<br>
+                                • CSV header row must match table column names<br>
+                                • Data types must match table schema
+                            </div>
+                        </div>
+                        
+                        <button onclick="importData()" class="btn" style="width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                            📤 Import Data
+                        </button>
+                        
+                        <div id="importStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                        
+                        <div id="importPreview" style="margin-top: 15px; display: none;">
+                            <div style="font-size: 12px; font-weight: 600; margin-bottom: 5px;">Preview (first 5 rows):</div>
+                            <div id="importPreviewContent" style="max-height: 200px; overflow-y: auto; font-size: 11px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- End Utilities Tab Content -->
 
         <!-- Holdings Tab Content -->
         <div id="holdings-tab" class="tab-content">
@@ -1320,8 +1490,19 @@
                 .then(data => {
                     if (data.error || !data.success) {
                         console.error('Error loading pre-market analysis:', data.error || 'Unknown error');
-                        document.getElementById('premarketAnalysisContainer').innerHTML = 
-                            `<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading pre-market analysis: ${data.error || 'No data available'}</div>`;
+                        let html = `<div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; border-left: 3px solid #ffc107; margin-bottom: 15px;">
+                            <div style="font-size: 12px; font-weight: 600; color: #856404; margin-bottom: 10px;">⚠️ Missing Data</div>
+                            <ul style="margin: 0; padding-left: 20px; font-size: 11px; color: #856404;">
+                        `;
+                        if (data.missing_data && data.missing_data.length > 0) {
+                            data.missing_data.forEach(item => {
+                                html += `<li style="margin-bottom: 3px;">${item}</li>`;
+                            });
+                        } else {
+                            html += `<li style="margin-bottom: 3px;">${data.error || 'No data available'}</li>`;
+                        }
+                        html += `</ul></div>`;
+                        document.getElementById('premarketAnalysisContainer').innerHTML = html;
                         return;
                     }
                     
@@ -3106,6 +3287,556 @@
             }
         });
         
+        // Load Order Flow Analysis
+        function loadOrderFlowAnalysis() {
+            const container = document.getElementById('orderFlowAnalysisContainer');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading order flow analysis...</div>';
+            
+            const analysisDate = document.getElementById('analysisDate').value || null;
+            let url = '/api/orderflow_analysis?start_time=09:15:00&end_time=15:30:00';
+            if (analysisDate) {
+                url += `&analysis_date=${analysisDate}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'No data available'}</div>`;
+                        return;
+                    }
+                    displayOrderFlowAnalysis(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching order flow analysis:', error);
+                    container.innerHTML = '<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading order flow analysis</div>';
+                });
+        }
+        
+        // Display Order Flow Analysis
+        function displayOrderFlowAnalysis(data) {
+            const container = document.getElementById('orderFlowAnalysisContainer');
+            
+            // Show missing data if applicable
+            if (data.error || !data.success) {
+                let html = `<div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; border-left: 3px solid #ffc107; margin-bottom: 15px;">
+                    <div style="font-size: 12px; font-weight: 600; color: #856404; margin-bottom: 10px;">⚠️ Missing Data</div>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 11px; color: #856404;">
+                `;
+                if (data.missing_data && data.missing_data.length > 0) {
+                    data.missing_data.forEach(item => {
+                        html += `<li style="margin-bottom: 3px;">${item}</li>`;
+                    });
+                } else {
+                    html += `<li style="margin-bottom: 3px;">${data.error || 'No data available'}</li>`;
+                }
+                html += `</ul></div>`;
+                container.innerHTML = html;
+                return;
+            }
+            
+            const trapped = data.trapped_traders || {};
+            const divergences = data.volume_divergences || {};
+            const exhaustion = data.exhaustion_signals || {};
+            const pressure = data.pressure_analysis || {};
+            const sentiment = data.overall_sentiment || {};
+            
+            let html = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; opacity: 0.9; margin-bottom: 5px;">Overall Sentiment</div>
+                        <div style="font-size: 20px; font-weight: bold;">${sentiment.sentiment || 'Neutral'}</div>
+                        <div style="font-size: 11px; opacity: 0.9; margin-top: 5px;">Score: ${sentiment.sentiment_score || 0}</div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; opacity: 0.9; margin-bottom: 5px;">Buy/Sell Pressure</div>
+                        <div style="font-size: 18px; font-weight: bold;">${pressure.pressure_direction || 'Neutral'}</div>
+                        <div style="font-size: 11px; opacity: 0.9; margin-top: 5px;">Score: ${pressure.pressure_score || 0}%</div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; opacity: 0.9; margin-bottom: 5px;">Trapped Traders</div>
+                        <div style="font-size: 18px; font-weight: bold;">${trapped.count || 0}</div>
+                        <div style="font-size: 11px; opacity: 0.9; margin-top: 5px;">Buyers: ${trapped.trapped_buyers_count || 0} | Sellers: ${trapped.trapped_sellers_count || 0}</div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 15px; border-radius: 8px;">
+                        <div style="font-size: 12px; opacity: 0.9; margin-bottom: 5px;">Volume Divergences</div>
+                        <div style="font-size: 18px; font-weight: bold;">${divergences.count || 0}</div>
+                        <div style="font-size: 11px; opacity: 0.9; margin-top: 5px;">Bullish: ${divergences.bullish_divergences || 0} | Bearish: ${divergences.bearish_divergences || 0}</div>
+                    </div>
+                </div>
+            `;
+            
+            // Trapped Traders Details
+            if (trapped.trapped_buyers && trapped.trapped_buyers.length > 0 || trapped.trapped_sellers && trapped.trapped_sellers.length > 0) {
+                html += `
+                    <div style="margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">⚠️ Trapped Traders</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <div style="font-size: 12px; font-weight: 600; color: #dc3545; margin-bottom: 8px;">Trapped Buyers (${trapped.trapped_buyers_count || 0})</div>
+                                ${trapped.trapped_buyers && trapped.trapped_buyers.length > 0 ? 
+                                    trapped.trapped_buyers.slice(0, 3).map(t => `
+                                        <div style="background: #f8d7da; padding: 8px; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid #dc3545;">
+                                            <div style="font-size: 11px; font-weight: bold;">₹${t.price.toFixed(2)}</div>
+                                            <div style="font-size: 10px; color: #666;">Sell Vol: ${t.sell_volume} | ${t.severity}</div>
+                                        </div>
+                                    `).join('') : 
+                                    '<div style="color: #999; font-size: 11px;">None detected</div>'
+                                }
+                            </div>
+                            <div>
+                                <div style="font-size: 12px; font-weight: 600; color: #28a745; margin-bottom: 8px;">Trapped Sellers (${trapped.trapped_sellers_count || 0})</div>
+                                ${trapped.trapped_sellers && trapped.trapped_sellers.length > 0 ? 
+                                    trapped.trapped_sellers.slice(0, 3).map(t => `
+                                        <div style="background: #d4edda; padding: 8px; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid #28a745;">
+                                            <div style="font-size: 11px; font-weight: bold;">₹${t.price.toFixed(2)}</div>
+                                            <div style="font-size: 10px; color: #666;">Buy Vol: ${t.buy_volume} | ${t.severity}</div>
+                                        </div>
+                                    `).join('') : 
+                                    '<div style="color: #999; font-size: 11px;">None detected</div>'
+                                }
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Exhaustion Signals
+            if (exhaustion.exhaustion_events && exhaustion.exhaustion_events.length > 0) {
+                html += `
+                    <div style="margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">⚡ Exhaustion Signals (${exhaustion.count || 0})</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                            ${exhaustion.exhaustion_events.slice(0, 5).map(e => `
+                                <div style="background: ${e.type === 'bullish_exhaustion' ? '#fff3cd' : '#d1ecf1'}; padding: 10px; border-radius: 5px; border-left: 3px solid ${e.type === 'bullish_exhaustion' ? '#ffc107' : '#17a2b8'};">
+                                    <div style="font-size: 11px; font-weight: 600;">${e.type === 'bullish_exhaustion' ? '🔴 Bullish Exhaustion' : '🟢 Bearish Exhaustion'}</div>
+                                    <div style="font-size: 12px; font-weight: bold; margin-top: 5px;">₹${e.price.toFixed(2)}</div>
+                                    <div style="font-size: 10px; color: #666; margin-top: 3px;">Volume: ${e.volume_multiple}x avg</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Sentiment Signals
+            if (sentiment.signals && sentiment.signals.length > 0) {
+                html += `
+                    <div style="background: #e7f3ff; padding: 10px; border-radius: 5px; margin-top: 15px;">
+                        <div style="font-size: 12px; font-weight: 600; margin-bottom: 5px;">Key Signals:</div>
+                        <ul style="margin: 0; padding-left: 20px; font-size: 11px;">
+                            ${sentiment.signals.map(signal => `<li style="margin-bottom: 3px;">${signal}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        // Load Footprint Analysis
+        function loadFootprintAnalysis() {
+            const container = document.getElementById('footprintAnalysisContainer');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading footprint analysis...</div>';
+            
+            const analysisDate = document.getElementById('analysisDate').value || null;
+            let url = '/api/footprint_analysis?start_time=09:15:00&end_time=15:30:00';
+            if (analysisDate) {
+                url += `&analysis_date=${analysisDate}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'No data available'}</div>`;
+                        return;
+                    }
+                    displayFootprintAnalysis(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching footprint analysis:', error);
+                    container.innerHTML = '<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading footprint analysis</div>';
+                });
+        }
+        
+        // Display Footprint Analysis
+        function displayFootprintAnalysis(data) {
+            const container = document.getElementById('footprintAnalysisContainer');
+            
+            // Show missing data if applicable
+            if (data.error || !data.success) {
+                let html = `<div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; border-left: 3px solid #ffc107; margin-bottom: 15px;">
+                    <div style="font-size: 12px; font-weight: 600; color: #856404; margin-bottom: 10px;">⚠️ Missing Data</div>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 11px; color: #856404;">
+                `;
+                if (data.missing_data && data.missing_data.length > 0) {
+                    data.missing_data.forEach(item => {
+                        html += `<li style="margin-bottom: 3px;">${item}</li>`;
+                    });
+                } else {
+                    html += `<li style="margin-bottom: 3px;">${data.error || 'No data available'}</li>`;
+                }
+                html += `</ul></div>`;
+                container.innerHTML = html;
+                return;
+            }
+            
+            const levels = data.footprint_levels || [];
+            const imbalances = data.imbalances || {};
+            const hvn_lvn = data.hvn_lvn || {};
+            const delta = data.delta || {};
+            const priceRange = data.price_range || {};
+            
+            let html = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px;">
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 3px solid #28a745;">
+                        <div style="font-size: 11px; color: #666; margin-bottom: 3px;">Total Volume</div>
+                        <div style="font-size: 14px; font-weight: bold;">${(data.total_volume || 0).toLocaleString()}</div>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 3px solid #007bff;">
+                        <div style="font-size: 11px; color: #666; margin-bottom: 3px;">Net Buy Volume</div>
+                        <div style="font-size: 14px; font-weight: bold; color: ${data.net_buy_volume > 0 ? '#28a745' : '#dc3545'};">
+                            ${(data.net_buy_volume || 0).toLocaleString()}
+                        </div>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 3px solid #ffc107;">
+                        <div style="font-size: 11px; color: #666; margin-bottom: 3px;">Delta Trend</div>
+                        <div style="font-size: 14px; font-weight: bold;">${delta.delta_trend || 'Neutral'}</div>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 3px solid #6c757d;">
+                        <div style="font-size: 11px; color: #666; margin-bottom: 3px;">Imbalance Zones</div>
+                        <div style="font-size: 14px; font-weight: bold;">${imbalances.total_imbalance_zones || 0}</div>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 3px solid #17a2b8;">
+                        <div style="font-size: 11px; color: #666; margin-bottom: 3px;">HVN Count</div>
+                        <div style="font-size: 14px; font-weight: bold;">${hvn_lvn.hvn_count || 0}</div>
+                    </div>
+                </div>
+            `;
+            
+            // Top Volume Imbalances
+            if (imbalances.imbalances && imbalances.imbalances.length > 0) {
+                html += `
+                    <div style="margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">⚖️ Volume Imbalances (Top 5)</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                            ${imbalances.imbalances.slice(0, 5).map(imb => `
+                                <div style="background: ${imb.type === 'buy_imbalance' ? '#d4edda' : '#f8d7da'}; padding: 10px; border-radius: 5px; border-left: 3px solid ${imb.type === 'buy_imbalance' ? '#28a745' : '#dc3545'};">
+                                    <div style="font-size: 11px; font-weight: 600;">₹${imb.price.toFixed(2)}</div>
+                                    <div style="font-size: 10px; color: #666; margin-top: 3px;">
+                                        ${imb.type === 'buy_imbalance' ? 'Buy' : 'Sell'} Imbalance: ${imb.imbalance_ratio}%<br>
+                                        Strength: ${imb.strength}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // HVN/LVN Levels
+            if (hvn_lvn.hvn && hvn_lvn.hvn.length > 0) {
+                html += `
+                    <div style="margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">📍 High Volume Nodes (HVN) - Potential S/R</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                            ${hvn_lvn.hvn.slice(0, 5).map(hvn => `
+                                <div style="background: #fff3cd; padding: 10px; border-radius: 5px; border-left: 3px solid #ffc107;">
+                                    <div style="font-size: 11px; font-weight: 600;">₹${hvn.price.toFixed(2)}</div>
+                                    <div style="font-size: 10px; color: #666; margin-top: 3px;">Vol: ${hvn.volume.toLocaleString()}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        // Load Micro Levels
+        function loadMicroLevels() {
+            const container = document.getElementById('microLevelsContainer');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading critical micro levels...</div>';
+            
+            const analysisDate = document.getElementById('analysisDate').value || null;
+            let url = '/api/micro_levels?start_time=09:15:00&end_time=15:30:00';
+            if (analysisDate) {
+                url += `&analysis_date=${analysisDate}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'No data available'}</div>`;
+                        return;
+                    }
+                    displayMicroLevels(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching micro levels:', error);
+                    container.innerHTML = '<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading micro levels</div>';
+                });
+        }
+        
+        // Display Micro Levels
+        function displayMicroLevels(data) {
+            const container = document.getElementById('microLevelsContainer');
+            
+            // Show missing data if applicable
+            if (data.error || !data.success) {
+                let html = `<div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; border-left: 3px solid #ffc107; margin-bottom: 15px;">
+                    <div style="font-size: 12px; font-weight: 600; color: #856404; margin-bottom: 10px;">⚠️ Missing Data</div>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 11px; color: #856404;">
+                `;
+                if (data.missing_data && data.missing_data.length > 0) {
+                    data.missing_data.forEach(item => {
+                        html += `<li style="margin-bottom: 3px;">${item}</li>`;
+                    });
+                } else {
+                    html += `<li style="margin-bottom: 3px;">${data.error || data.message || 'No data available'}</li>`;
+                }
+                html += `</ul></div>`;
+                container.innerHTML = html;
+                return;
+            }
+            
+            const currentPrice = data.current_price || 0;
+            const support = data.support_levels || [];
+            const resistance = data.resistance_levels || [];
+            const pivots = data.pivot_levels || [];
+            const allLevels = data.all_critical_levels || [];
+            
+            let html = `
+                <div style="margin-bottom: 15px; padding: 10px; background-color: #e7f3ff; border-radius: 5px;">
+                    <strong>Current Price: ₹${currentPrice.toFixed(2)}</strong>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <div style="font-size: 12px; font-weight: 600; color: #dc3545; margin-bottom: 8px;">Support Levels (${support.length})</div>
+                        ${support.length > 0 ? 
+                            support.map(level => `
+                                <div style="background: #f8d7da; padding: 8px; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid #dc3545;">
+                                    <div style="font-size: 13px; font-weight: bold;">₹${level.price.toFixed(2)}</div>
+                                    <div style="font-size: 10px; color: #666;">
+                                        Strength: ${level.strength} | Distance: ${level.distance_from_current}%<br>
+                                        ${level.is_hvn ? '⭐ HVN' : ''}
+                                    </div>
+                                </div>
+                            `).join('') : 
+                            '<div style="color: #999; font-size: 11px;">None identified</div>'
+                        }
+                    </div>
+                    <div>
+                        <div style="font-size: 12px; font-weight: 600; color: #28a745; margin-bottom: 8px;">Resistance Levels (${resistance.length})</div>
+                        ${resistance.length > 0 ? 
+                            resistance.map(level => `
+                                <div style="background: #d4edda; padding: 8px; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid #28a745;">
+                                    <div style="font-size: 13px; font-weight: bold;">₹${level.price.toFixed(2)}</div>
+                                    <div style="font-size: 10px; color: #666;">
+                                        Strength: ${level.strength} | Distance: ${level.distance_from_current}%<br>
+                                        ${level.is_hvn ? '⭐ HVN' : ''}
+                                    </div>
+                                </div>
+                            `).join('') : 
+                            '<div style="color: #999; font-size: 11px;">None identified</div>'
+                        }
+                    </div>
+                    <div>
+                        <div style="font-size: 12px; font-weight: 600; color: #007bff; margin-bottom: 8px;">Pivot Points (${pivots.length})</div>
+                        ${pivots.length > 0 ? 
+                            pivots.map(level => `
+                                <div style="background: #d1ecf1; padding: 8px; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid #007bff;">
+                                    <div style="font-size: 13px; font-weight: bold;">₹${level.price.toFixed(2)}</div>
+                                    <div style="font-size: 10px; color: #666;">
+                                        Strength: ${level.strength} | Distance: ${level.distance_from_current}%
+                                    </div>
+                                </div>
+                            `).join('') : 
+                            '<div style="color: #999; font-size: 11px;">None identified</div>'
+                        }
+                    </div>
+                </div>
+            `;
+            
+            // Top Critical Levels
+            if (allLevels.length > 0) {
+                html += `
+                    <div style="margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">🎯 Top Critical Levels (by Significance)</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                            ${allLevels.slice(0, 5).map(level => `
+                                <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 3px solid ${level.type === 'support' ? '#dc3545' : level.type === 'resistance' ? '#28a745' : '#007bff'};">
+                                    <div style="font-size: 12px; font-weight: 600;">₹${level.price.toFixed(2)}</div>
+                                    <div style="font-size: 10px; color: #666; margin-top: 3px;">
+                                        Type: ${level.type} | Score: ${level.significance_score || 0}/100
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        // Export Data Function
+        function exportData() {
+            const tableName = document.getElementById('exportTableName').value;
+            const fromDate = document.getElementById('exportFromDate').value;
+            const toDate = document.getElementById('exportToDate').value;
+            const columns = document.getElementById('exportColumns').value.trim();
+            const format = document.getElementById('exportFormat').value;
+            const statusDiv = document.getElementById('exportStatus');
+            
+            if (!tableName) {
+                statusDiv.innerHTML = '<span style="color: #dc3545;">Please select a table name</span>';
+                return;
+            }
+            
+            statusDiv.innerHTML = '<span style="color: #666;">Preparing export...</span>';
+            
+            // Create form data
+            const formData = new FormData();
+            formData.append('table_name', tableName);
+            if (fromDate) formData.append('from_date', fromDate);
+            if (toDate) formData.append('to_date', toDate);
+            if (columns) formData.append('columns', columns);
+            formData.append('export_format', format);
+            
+            // Submit form to export endpoint
+            fetch('/api/export_data', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Export failed');
+                    });
+                }
+                
+                // Get filename from Content-Disposition header
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = `${tableName}_${fromDate || 'all'}_${toDate || 'all'}.${format === 'excel' ? 'xlsx' : format === 'json' ? 'json' : 'csv'}`;
+                if (contentDisposition) {
+                    const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+                    if (filenameMatch) {
+                        filename = filenameMatch[1];
+                    }
+                }
+                
+                // Download file
+                return response.blob().then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    statusDiv.innerHTML = '<span style="color: #28a745;">✓ Export completed successfully!</span>';
+                });
+            })
+            .catch(error => {
+                console.error('Error exporting data:', error);
+                statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message || 'Export failed'}</span>`;
+            });
+        }
+        
+        // Import Data Function
+        function importData() {
+            const tableName = document.getElementById('importTableName').value;
+            const fileInput = document.getElementById('importCsvFile');
+            const file = fileInput.files[0];
+            const statusDiv = document.getElementById('importStatus');
+            
+            if (!tableName) {
+                statusDiv.innerHTML = '<span style="color: #dc3545;">Please select a table name</span>';
+                return;
+            }
+            
+            if (!file) {
+                statusDiv.innerHTML = '<span style="color: #dc3545;">Please select a CSV file</span>';
+                return;
+            }
+            
+            // Validate file type
+            if (!file.name.toLowerCase().endsWith('.csv')) {
+                statusDiv.innerHTML = '<span style="color: #dc3545;">Please select a CSV file</span>';
+                return;
+            }
+            
+            statusDiv.innerHTML = '<span style="color: #666;">Importing data...</span>';
+            
+            // Create form data
+            const formData = new FormData();
+            formData.append('table_name', tableName);
+            formData.append('file', file);
+            
+            // Submit form to import endpoint
+            fetch('/api/import_data', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error || !data.success) {
+                    statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${data.error || 'Import failed'}</span>`;
+                    return;
+                }
+                
+                statusDiv.innerHTML = `
+                    <div style="color: #28a745;">
+                        <strong>✓ Import completed!</strong><br>
+                        <small>Total rows: ${data.total_rows || 0} | Inserted: ${data.rows_inserted || 0} | Skipped: ${data.rows_skipped || 0}</small>
+                    </div>
+                `;
+            })
+            .catch(error => {
+                console.error('Error importing data:', error);
+                statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message || 'Import failed'}</span>`;
+            });
+        }
+        
+        // Preview CSV file before import
+        document.getElementById('importCsvFile')?.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const previewDiv = document.getElementById('importPreview');
+            const previewContent = document.getElementById('importPreviewContent');
+            
+            if (file && file.name.toLowerCase().endsWith('.csv')) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const csv = event.target.result;
+                    const lines = csv.split('\n').slice(0, 6); // First 5 data rows + header
+                    
+                    let html = '<table style="width: 100%; border-collapse: collapse; font-size: 10px;">';
+                    lines.forEach((line, index) => {
+                        const cells = line.split(',');
+                        html += '<tr>';
+                        cells.forEach(cell => {
+                            const cellContent = cell.trim().substring(0, 20); // Limit length
+                            html += `<td style="padding: 4px; border: 1px solid #ddd; ${index === 0 ? 'font-weight: 600; background-color: #f8f9fa;' : ''}">${cellContent || '&nbsp;'}</td>`;
+                        });
+                        html += '</tr>';
+                    });
+                    html += '</table>';
+                    
+                    previewContent.innerHTML = html;
+                    previewDiv.style.display = 'block';
+                };
+                reader.readAsText(file);
+            } else {
+                previewDiv.style.display = 'none';
+            }
+        });
+        
         // Load initial data
         document.addEventListener('DOMContentLoaded', function() {
             loadMarketBiasAnalysis();
@@ -3113,6 +3844,7 @@
             loadPositions();
             loadGainersLosers();
             loadPremarketAnalysis(); // Load pre-market analysis on page load
+            loadOptionsScanner(); // Load options scanner on page load
             {% if show_holdings %}
             loadMFHoldings();
             loadPnlSummary();
@@ -3155,6 +3887,13 @@
                     // Load portfolio hedge analysis
                     loadPortfolioHedgeAnalysis();
                     {% endif %}
+                } else if (tabName === 'live-market') {
+                    // Load options scanner when Live Market tab is opened
+                    const scannerContainer = document.getElementById('optionsScannerContainer');
+                    if (scannerContainer && (scannerContainer.innerHTML.trim() === '' || 
+                        scannerContainer.innerHTML.includes('Configure filters'))) {
+                        loadOptionsScanner();
+                    }
                 }
             }
             

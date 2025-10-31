@@ -2,7 +2,7 @@ from Boilerplate import *
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi import Request, Query
+from fastapi import Request, Query, Form, File, UploadFile
 from fastapi.responses import StreamingResponse, FileResponse
 import os
 from datetime import datetime, timedelta
@@ -1092,6 +1092,451 @@ async def api_premarket_analysis(analysis_date: str = Query(None)):
         return analysis
     except Exception as e:
         logging.error(f"Error generating pre-market analysis: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/footprint_analysis")
+async def api_footprint_analysis(
+    start_time: str = Query("09:15:00", description="Start time in HH:MM:SS format"),
+    end_time: str = Query("15:30:00", description="End time in HH:MM:SS format"),
+    analysis_date: str = Query(None, description="Analysis date in YYYY-MM-DD format (default: today)"),
+    instrument_token: int = Query(256265, description="Instrument token (default: 256265 for Nifty 50)")
+):
+    """API endpoint for footprint chart analysis"""
+    try:
+        from FootprintChartGenerator import FootprintChartGenerator
+        from datetime import datetime, date
+        
+        footprint_gen = FootprintChartGenerator(instrument_token=instrument_token)
+        
+        # Parse analysis date
+        if analysis_date:
+            try:
+                target_date = datetime.strptime(analysis_date, '%Y-%m-%d').date()
+            except:
+                target_date = date.today()
+        elif ANALYSIS_DATE:
+            target_date = datetime.strptime(ANALYSIS_DATE, '%Y-%m-%d').date()
+        else:
+            target_date = date.today()
+        
+        # Generate footprint data
+        footprint_data = footprint_gen.generate_footprint_data(
+            start_time=start_time,
+            end_time=end_time,
+            analysis_date=target_date
+        )
+        
+        return footprint_data
+    except Exception as e:
+        logging.error(f"Error generating footprint analysis: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/orderflow_analysis")
+async def api_orderflow_analysis(
+    start_time: str = Query("09:15:00", description="Start time in HH:MM:SS format"),
+    end_time: str = Query("15:30:00", description="End time in HH:MM:SS format"),
+    analysis_date: str = Query(None, description="Analysis date in YYYY-MM-DD format (default: today)"),
+    instrument_token: int = Query(256265, description="Instrument token (default: 256265 for Nifty 50)")
+):
+    """API endpoint for order flow analysis"""
+    try:
+        from OrderFlowAnalyzer import OrderFlowAnalyzer
+        from datetime import datetime, date
+        
+        orderflow_analyzer = OrderFlowAnalyzer(instrument_token=instrument_token)
+        
+        # Parse analysis date
+        if analysis_date:
+            try:
+                target_date = datetime.strptime(analysis_date, '%Y-%m-%d').date()
+            except:
+                target_date = date.today()
+        elif ANALYSIS_DATE:
+            target_date = datetime.strptime(ANALYSIS_DATE, '%Y-%m-%d').date()
+        else:
+            target_date = date.today()
+        
+        # Analyze order flow
+        analysis = orderflow_analyzer.analyze_order_flow(
+            start_time=start_time,
+            end_time=end_time,
+            analysis_date=target_date
+        )
+        
+        return analysis
+    except Exception as e:
+        logging.error(f"Error analyzing order flow: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/micro_levels")
+async def api_micro_levels(
+    start_time: str = Query("09:15:00", description="Start time in HH:MM:SS format"),
+    end_time: str = Query("15:30:00", description="End time in HH:MM:SS format"),
+    analysis_date: str = Query(None, description="Analysis date in YYYY-MM-DD format (default: today)"),
+    instrument_token: int = Query(256265, description="Instrument token (default: 256265 for Nifty 50)")
+):
+    """API endpoint for micro level detection"""
+    try:
+        from MicroLevelDetector import MicroLevelDetector
+        from datetime import datetime, date
+        
+        detector = MicroLevelDetector(instrument_token=instrument_token)
+        
+        # Parse analysis date
+        if analysis_date:
+            try:
+                target_date = datetime.strptime(analysis_date, '%Y-%m-%d').date()
+            except:
+                target_date = date.today()
+        elif ANALYSIS_DATE:
+            target_date = datetime.strptime(ANALYSIS_DATE, '%Y-%m-%d').date()
+        else:
+            target_date = date.today()
+        
+        # Detect critical levels
+        levels = detector.detect_critical_levels(
+            start_time=start_time,
+            end_time=end_time,
+            analysis_date=target_date
+        )
+        
+        return levels
+    except Exception as e:
+        logging.error(f"Error detecting micro levels: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/export_data")
+async def api_export_data(
+    table_name: str = Form(...),
+    from_date: str = Form(None),
+    to_date: str = Form(None),
+    columns: str = Form(None),
+    export_format: str = Form("csv")
+):
+    """API endpoint to export data from any table with date range and column filtering"""
+    try:
+        import pandas as pd
+        from datetime import datetime, date
+        from io import BytesIO
+        from fastapi.responses import StreamingResponse
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Validate table name (security: whitelist approach)
+        allowed_tables = [
+            'ticks', 'futures_ticks', 'options_ticks', 'holdings', 'mf_holdings',
+            'positions', 'orders', 'trades', 'market_structure', 'rt_intraday_price',
+            'iv_history', 'market_depth', 'futures_tick_depth', 'raw_ticks', 'bars',
+            'profile', 'instruments'
+        ]
+        
+        if table_name not in allowed_tables:
+            return {"success": False, "error": f"Table '{table_name}' is not allowed for export"}
+        
+        # Build SELECT query
+        if columns and columns.strip():
+            # User specified columns
+            column_list = [col.strip() for col in columns.split(',')]
+            # Sanitize column names (remove any SQL injection attempts)
+            column_list = [col for col in column_list if col.replace('_', '').replace('.', '').isalnum()]
+            if not column_list:
+                column_list = ['*']
+            columns_str = ', '.join(column_list)
+        else:
+            columns_str = '*'
+        
+        # Build WHERE clause for date filtering
+        where_clauses = []
+        params = []
+        
+        # Find date columns in the table
+        date_columns = []
+        if table_name in ['ticks', 'futures_ticks', 'options_ticks']:
+            date_columns = ['run_date', 'timestamp']
+        elif table_name in ['holdings', 'mf_holdings', 'positions', 'orders', 'trades']:
+            date_columns = ['run_date', 'timestamp', 'order_timestamp', 'trade_timestamp']
+        elif table_name in ['market_structure', 'sessions']:
+            date_columns = ['session_date', 'run_date']
+        elif table_name == 'rt_intraday_price':
+            date_columns = ['price_date', 'insert_date']
+        elif table_name == 'iv_history':
+            date_columns = ['price_date']
+        else:
+            date_columns = ['run_date', 'timestamp']
+        
+        # Apply date filters if provided
+        if from_date:
+            try:
+                from_date_obj = datetime.strptime(from_date, '%Y-%m-%d').date()
+                # Try to filter on first available date column
+                if date_columns:
+                    where_clauses.append(f"{date_columns[0]} >= %s")
+                    params.append(from_date_obj)
+            except:
+                pass
+        
+        if to_date:
+            try:
+                to_date_obj = datetime.strptime(to_date, '%Y-%m-%d').date()
+                if date_columns:
+                    where_clauses.append(f"{date_columns[0]} <= %s")
+                    params.append(to_date_obj)
+            except:
+                pass
+        
+        where_clause = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        
+        # Execute query
+        query = f"SELECT {columns_str} FROM my_schema.{table_name}{where_clause}"
+        cursor.execute(query, params)
+        
+        # Get column names
+        column_names = [desc[0] for desc in cursor.description]
+        
+        # Fetch all rows
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows:
+            return {"success": False, "error": "No data found for the specified criteria"}
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(rows, columns=column_names)
+        
+        # Generate file based on format
+        if export_format == "csv":
+            output = BytesIO()
+            df.to_csv(output, index=False, encoding='utf-8')
+            output.seek(0)
+            return StreamingResponse(
+                output,
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename={table_name}_{from_date or 'all'}_{to_date or 'all'}.csv"}
+            )
+        
+        elif export_format == "excel":
+            try:
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df.to_excel(writer, sheet_name=table_name, index=False)
+                output.seek(0)
+                return StreamingResponse(
+                    output,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename={table_name}_{from_date or 'all'}_{to_date or 'all'}.xlsx"}
+                )
+            except Exception as e:
+                logging.error(f"Error generating Excel: {e}")
+                return {"success": False, "error": f"Excel generation failed: {str(e)}"}
+        
+        elif export_format == "json":
+            output = BytesIO()
+            df.to_json(output, orient='records', date_format='iso', indent=2)
+            output.seek(0)
+            return StreamingResponse(
+                output,
+                media_type="application/json",
+                headers={"Content-Disposition": f"attachment; filename={table_name}_{from_date or 'all'}_{to_date or 'all'}.json"}
+            )
+        
+        else:
+            return {"success": False, "error": f"Unsupported format: {export_format}"}
+            
+    except Exception as e:
+        logging.error(f"Error exporting data: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/import_data")
+async def api_import_data(
+    table_name: str = Form(...),
+    file: UploadFile = File(...)
+):
+    """API endpoint to import CSV data into any table with conflict handling (skip duplicates)"""
+    try:
+        import pandas as pd
+        import csv
+        from io import StringIO
+        from psycopg2.extras import execute_batch
+        
+        # Validate table name (security: whitelist approach)
+        allowed_tables = [
+            'ticks', 'futures_ticks', 'options_ticks', 'holdings', 'mf_holdings',
+            'positions', 'orders', 'trades', 'market_structure', 'rt_intraday_price',
+            'iv_history', 'market_depth', 'futures_tick_depth', 'raw_ticks', 'bars',
+            'profile', 'instruments'
+        ]
+        
+        if table_name not in allowed_tables:
+            return {"success": False, "error": f"Table '{table_name}' is not allowed for import"}
+        
+        # Read CSV file
+        contents = await file.read()
+        csv_content = contents.decode('utf-8')
+        
+        # Parse CSV
+        df = pd.read_csv(StringIO(csv_content))
+        
+        if df.empty:
+            return {"success": False, "error": "CSV file is empty"}
+        
+        # Get table primary key/unique constraints to determine conflict columns
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get primary key columns for conflict handling
+        cursor.execute("""
+            SELECT a.attname
+            FROM pg_index i
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+            WHERE i.indrelid = 'my_schema.%s'::regclass
+            AND i.indisprimary
+        """ % table_name)
+        pk_columns = [row[0] for row in cursor.fetchall()]
+        
+        # Also check unique constraints
+        cursor.execute("""
+            SELECT a.attname
+            FROM pg_index i
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+            WHERE i.indrelid = 'my_schema.%s'::regclass
+            AND i.indisunique
+            AND NOT i.indisprimary
+        """ % table_name)
+        unique_columns = [row[0] for row in cursor.fetchall()]
+        
+        # Combine primary key and unique columns for conflict handling
+        conflict_columns = pk_columns + unique_columns
+        
+        if not conflict_columns:
+            # If no primary key, use all columns for conflict (less ideal but works)
+            # For now, we'll try to insert all and let PostgreSQL handle duplicates
+            conflict_columns = list(df.columns)
+        
+        # Clean column names (remove whitespace)
+        df.columns = df.columns.str.strip()
+        
+        # Convert DataFrame rows to list of tuples
+        rows_to_insert = [tuple(row) for row in df.values]
+        
+        # Build INSERT query
+        columns_str = ', '.join(df.columns)
+        placeholders = ', '.join(['%s'] * len(df.columns))
+        
+        insert_query = f"""
+            INSERT INTO my_schema.{table_name} ({columns_str})
+            VALUES ({placeholders})
+        """
+        
+        # Add ON CONFLICT clause if we have conflict columns
+        if conflict_columns and len(conflict_columns) > 0:
+            # Find intersection of conflict columns and CSV columns
+            available_conflict_cols = [col for col in conflict_columns if col in df.columns]
+            
+            if available_conflict_cols:
+                conflict_cols_str = ', '.join(available_conflict_cols)
+                insert_query += f" ON CONFLICT ({conflict_cols_str}) DO NOTHING"
+        
+        # Execute batch insert
+        total_rows = len(rows_to_insert)
+        execute_batch(cursor, insert_query, rows_to_insert)
+        conn.commit()
+        
+        # Count how many were actually inserted (not skipped due to conflicts)
+        rows_inserted = cursor.rowcount if cursor.rowcount >= 0 else 0
+        
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": f"Import completed: {rows_inserted} rows inserted, {total_rows - rows_inserted} rows skipped (conflicts)",
+            "total_rows": total_rows,
+            "rows_inserted": rows_inserted,
+            "rows_skipped": total_rows - rows_inserted,
+            "table_name": table_name
+        }
+        
+    except Exception as e:
+        logging.error(f"Error importing data: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/scanner_with_confirmation")
+async def api_scanner_with_confirmation(
+    strategy_type: str = Query("covered_call", description="Strategy type"),
+    expiry: str = Query(None, description="Expiry date"),
+    start_time: str = Query("09:15:00", description="Start time for order flow analysis"),
+    end_time: str = Query("15:30:00", description="End time for order flow analysis"),
+    min_iv_rank: float = Query(50.0, description="Minimum IV Rank"),
+    limit: int = Query(5, description="Number of candidates")
+):
+    """API endpoint to get options scanner results with order flow confirmation"""
+    try:
+        from OptionsScanner import OptionsScanner
+        from MicroLevelDetector import MicroLevelDetector
+        from FootprintChartGenerator import FootprintChartGenerator
+        from datetime import datetime, date
+        
+        scanner = OptionsScanner()
+        detector = MicroLevelDetector()
+        footprint_gen = FootprintChartGenerator()
+        
+        # Parse expiry date
+        expiry_date = None
+        if expiry:
+            try:
+                expiry_date = datetime.strptime(expiry, '%Y-%m-%d').date()
+            except:
+                pass
+        
+        # Scan options
+        candidates = scanner.scan_options_chain(
+            expiry=expiry_date,
+            strategy_type=strategy_type,
+            min_iv_rank=min_iv_rank
+        )
+        
+        # Limit results
+        if limit > 0:
+            candidates = candidates[:limit]
+        
+        # Get footprint data for confirmation
+        analysis_date = date.today()
+        footprint_data = footprint_gen.generate_footprint_data(
+            start_time=start_time,
+            end_time=end_time,
+            analysis_date=analysis_date
+        )
+        
+        # Get tactical levels aligned with scanner
+        if candidates and footprint_data.get('success'):
+            tactical_data = detector.get_tactical_levels_for_scanner(
+                candidates, footprint_data
+            )
+        else:
+            tactical_data = {'tactical_levels': [], 'aligned_candidates': [], 'confirmation_rate': 0}
+        
+        return {
+            'success': True,
+            'scanner_candidates': candidates[:limit],
+            'footprint_data': footprint_data,
+            'tactical_levels': tactical_data.get('tactical_levels', []),
+            'aligned_candidates': tactical_data.get('aligned_candidates', []),
+            'confirmation_rate': tactical_data.get('confirmation_rate', 0)
+        }
+    except Exception as e:
+        logging.error(f"Error generating scanner with confirmation: {e}")
         import traceback
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
