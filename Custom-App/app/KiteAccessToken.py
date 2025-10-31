@@ -2759,9 +2759,10 @@ async def download_holdings_pdf():
 
 @app.get("/api/portfolio_hedge_analysis")
 async def api_portfolio_hedge_analysis(
-    target_hedge_ratio: float = Query(0.5, ge=0.0, le=1.0, description="Target hedge ratio (0.0 to 1.0)")
+    target_hedge_ratio: float = Query(0.5, ge=0.0, le=1.0, description="Target hedge ratio (0.0 to 1.0)"),
+    strategy_type: str = Query("all", description="Strategy type filter: all, puts, calls, collars, futures, or comma-separated")
 ):
-    """API endpoint to get portfolio hedge analysis"""
+    """API endpoint to get portfolio hedge analysis with multiple strategies"""
     try:
         from PortfolioHedgeAnalyzer import PortfolioHedgeAnalyzer
         
@@ -2778,8 +2779,39 @@ async def api_portfolio_hedge_analysis(
         # Calculate portfolio beta
         beta_result = analyzer.calculate_portfolio_beta()
         
-        # Get hedge suggestions
-        hedge_suggestions = analyzer.suggest_hedge(target_hedge_ratio=target_hedge_ratio)
+        # Get hedge suggestions with strategy filtering
+        hedge_suggestions = analyzer.suggest_hedge(target_hedge_ratio=target_hedge_ratio, strategy_type=strategy_type)
+        
+        # Ensure diagnostics are always included, even if missing
+        if 'diagnostics' not in hedge_suggestions:
+            logging.warning("hedge_suggestions missing diagnostics, adding default diagnostics")
+            # Get holdings for diagnostics if missing
+            try:
+                holdings = analyzer.get_current_holdings()
+                equity_count = len(holdings[holdings['holding_type'] == 'EQUITY']) if not holdings.empty and 'holding_type' in holdings.columns else 0
+                mf_count = len(holdings[holdings['holding_type'] == 'MF']) if not holdings.empty and 'holding_type' in holdings.columns and 'MF' in holdings['holding_type'].values else 0
+                equity_value = float(holdings[holdings['holding_type'] == 'EQUITY']['current_value'].sum()) if not holdings.empty and 'holding_type' in holdings.columns and 'EQUITY' in holdings['holding_type'].values else 0.0
+                mf_value = float(holdings[holdings['holding_type'] == 'MF']['current_value'].sum()) if not holdings.empty and 'holding_type' in holdings.columns and 'MF' in holdings['holding_type'].values else 0.0
+            except:
+                equity_count = mf_count = 0
+                equity_value = mf_value = 0.0
+            
+            hedge_suggestions['diagnostics'] = {
+                'holdings_count': equity_count + mf_count,
+                'equity_count': equity_count,
+                'mf_count': mf_count,
+                'portfolio_value': float(beta_result.get('portfolio_value', equity_value + mf_value)),
+                'equity_value': float(equity_value),
+                'mf_value': float(mf_value),
+                'beta': float(beta_result.get('beta', 0.0)),
+                'correlation': float(beta_result.get('correlation', 0.0)),
+                'nifty_price': 0.0,
+                'expiries_available': 0,
+                'futures_strategies': 0,
+                'puts_strategies': 0,
+                'calls_strategies': 0,
+                'collars_strategies': 0
+            }
         
         # Calculate VaR
         var_result = analyzer.calculate_var()
@@ -2789,10 +2821,126 @@ async def api_portfolio_hedge_analysis(
             "portfolio_metrics": beta_result,
             "hedge_suggestions": hedge_suggestions,
             "var_metrics": var_result,
-            "target_hedge_ratio": target_hedge_ratio
+            "target_hedge_ratio": target_hedge_ratio,
+            "strategy_type": strategy_type
         }
     except Exception as e:
         logging.error(f"Error generating portfolio hedge analysis: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/api/options_chain")
+async def api_options_chain(
+    expiry: str = Query(None, description="Expiry date in YYYY-MM-DD format (default: current week expiry)"),
+    strike_range_min: float = Query(None, description="Minimum strike price"),
+    strike_range_max: float = Query(None, description="Maximum strike price"),
+    option_type: str = Query(None, description="Option type: CE or PE"),
+    min_volume: int = Query(0, description="Minimum volume filter"),
+    min_oi: int = Query(0, description="Minimum open interest filter")
+):
+    """API endpoint to get options chain for NIFTY"""
+    try:
+        from OptionsDataFetcher import OptionsDataFetcher
+        from datetime import datetime, date
+        
+        fetcher = OptionsDataFetcher()
+        
+        # Parse expiry date
+        expiry_date = None
+        if expiry:
+            try:
+                expiry_date = datetime.strptime(expiry, '%Y-%m-%d').date()
+            except:
+                pass
+        
+        # Get strike range
+        strike_range = None
+        if strike_range_min is not None and strike_range_max is not None:
+            strike_range = (strike_range_min, strike_range_max)
+        
+        # Get options chain
+        options_chain = fetcher.get_options_chain(
+            expiry=expiry_date,
+            strike_range=strike_range,
+            option_type=option_type,
+            min_volume=min_volume,
+            min_oi=min_oi
+        )
+        
+        if options_chain.empty:
+            return {
+                "success": True,
+                "options_chain": [],
+                "total_options": 0,
+                "message": "No options data found for given criteria"
+            }
+        
+        # Convert DataFrame to list of dicts
+        options_list = options_chain.to_dict('records')
+        
+        # Convert datetime and date objects to strings
+        for opt in options_list:
+            if isinstance(opt.get('timestamp'), datetime):
+                opt['timestamp'] = opt['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+            if isinstance(opt.get('expiry'), date):
+                opt['expiry'] = opt['expiry'].strftime('%Y-%m-%d')
+        
+        return {
+            "success": True,
+            "options_chain": options_list,
+            "total_options": len(options_list),
+            "filters": {
+                "expiry": expiry,
+                "strike_range": strike_range,
+                "option_type": option_type,
+                "min_volume": min_volume,
+                "min_oi": min_oi
+            }
+        }
+    except Exception as e:
+        logging.error(f"Error fetching options chain: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/api/options_data")
+async def api_options_data(
+    instrument_token: int = Query(..., description="Option instrument token")
+):
+    """API endpoint to get real-time options data for specific instrument"""
+    try:
+        from OptionsDataFetcher import OptionsDataFetcher
+        from datetime import datetime, date
+        
+        fetcher = OptionsDataFetcher()
+        
+        option_data = fetcher.get_option_quote(instrument_token)
+        
+        if not option_data:
+            return {
+                "success": False,
+                "error": f"No data found for instrument_token {instrument_token}"
+            }
+        
+        # Convert datetime and date objects to strings
+        if isinstance(option_data.get('timestamp'), datetime):
+            option_data['timestamp'] = option_data['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+        if isinstance(option_data.get('expiry'), date):
+            option_data['expiry'] = option_data['expiry'].strftime('%Y-%m-%d')
+        
+        return {
+            "success": True,
+            "option_data": option_data
+        }
+    except Exception as e:
+        logging.error(f"Error fetching options data: {e}")
         import traceback
         logging.error(traceback.format_exc())
         return {

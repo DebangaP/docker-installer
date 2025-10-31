@@ -365,6 +365,65 @@ CREATE TABLE my_schema.futures_tick_depth (
     run_date date default current_date
 );
 
+-- Options ticks table (similar to futures_ticks but with strike, option_type, expiry)
+CREATE TABLE my_schema.options_ticks (
+    id SERIAL PRIMARY KEY,
+    instrument_token BIGINT NOT NULL,
+    timestamp TIMESTAMP default current_timestamp,
+    run_date date default current_date,
+    last_trade_time TIMESTAMP,
+    last_price DOUBLE PRECISION,
+    last_quantity INT,
+    buy_quantity BIGINT,
+    sell_quantity BIGINT,
+    volume BIGINT,
+    average_price DOUBLE PRECISION,
+    oi BIGINT,
+    oi_day_high BIGINT,
+    oi_day_low BIGINT,
+    net_change DOUBLE PRECISION,
+    lower_circuit_limit DOUBLE PRECISION,
+    upper_circuit_limit DOUBLE PRECISION,
+    strike_price DOUBLE PRECISION,
+    option_type VARCHAR(2) CHECK (option_type IN ('CE', 'PE')),
+    expiry DATE,
+    tradingsymbol VARCHAR(100)
+);
+
+CREATE TABLE my_schema.options_tick_ohlc (
+    tick_id INT REFERENCES my_schema.options_ticks(id) ON DELETE CASCADE,
+    open DOUBLE PRECISION,
+    high DOUBLE PRECISION,
+    low DOUBLE PRECISION,
+    close DOUBLE PRECISION,
+    PRIMARY KEY (tick_id),
+    timestamp TIMESTAMP default current_timestamp,
+    run_date date default current_date
+);
+
+CREATE TABLE my_schema.options_tick_depth (
+    id SERIAL PRIMARY KEY,
+    tick_id INT REFERENCES my_schema.options_ticks(id) ON DELETE CASCADE,
+    side VARCHAR(4) CHECK (side IN ('buy', 'sell')),
+    price DOUBLE PRECISION,
+    quantity BIGINT,
+    orders INT,
+    timestamp TIMESTAMP default current_timestamp,
+    run_date date default current_date
+);
+
+-- Indexes for options_ticks table
+CREATE INDEX IF NOT EXISTS idx_options_ticks_instrument_token ON my_schema.options_ticks(instrument_token);
+CREATE INDEX IF NOT EXISTS idx_options_ticks_expiry ON my_schema.options_ticks(expiry);
+CREATE INDEX IF NOT EXISTS idx_options_ticks_strike_price ON my_schema.options_ticks(strike_price);
+CREATE INDEX IF NOT EXISTS idx_options_ticks_option_type ON my_schema.options_ticks(option_type);
+CREATE INDEX IF NOT EXISTS idx_options_ticks_timestamp ON my_schema.options_ticks(timestamp);
+CREATE INDEX IF NOT EXISTS idx_options_ticks_run_date ON my_schema.options_ticks(run_date);
+CREATE INDEX IF NOT EXISTS idx_options_ticks_expiry_strike_type ON my_schema.options_ticks(expiry, strike_price, option_type);
+
+-- Indexes for options_tick_depth table
+CREATE INDEX IF NOT EXISTS idx_options_tick_depth_tick_id ON my_schema.options_tick_depth(tick_id);
+
                 CREATE TABLE IF NOT EXISTS my_schema.tpo_analysis (
                     analysis_date DATE,
                     instrument_token INTEGER,
