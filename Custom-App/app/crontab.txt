@@ -13,5 +13,10 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 */5 9-16 * * 1-5 root cd /app && python /app/KiteFetchOptions.py >> /app/logs/options_fetch.log 2>&1 &
 0,5,10,15,20,25,30 15 * * 1-5 root cd /app && python /app/KiteFetchOptions.py >> /app/logs/options_fetch.log 2>&1 &
 
+# Fetch options data at 10 AM and 3 PM on weekends (Saturday and Sunday)
+# Note: 0=Sunday, 6=Saturday in cron syntax
+0 10 * * 0,6 root cd /app && python /app/KiteFetchOptions.py >> /app/logs/options_fetch.log 2>&1 &
+0 15 * * 0,6 root cd /app && python /app/KiteFetchOptions.py >> /app/logs/options_fetch.log 2>&1 &
+
 # Update OHLC price data every 30 minutes during market hours
 */30 9-16 * * 1-5 root python /app/InsertOHLC.py &

@@ -441,53 +441,110 @@ class ProphetPricePredictor:
             
             # Prepare data for bulk insert
             rows = []
+            skipped_count = 0
+            low_confidence_count = 0
             for pred in predictions:
                 try:
+                    # Validate required fields
+                    scrip_id = pred.get('scrip_id')
+                    if not scrip_id:
+                        logger.warning(f"Skipping prediction: missing scrip_id")
+                        skipped_count += 1
+                        continue
+                    
+                    # Support both 'predicted_price' (new) and 'predicted_price_30d' (old) for backward compatibility
+                    predicted_price = pred.get('predicted_price') or pred.get('predicted_price_30d')
+                    if predicted_price is None:
+                        logger.warning(f"Skipping prediction for {scrip_id}: missing predicted_price")
+                        skipped_count += 1
+                        continue
+                    
+                    # Convert to native types and validate
+                    current_price = convert_numpy_to_native(pred.get('current_price'))
+                    predicted_price = convert_numpy_to_native(predicted_price)
+                    predicted_price_change_pct = convert_numpy_to_native(pred.get('predicted_price_change_pct'))
+                    prediction_confidence = convert_numpy_to_native(pred.get('prediction_confidence', 50.0))
+                    
+                    # Ensure numeric values are valid
+                    if current_price is None or predicted_price is None:
+                        logger.warning(f"Skipping prediction for {scrip_id}: invalid price values (current={current_price}, predicted={predicted_price})")
+                        skipped_count += 1
+                        continue
+                    
+                    # Ensure prediction_confidence has a default value
+                    if prediction_confidence is None:
+                        prediction_confidence = 50.0
+                    
+                    # Filter out predictions with confidence < 50%
+                    if prediction_confidence < 50.0:
+                        logger.debug(f"Skipping prediction for {scrip_id}: confidence {prediction_confidence:.2f}% < 50%")
+                        skipped_count += 1
+                        low_confidence_count += 1
+                        continue
+                    
                     prediction_details = {
                         'target_date': pred.get('target_date'),
                         'lower_bound': pred.get('lower_bound'),
                         'upper_bound': pred.get('upper_bound'),
                         'data_points_used': pred.get('data_points_used', 0),
-                        'daily_predictions': pred.get('daily_predictions', [])
+                        'daily_predictions': pred.get('daily_predictions', []),
+                        'prediction_days': pred.get('prediction_days', prediction_days)
                     }
                     
-                    # Ensure all values are native Python types before database insertion
-                    # Support both 'predicted_price' (new) and 'predicted_price_30d' (old) for backward compatibility
-                    predicted_price = pred.get('predicted_price') or pred.get('predicted_price_30d')
-                    
                     rows.append((
-                        pred['scrip_id'],
+                        scrip_id,
                         run_date,
                         prediction_days,
-                        convert_numpy_to_native(pred.get('current_price')),
-                        convert_numpy_to_native(predicted_price),
-                        convert_numpy_to_native(pred.get('predicted_price_change_pct')),
-                        convert_numpy_to_native(pred.get('prediction_confidence', 50.0)),
+                        float(current_price) if current_price is not None else None,
+                        float(predicted_price) if predicted_price is not None else None,
+                        float(predicted_price_change_pct) if predicted_price_change_pct is not None else None,
+                        float(prediction_confidence),
                         json.dumps(convert_numpy_to_native(prediction_details)),
                         'ACTIVE'
                     ))
                 except Exception as e:
-                    logger.error(f"Error preparing prediction for {pred.get('scrip_id')}: {e}")
+                    logger.error(f"Error preparing prediction for {pred.get('scrip_id', 'UNKNOWN')}: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    skipped_count += 1
                     continue
+            
+            if skipped_count > 0:
+                if low_confidence_count > 0:
+                    logger.info(f"Filtered out {low_confidence_count} predictions with confidence < 50%")
+                    logger.warning(f"Skipped {skipped_count} predictions total (including {low_confidence_count} with low confidence and {skipped_count - low_confidence_count} with missing/invalid data)")
+                else:
+                    logger.warning(f"Skipped {skipped_count} predictions due to missing or invalid data")
             
             # Bulk insert
             if rows:
-                cursor.executemany("""
-                    INSERT INTO my_schema.prophet_predictions 
-                    (scrip_id, run_date, prediction_days, current_price, predicted_price_30d, 
-                     predicted_price_change_pct, prediction_confidence, prediction_details, status)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (scrip_id, run_date, prediction_days) 
-                    DO UPDATE SET
-                        current_price = EXCLUDED.current_price,
-                        predicted_price_30d = EXCLUDED.predicted_price_30d,
-                        predicted_price_change_pct = EXCLUDED.predicted_price_change_pct,
-                        prediction_confidence = EXCLUDED.prediction_confidence,
-                        prediction_details = EXCLUDED.prediction_details,
-                        status = EXCLUDED.status
-                """, rows)
-                
-                conn.commit()
+                try:
+                    cursor.executemany("""
+                        INSERT INTO my_schema.prophet_predictions 
+                        (scrip_id, run_date, prediction_days, current_price, predicted_price_30d, 
+                         predicted_price_change_pct, prediction_confidence, prediction_details, status)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (scrip_id, run_date, prediction_days) 
+                        DO UPDATE SET
+                            current_price = EXCLUDED.current_price,
+                            predicted_price_30d = EXCLUDED.predicted_price_30d,
+                            predicted_price_change_pct = EXCLUDED.predicted_price_change_pct,
+                            prediction_confidence = EXCLUDED.prediction_confidence,
+                            prediction_details = EXCLUDED.prediction_details,
+                            status = EXCLUDED.status
+                    """, rows)
+                    
+                    conn.commit()
+                    logger.info(f"Successfully saved {len(rows)} predictions to database")
+                except Exception as db_error:
+                    logger.error(f"Database error during bulk insert: {db_error}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    raise
+            else:
+                logger.warning(f"No valid rows to save out of {len(predictions)} predictions")
+                if skipped_count == len(predictions):
+                    return False
             
             cursor.close()
             conn.close()
@@ -497,9 +554,12 @@ class ProphetPricePredictor:
             logger.error(f"Error saving predictions: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            if conn:
-                conn.rollback()
-                conn.close()
+            try:
+                if 'conn' in locals() and conn:
+                    conn.rollback()
+                    conn.close()
+            except Exception:
+                pass
             return False
     
     def check_predictions_exist_for_date(self, run_date: Optional[date] = None, prediction_days: Optional[int] = None) -> bool:
@@ -589,6 +649,7 @@ class ProphetPricePredictor:
     def get_top_gainers(self, limit: int = 10, run_date: Optional[date] = None, prediction_days: Optional[int] = None) -> List[Dict]:
         """
         Get top N potential gainers based on predictions
+        Always includes Nifty50 if available, regardless of ranking
         
         Args:
             limit: Number of top gainers to return
@@ -601,39 +662,96 @@ class ProphetPricePredictor:
         if prediction_days is None:
             prediction_days = 30  # Default to 30-day predictions
         
+        # Common scrip_ids for Nifty50
+        nifty_scrip_ids = ['NIFTY', 'NIFTY50', 'NIFTY 50', 'NIFTY-50']
+        
         try:
             conn = get_db_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
-            if run_date:
+            # Get the run_date to use
+            if run_date is None:
                 cursor.execute("""
-                    SELECT * 
-                    FROM my_schema.prophet_predictions
-                    WHERE run_date = %s
-                    AND prediction_days = %s
-                    AND status = 'ACTIVE'
-                    AND predicted_price_change_pct > 0
-                    ORDER BY predicted_price_change_pct DESC
-                    LIMIT %s
-                """, (run_date, prediction_days, limit))
-            else:
-                cursor.execute("""
-                    SELECT * 
-                    FROM my_schema.prophet_predictions p1
-                    WHERE status = 'ACTIVE'
-                    AND prediction_days = %s
-                    AND predicted_price_change_pct > 0
-                    AND run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE' AND prediction_days = %s)
-                    ORDER BY predicted_price_change_pct DESC
-                    LIMIT %s
-                """, (prediction_days, prediction_days, limit))
+                    SELECT MAX(run_date) as max_run_date
+                    FROM my_schema.prophet_predictions 
+                    WHERE status = 'ACTIVE' AND prediction_days = %s
+                """, (prediction_days,))
+                result = cursor.fetchone()
+                if result and result.get('max_run_date'):
+                    run_date = result['max_run_date']
+                else:
+                    cursor.close()
+                    conn.close()
+                    return []
+            
+            # Get top N gainers (filter out predictions with confidence < 50%)
+            cursor.execute("""
+                SELECT * 
+                FROM my_schema.prophet_predictions
+                WHERE run_date = %s
+                AND prediction_days = %s
+                AND status = 'ACTIVE'
+                AND predicted_price_change_pct > 0
+                AND prediction_confidence >= 50.0
+                ORDER BY predicted_price_change_pct DESC
+                LIMIT %s
+            """, (run_date, prediction_days, limit))
             
             rows = cursor.fetchall()
+            top_gainers = [dict(row) for row in rows]
+            
+            # Check if Nifty50 is already in the list
+            nifty_included = False
+            nifty_prediction = None
+            
+            for gainer in top_gainers:
+                if gainer.get('scrip_id', '').upper() in [nid.upper() for nid in nifty_scrip_ids]:
+                    nifty_included = True
+                    break
+            
+            # If Nifty50 is not in the list, try to fetch it
+            if not nifty_included:
+                for nifty_id in nifty_scrip_ids:
+                    cursor.execute("""
+                        SELECT * 
+                        FROM my_schema.prophet_predictions
+                        WHERE scrip_id = %s
+                        AND run_date = %s
+                        AND prediction_days = %s
+                        AND status = 'ACTIVE'
+                        AND predicted_price_change_pct > 0
+                        AND prediction_confidence >= 50.0
+                        LIMIT 1
+                    """, (nifty_id, run_date, prediction_days))
+                    
+                    nifty_result = cursor.fetchone()
+                    if nifty_result:
+                        nifty_prediction = dict(nifty_result)
+                        break
+            
             cursor.close()
             conn.close()
             
-            return [dict(row) for row in rows]
+            # If we found Nifty50 and it's not in the list, ensure it's included
+            if nifty_prediction and not nifty_included:
+                # Remove the lowest gainer if we have exactly 'limit' items
+                if len(top_gainers) >= limit:
+                    # Sort to ensure we remove the lowest
+                    top_gainers.sort(key=lambda x: x.get('predicted_price_change_pct', 0), reverse=True)
+                    top_gainers = top_gainers[:limit-1]  # Keep top (limit-1) items
+                
+                # Add Nifty50
+                top_gainers.append(nifty_prediction)
+                # Re-sort by predicted_price_change_pct descending
+                top_gainers.sort(key=lambda x: x.get('predicted_price_change_pct', 0), reverse=True)
+                logger.info(f"Included Nifty50 ({nifty_prediction.get('scrip_id')}) in top gainers")
+            elif nifty_included:
+                logger.debug("Nifty50 already included in top gainers")
+            
+            return top_gainers
             
         except Exception as e:
             logger.error(f"Error getting top gainers: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return []

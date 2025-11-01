@@ -465,14 +465,56 @@ def enrich_holdings_with_today_pnl(holdings_data):
                     'today_change': today_change_str
                 }
         
+        # Get Prophet predictions for all holdings (60-day predictions)
+        try:
+            # First try to get 60-day predictions
+            cursor.execute("""
+                SELECT scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days
+                FROM my_schema.prophet_predictions
+                WHERE run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE' AND prediction_days = 60)
+                AND prediction_days = 60
+                AND status = 'ACTIVE'
+            """)
+            
+            predictions_rows = cursor.fetchall()
+            
+            # If no 60-day predictions, try to get latest predictions regardless of prediction_days
+            if not predictions_rows:
+                logging.warning("No 60-day Prophet predictions found for holdings, trying latest predictions")
+                cursor.execute("""
+                    SELECT scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days
+                    FROM my_schema.prophet_predictions pp1
+                    WHERE status = 'ACTIVE'
+                    AND run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE')
+                """)
+                predictions_rows = cursor.fetchall()
+            
+            predictions_map = {row['scrip_id'].upper(): dict(row) for row in predictions_rows}
+            logging.info(f"Loaded {len(predictions_map)} Prophet predictions for holdings enrichment")
+            
+            if predictions_map:
+                sample_ids = list(predictions_map.keys())[:5]
+                logging.debug(f"Sample Prophet prediction scrip_ids for holdings: {sample_ids}")
+        except Exception as e:
+            logging.error(f"Error loading Prophet predictions for holdings: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+            predictions_map = {}
+        
         conn.close()
         
-        # Convert RealDictRow objects to regular dictionaries and enrich with today's P&L
+        # Convert RealDictRow objects to regular dictionaries and enrich with today's P&L and Prophet predictions
         enriched_holdings = []
+        matched_predictions = 0
+        holdings_symbols = []
+        
         for holding in holdings_data.get('holdings', []):
             # Convert RealDictRow to dict
             holding_dict = dict(holding)
             instrument_token = holding_dict.get('instrument_token')
+            symbol = holding_dict.get('trading_symbol', '')
+            holdings_symbols.append(symbol.upper() if symbol else '')
+            
             today_pnl_info = today_pnl_map.get(instrument_token, {'today_pnl': 0.0, 'today_price': 0.0, 'prev_price': 0.0, 'pct_change': 0.0, 'today_change': '0 (0%)'})
             
             # Add today's P&L fields
@@ -481,6 +523,40 @@ def enrich_holdings_with_today_pnl(holdings_data):
             holding_dict['prev_price'] = today_pnl_info['prev_price']
             holding_dict['pct_change'] = today_pnl_info.get('pct_change', 0.0)
             holding_dict['today_change'] = today_pnl_info.get('today_change', '0 (0%)')
+            
+            # Get Prophet prediction for this holding
+            prophet_pred = None
+            prophet_conf = None
+            prediction_days = None
+            if symbol:
+                symbol_upper = symbol.upper()
+                if symbol_upper in predictions_map:
+                    pred = predictions_map[symbol_upper]
+                    try:
+                        pred_pct = pred.get('predicted_price_change_pct')
+                        pred_conf = pred.get('prediction_confidence')
+                        pred_days = pred.get('prediction_days')
+                        
+                        if pred_pct is not None and not (isinstance(pred_pct, float) and (pred_pct != pred_pct)):  # Check for NaN
+                            prophet_pred = float(pred_pct)
+                        if pred_conf is not None and not (isinstance(pred_conf, float) and (pred_conf != pred_conf)):  # Check for NaN
+                            prophet_conf = float(pred_conf)
+                        if pred_days is not None:
+                            prediction_days = int(pred_days)
+                        
+                        if prophet_pred is not None:
+                            matched_predictions += 1
+                    except (ValueError, TypeError) as e:
+                        logging.debug(f"Error converting Prophet prediction for {symbol}: {e}")
+                        prophet_pred = None
+                        prophet_conf = None
+                        prediction_days = None
+                else:
+                    logging.debug(f"No Prophet prediction found for holding {symbol} (searched as: {symbol_upper})")
+            
+            holding_dict['prophet_prediction_pct'] = prophet_pred
+            holding_dict['prophet_confidence'] = prophet_conf
+            holding_dict['prediction_days'] = prediction_days
             
             # Ensure pnl_pct_change field exists (from original query)
             if 'pnl_pct_change' not in holding_dict:
@@ -491,13 +567,22 @@ def enrich_holdings_with_today_pnl(holdings_data):
             
             enriched_holdings.append(holding_dict)
         
+        # Log matching statistics
+        if len(enriched_holdings) > 0:
+            if matched_predictions > 0:
+                logging.info(f"✓ Matched {matched_predictions}/{len(enriched_holdings)} holdings with Prophet predictions")
+            else:
+                logging.warning(f"⚠ No Prophet predictions matched for holdings!")
+                logging.warning(f"  - Holdings symbols: {sorted(set(holdings_symbols))[:10]}{'...' if len(set(holdings_symbols)) > 10 else ''}")
+                logging.warning(f"  - Prophet prediction scrip_ids: {sorted(list(predictions_map.keys()))[:10] if predictions_map else []}{'...' if len(predictions_map) > 10 else ''}")
+        
         # Update holdings_data with enriched holdings
         holdings_data['holdings'] = enriched_holdings
         return holdings_data
         
     except Exception as e:
         logging.error(f"Error enriching holdings with today's P&L: {e}")
-        # Return holdings with default today_pnl values
+        # Return holdings with default today_pnl values and Prophet predictions
         enriched_holdings = []
         for holding in holdings_data.get('holdings', []):
             holding_dict = dict(holding)
@@ -506,6 +591,11 @@ def enrich_holdings_with_today_pnl(holdings_data):
             holding_dict['prev_price'] = 0.0
             holding_dict['pct_change'] = 0.0
             holding_dict['today_change'] = '0 (0%)'
+            
+            # Default Prophet predictions to None
+            holding_dict['prophet_prediction_pct'] = None
+            holding_dict['prophet_confidence'] = None
+            holding_dict['prediction_days'] = None
             
             # Ensure pnl_pct_change field exists
             if 'pnl_pct_change' not in holding_dict:
@@ -594,6 +684,9 @@ async def home(
         system_status = get_system_status()
         tick_data = system_status['tick_data']
         holdings_info = get_holdings_data(page=1, per_page=10)
+        
+        # Enrich holdings with today's P&L and Prophet predictions
+        holdings_info = enrich_holdings_with_today_pnl(holdings_info)
         
         return templates.TemplateResponse("dashboard.html", {
             "request": request,
@@ -1265,7 +1358,7 @@ async def api_export_data(
             'ticks', 'futures_ticks', 'options_ticks', 'holdings', 'mf_holdings',
             'positions', 'orders', 'trades', 'market_structure', 'rt_intraday_price',
             'iv_history', 'market_depth', 'futures_tick_depth', 'raw_ticks', 'bars',
-            'profile', 'instruments'
+            'profile', 'instruments', 'prophet_predictions', 'swing_trade_suggestions'
         ]
         
         if table_name not in allowed_tables:
@@ -1567,28 +1660,164 @@ async def api_swing_trades(
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        cursor.execute("""
-            SELECT scrip_id, predicted_price_change_pct, prediction_confidence
-            FROM my_schema.prophet_predictions
-            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE' AND prediction_days = 30)
-            AND prediction_days = 30
-            AND status = 'ACTIVE'
-        """)
-        
-        predictions_map = {row['scrip_id']: dict(row) for row in cursor.fetchall()}
-        cursor.close()
-        conn.close()
-        
-        # Add predictions to recommendations
-        for rec in recommendations:
-            scrip_id = rec.get('scrip_id')
-            if scrip_id and scrip_id in predictions_map:
-                pred = predictions_map[scrip_id]
-                rec['prophet_prediction_pct'] = float(pred['predicted_price_change_pct']) if pred['predicted_price_change_pct'] else None
-                rec['prophet_confidence'] = float(pred['prediction_confidence']) if pred['prediction_confidence'] else None
+        try:
+            # First, try to get 30-day predictions (most common)
+            cursor.execute("""
+                SELECT scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days, run_date
+                FROM my_schema.prophet_predictions
+                WHERE run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE' AND prediction_days = 30)
+                AND prediction_days = 30
+                AND status = 'ACTIVE'
+            """)
+            
+            predictions_rows = cursor.fetchall()
+            
+            # If no 30-day predictions found, get the latest predictions regardless of prediction_days
+            if not predictions_rows:
+                logging.warning("No 30-day Prophet predictions found, trying to get latest predictions for any prediction_days")
+                cursor.execute("""
+                    SELECT scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days, run_date
+                    FROM my_schema.prophet_predictions pp1
+                    WHERE status = 'ACTIVE'
+                    AND run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE')
+                """)
+                predictions_rows = cursor.fetchall()
+                if predictions_rows:
+                    logging.info(f"Found {len(predictions_rows)} Prophet predictions with latest run_date (not necessarily 30 days)")
+            
+            # Build predictions map, handling duplicate scrip_ids by keeping the most recent or 30-day version
+            predictions_map = {}
+            if predictions_rows:
+                for row in predictions_rows:
+                    scrip_id = row['scrip_id'].upper()
+                    if scrip_id not in predictions_map:
+                        predictions_map[scrip_id] = dict(row)
+                    else:
+                        # Prefer 30-day predictions, or most recent if both are same prediction_days
+                        existing = predictions_map[scrip_id]
+                        existing_days = existing.get('prediction_days', 0)
+                        row_days = row.get('prediction_days', 0)
+                        
+                        if row_days == 30 or (existing_days != 30 and row_days > existing_days):
+                            predictions_map[scrip_id] = dict(row)
+            
+            logging.info(f"Found {len(predictions_map)} Prophet predictions to match with {len(recommendations)} recommendations")
+            
+            # Debug: Get all Prophet prediction scrip_ids from database for comparison
+            cursor.execute("""
+                SELECT DISTINCT scrip_id, prediction_days, run_date, COUNT(*) as count
+                FROM my_schema.prophet_predictions
+                WHERE status = 'ACTIVE'
+                GROUP BY scrip_id, prediction_days, run_date
+                ORDER BY run_date DESC, prediction_days DESC
+                LIMIT 20
+            """)
+            all_preds_sample = cursor.fetchall()
+            if all_preds_sample:
+                logging.info(f"Sample Prophet predictions in DB: {[(r['scrip_id'], r['prediction_days'], r['run_date']) for r in all_preds_sample[:10]]}")
+            
+            # Debug: Log sample prediction scrip_ids
+            if predictions_map:
+                sample_pred_ids = list(predictions_map.keys())[:10]
+                logging.info(f"Prophet prediction scrip_ids to match: {sample_pred_ids}")
+            
+            # Debug: Log sample recommendation scrip_ids
+            if recommendations:
+                sample_rec_ids = [rec.get('scrip_id', 'N/A') for rec in recommendations[:10]]
+                logging.info(f"Recommendation scrip_ids to match: {sample_rec_ids}")
+                
+                # Check for any common scrip_ids
+                rec_ids_upper = set([rec.get('scrip_id', '').upper() for rec in recommendations if rec.get('scrip_id')])
+                pred_ids_upper = set(predictions_map.keys())
+                common_ids = rec_ids_upper.intersection(pred_ids_upper)
+                if common_ids:
+                    logging.info(f"✓ Found {len(common_ids)} common scrip_ids: {sorted(list(common_ids))[:10]}")
+                else:
+                    logging.warning(f"⚠ No common scrip_ids found! Recommendations: {sorted(list(rec_ids_upper))[:5]}, Predictions: {sorted(list(pred_ids_upper))[:5]}")
+            
+            # Track matching stats
+            matched_count = 0
+            unmatched_scrip_ids = set()
+            matched_scrip_ids = []
+            
+            # Add predictions to recommendations (case-insensitive matching)
+            for rec in recommendations:
+                scrip_id = rec.get('scrip_id')
+                if scrip_id:
+                    scrip_id_upper = scrip_id.upper()
+                    if scrip_id_upper in predictions_map:
+                        pred = predictions_map[scrip_id_upper]
+                        # Convert to float, handling None and NaN cases
+                        pred_pct = pred.get('predicted_price_change_pct')
+                        pred_conf = pred.get('prediction_confidence')
+                        
+                        try:
+                            if pred_pct is not None and not (isinstance(pred_pct, float) and (pred_pct != pred_pct)):  # Check for NaN
+                                rec['prophet_prediction_pct'] = float(pred_pct)
+                            else:
+                                rec['prophet_prediction_pct'] = None
+                        except (ValueError, TypeError):
+                            rec['prophet_prediction_pct'] = None
+                        
+                        try:
+                            if pred_conf is not None and not (isinstance(pred_conf, float) and (pred_conf != pred_conf)):  # Check for NaN
+                                rec['prophet_confidence'] = float(pred_conf)
+                            else:
+                                rec['prophet_confidence'] = None
+                        except (ValueError, TypeError):
+                            rec['prophet_confidence'] = None
+                        
+                        # Add prediction_days if available
+                        pred_days = pred.get('prediction_days')
+                        if pred_days is not None:
+                            try:
+                                rec['prediction_days'] = int(pred_days)
+                            except (ValueError, TypeError):
+                                rec['prediction_days'] = None
+                        else:
+                            rec['prediction_days'] = None
+                        
+                        if rec['prophet_prediction_pct'] is not None:
+                            matched_count += 1
+                            matched_scrip_ids.append(scrip_id)
+                            logging.debug(f"Matched Prophet prediction for {scrip_id}: {rec['prophet_prediction_pct']:.2f}%")
+                    else:
+                        rec['prophet_prediction_pct'] = None
+                        rec['prophet_confidence'] = None
+                        rec['prediction_days'] = None
+                        unmatched_scrip_ids.add(scrip_id)
+                        logging.debug(f"No Prophet prediction found for {scrip_id} (looking for: {scrip_id_upper})")
+                else:
+                    rec['prophet_prediction_pct'] = None
+                    rec['prophet_confidence'] = None
+                    rec['prediction_days'] = None
+            
+            if matched_count > 0:
+                logging.info(f"✓ Matched {matched_count} recommendations with Prophet predictions")
+                logging.info(f"Matched scrip_ids: {matched_scrip_ids[:10]}{'...' if len(matched_scrip_ids) > 10 else ''}")
             else:
+                logging.warning(f"⚠ No Prophet predictions matched! Check if predictions exist in database.")
+                logging.warning(f"  - Prophet predictions available: {len(predictions_map)}")
+                logging.warning(f"  - Recommendations to match: {len(recommendations)}")
+                if predictions_map and recommendations:
+                    logging.warning(f"  - Prophet prediction scrip_ids: {sorted(list(predictions_map.keys()))[:10]}")
+                    logging.warning(f"  - Recommendation scrip_ids: {sorted([r.get('scrip_id', 'N/A').upper() for r in recommendations[:10]])}")
+            
+            if unmatched_scrip_ids:
+                logging.info(f"Unmatched scrip_ids (no Prophet prediction found): {sorted(list(unmatched_scrip_ids))[:10]}{'...' if len(unmatched_scrip_ids) > 10 else ''}")
+                
+        except Exception as e:
+            logging.error(f"Error fetching Prophet predictions: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+            # Still continue without predictions
+            for rec in recommendations:
                 rec['prophet_prediction_pct'] = None
                 rec['prophet_confidence'] = None
+                rec['prediction_days'] = None
+        finally:
+            cursor.close()
+            conn.close()
         
         # Sort by confidence score (highest first)
         recommendations.sort(key=lambda x: x.get('confidence_score', 0), reverse=True)
@@ -1827,6 +2056,27 @@ async def api_swing_trades_history(
         cursor.execute(sql, tuple(params))
         rows = cursor.fetchall()
         
+        # Get Prophet predictions for all scrip_ids in the results
+        scrip_ids = [row['scrip_id'] for row in rows if row.get('scrip_id')]
+        predictions_map = {}
+        
+        if scrip_ids:
+            try:
+                cursor.execute("""
+                    SELECT scrip_id, predicted_price_change_pct, prediction_confidence
+                    FROM my_schema.prophet_predictions
+                    WHERE scrip_id = ANY(%s)
+                    AND run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE' AND prediction_days = 30)
+                    AND prediction_days = 30
+                    AND status = 'ACTIVE'
+                """, (scrip_ids,))
+                
+                predictions_rows = cursor.fetchall()
+                predictions_map = {row['scrip_id'].upper(): dict(row) for row in predictions_rows}
+                logging.debug(f"Loaded {len(predictions_map)} Prophet predictions for history query")
+            except Exception as e:
+                logging.error(f"Error loading Prophet predictions for history: {e}")
+        
         # Convert to list of dicts
         recommendations = []
         for row in rows:
@@ -1850,6 +2100,17 @@ async def api_swing_trades_history(
                         rec['filtering_criteria'] = json.loads(rec['filtering_criteria'])
                 except:
                     pass
+            
+            # Add Prophet predictions if available
+            scrip_id = rec.get('scrip_id')
+            if scrip_id and scrip_id.upper() in predictions_map:
+                pred = predictions_map[scrip_id.upper()]
+                rec['prophet_prediction_pct'] = float(pred['predicted_price_change_pct']) if pred['predicted_price_change_pct'] is not None else None
+                rec['prophet_confidence'] = float(pred['prediction_confidence']) if pred['prediction_confidence'] is not None else None
+            else:
+                rec['prophet_prediction_pct'] = None
+                rec['prophet_confidence'] = None
+            
             recommendations.append(rec)
         
         cursor.close()
@@ -2201,6 +2462,30 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                         'today_change': today_change_str
                     }
         
+        # Get Prophet predictions for all holdings
+        conn2 = get_db_connection()
+        cursor2 = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        try:
+            # Get Prophet predictions from latest run_date
+            cursor2.execute("""
+                SELECT scrip_id, predicted_price_change_pct, prediction_confidence
+                FROM my_schema.prophet_predictions
+                WHERE run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE' AND prediction_days = 30)
+                AND prediction_days = 30
+                AND status = 'ACTIVE'
+            """)
+            
+            predictions_rows = cursor2.fetchall()
+            predictions_map = {row['scrip_id'].upper(): dict(row) for row in predictions_rows}
+            logging.debug(f"Loaded {len(predictions_map)} Prophet predictions for holdings")
+        except Exception as e:
+            logging.error(f"Error loading Prophet predictions for holdings: {e}")
+            predictions_map = {}
+        finally:
+            cursor2.close()
+            conn2.close()
+        
         conn.close()
         
         # Convert holdings to serializable format
@@ -2209,6 +2494,18 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
             symbol = holding["trading_symbol"]
             instrument_token = holding["instrument_token"]
             today_pnl_info = today_pnl_map.get(instrument_token, {'today_pnl': 0.0, 'today_price': 0.0, 'prev_price': 0.0, 'pct_change': 0.0, 'today_change': '0 (0%)'})
+            
+            # Get Prophet prediction for this holding
+            prophet_pred = None
+            prophet_conf = None
+            if symbol and symbol.upper() in predictions_map:
+                pred = predictions_map[symbol.upper()]
+                try:
+                    prophet_pred = float(pred['predicted_price_change_pct']) if pred.get('predicted_price_change_pct') is not None else None
+                    prophet_conf = float(pred['prediction_confidence']) if pred.get('prediction_confidence') is not None else None
+                except (ValueError, TypeError):
+                    prophet_pred = None
+                    prophet_conf = None
             
             holdings_list.append({
                 "trading_symbol": symbol,
@@ -2225,7 +2522,8 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                 "prev_price": today_pnl_info['prev_price'],
                 "pct_change": today_pnl_info.get('pct_change', 0.0),
                 "today_change": today_pnl_info.get('today_change', '0 (0%)'),
-                "existing_gtt": gtt_map.get(symbol)
+                "prophet_prediction_pct": prophet_pred,
+                "prophet_confidence": prophet_conf
             })
         
         # If sorting by today_pnl, sort the enriched list and then paginate
@@ -4167,6 +4465,80 @@ async def api_options_data(
         }
     except Exception as e:
         logging.error(f"Error fetching options data: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/api/options_latest")
+async def api_options_latest(
+    limit: int = Query(5, description="Number of latest options to return (default: 5)")
+):
+    """API endpoint to get latest N options based on timestamp"""
+    try:
+        from OptionsDataFetcher import OptionsDataFetcher
+        from datetime import datetime, date
+        
+        fetcher = OptionsDataFetcher()
+        
+        # Get latest options by timestamp
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cursor.execute("""
+            SELECT DISTINCT ON (instrument_token)
+                instrument_token,
+                tradingsymbol,
+                strike_price,
+                option_type,
+                expiry,
+                last_price,
+                volume,
+                oi,
+                average_price,
+                timestamp,
+                buy_quantity,
+                sell_quantity
+            FROM my_schema.options_ticks
+            WHERE run_date = CURRENT_DATE
+            ORDER BY instrument_token, timestamp DESC
+        """)
+        
+        # Get all unique options, then sort by timestamp and limit
+        all_rows = cursor.fetchall()
+        
+        # Sort by timestamp descending and take top N
+        sorted_rows = sorted(all_rows, key=lambda x: x['timestamp'] if x.get('timestamp') else datetime.min, reverse=True)[:limit]
+        
+        conn.close()
+        
+        if not sorted_rows:
+            return {
+                "success": True,
+                "options": [],
+                "total_options": 0,
+                "message": "No options data found for today"
+            }
+        
+        # Convert to list of dicts and format dates
+        options_list = []
+        for row in sorted_rows:
+            opt = dict(row)
+            if isinstance(opt.get('timestamp'), datetime):
+                opt['timestamp'] = opt['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+            if isinstance(opt.get('expiry'), date):
+                opt['expiry'] = opt['expiry'].strftime('%Y-%m-%d')
+            options_list.append(opt)
+        
+        return {
+            "success": True,
+            "options": options_list,
+            "total_options": len(options_list)
+        }
+    except Exception as e:
+        logging.error(f"Error fetching latest options: {e}")
         import traceback
         logging.error(traceback.format_exc())
         return {
