@@ -427,7 +427,7 @@
                 💼 Holdings
             </button>
             <button class="tab-button" onclick="switchTab('gainers-losers')">
-                📈 Gainers/Losers
+                📈 Stocks
             </button>
             <button class="tab-button" onclick="switchTab('utilities')">
                 🔧 Utilities
@@ -711,12 +711,12 @@
         </div>
         <!-- End Live Market Tab Content -->
 
-        <!-- Gainers/Losers Tab Content -->
+        <!-- Stocks Tab Content -->
         <div id="gainers-losers-tab" class="tab-content">
             <!-- Gainers and Losers Section -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+            <div style="margin-bottom: 20px;">
                 <!-- Top Gainers -->
-                <div class="card">
+                <div class="card" style="margin-bottom: 20px;">
                     <div class="card-header" style="justify-content: space-between; background-color: #28a745; color: white;">
                         <h3 class="card-title" style="color: white;">📈 Top 15 Gainers (Last Trading Day)</h3>
                     </div>
@@ -726,6 +726,7 @@
                                 <tr style="background-color: #f8f9fa;">
                                     <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Rank</th>
                                     <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Symbol</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Sparkline (last 30D)</th>
                                     <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Previous Price</th>
                                     <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Current Price</th>
                                     <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Change %</th>
@@ -733,7 +734,7 @@
                             </thead>
                             <tbody id="gainersTableBody">
                                 <tr>
-                                    <td colspan="5" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading...</td>
+                                    <td colspan="6" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -751,6 +752,7 @@
                                 <tr style="background-color: #f8f9fa;">
                                     <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Rank</th>
                                     <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Symbol</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Sparkline (last 30D)</th>
                                     <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Previous Price</th>
                                     <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Current Price</th>
                                     <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Change %</th>
@@ -758,7 +760,7 @@
                             </thead>
                             <tbody id="losersTableBody">
                                 <tr>
-                                    <td colspan="5" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading...</td>
+                                    <td colspan="6" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -766,7 +768,7 @@
                 </div>
             </div>
         </div>
-        <!-- End Gainers/Losers Tab Content -->
+        <!-- End Stocks Tab Content -->
 
         <!-- Utilities Tab Content -->
         <div id="utilities-tab" class="tab-content">
@@ -2091,7 +2093,7 @@
                     if (data.error) {
                         console.error('Error loading gainers:', data.error);
                         document.getElementById('gainersTableBody').innerHTML = 
-                            '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading gainers</td></tr>';
+                            '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading gainers</td></tr>';
                         return;
                     }
                     
@@ -2099,15 +2101,21 @@
                     tbody.innerHTML = '';
                     
                     if (!data.gainers || data.gainers.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">No gainers data available</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">No gainers data available</td></tr>';
                         return;
                     }
                     
+                    const symbols = [];
                     data.gainers.forEach((gainer, index) => {
+                        const symbol = gainer.scrip_id || '-';
+                        symbols.push(symbol);
                         const row = `
                             <tr style="border-bottom: 1px solid #eee;">
                                 <td style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666;">${index + 1}</td>
-                                <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${gainer.scrip_id || '-'}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+                                    <canvas id="sparkline-gainer-${symbol}" width="120" height="40" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
+                                </td>
                                 <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-size: 11px;">₹${gainer.previous_price.toFixed(2)}</td>
                                 <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold; font-size: 11px;">₹${gainer.current_price.toFixed(2)}</td>
                                 <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: #28a745; font-size: 12px;">
@@ -2117,11 +2125,20 @@
                         `;
                         tbody.innerHTML += row;
                     });
+                    
+                    // Load sparklines for gainers after a short delay to ensure DOM is ready
+                    setTimeout(() => {
+                        symbols.forEach(symbol => {
+                            if (symbol && symbol !== '-') {
+                                loadSparkline(`gainer-${symbol}`);
+                            }
+                        });
+                    }, 100);
                 })
                 .catch(error => {
                     console.error('Error fetching gainers:', error);
                     document.getElementById('gainersTableBody').innerHTML = 
-                        '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading gainers</td></tr>';
+                        '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading gainers</td></tr>';
                 });
             
             // Load losers
@@ -2131,7 +2148,7 @@
                     if (data.error) {
                         console.error('Error loading losers:', data.error);
                         document.getElementById('losersTableBody').innerHTML = 
-                            '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading losers</td></tr>';
+                            '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading losers</td></tr>';
                         return;
                     }
                     
@@ -2139,15 +2156,21 @@
                     tbody.innerHTML = '';
                     
                     if (!data.losers || data.losers.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">No losers data available</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">No losers data available</td></tr>';
                         return;
                     }
                     
+                    const symbols = [];
                     data.losers.forEach((loser, index) => {
+                        const symbol = loser.scrip_id || '-';
+                        symbols.push(symbol);
                         const row = `
                             <tr style="border-bottom: 1px solid #eee;">
                                 <td style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666;">${index + 1}</td>
-                                <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${loser.scrip_id || '-'}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+                                    <canvas id="sparkline-loser-${symbol}" width="120" height="40" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
+                                </td>
                                 <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-size: 11px;">₹${loser.previous_price.toFixed(2)}</td>
                                 <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold; font-size: 11px;">₹${loser.current_price.toFixed(2)}</td>
                                 <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: #dc3545; font-size: 12px;">
@@ -2157,11 +2180,20 @@
                         `;
                         tbody.innerHTML += row;
                     });
+                    
+                    // Load sparklines for losers after a short delay to ensure DOM is ready
+                    setTimeout(() => {
+                        symbols.forEach(symbol => {
+                            if (symbol && symbol !== '-') {
+                                loadSparkline(`loser-${symbol}`);
+                            }
+                        });
+                    }, 100);
                 })
                 .catch(error => {
                     console.error('Error fetching losers:', error);
                     document.getElementById('losersTableBody').innerHTML = 
-                        '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading losers</td></tr>';
+                        '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading losers</td></tr>';
                 });
         }
         
@@ -4038,7 +4070,22 @@
             {% endfor %}
         }
 
-        function loadSparkline(symbol) {
+        function loadSparkline(symbolOrId) {
+            // Extract actual symbol from ID if it's a prefixed ID (e.g., "gainer-RELIANCE" -> "RELIANCE")
+            let symbol = symbolOrId;
+            let canvasId = `sparkline-${symbolOrId}`;
+            
+            // Handle prefixed IDs like "gainer-RELIANCE" or "loser-RELIANCE" or "ajax-RELIANCE"
+            const knownPrefixes = ['gainer', 'loser', 'ajax'];
+            if (symbolOrId.includes('-')) {
+                const parts = symbolOrId.split('-');
+                if (parts.length >= 2 && knownPrefixes.includes(parts[0])) {
+                    // Remove the known prefix to get the actual symbol
+                    symbol = parts.slice(1).join('-');
+                    canvasId = `sparkline-${symbolOrId}`;
+                }
+            }
+            
             fetch(`/api/sparkline/${symbol}?days=30`)
                 .then(response => response.json())
                 .then(data => {
@@ -4047,10 +4094,13 @@
                         return;
                     }
                     
-                    // Try to find canvas with or without 'ajax-' prefix
+                    // Try to find canvas with various ID patterns
                     let canvas = document.getElementById(`sparkline-${symbol}`);
                     if (!canvas) {
                         canvas = document.getElementById(`sparkline-ajax-${symbol}`);
+                    }
+                    if (!canvas && canvasId !== `sparkline-${symbol}`) {
+                        canvas = document.getElementById(canvasId);
                     }
                     if (!canvas) return;
                     
