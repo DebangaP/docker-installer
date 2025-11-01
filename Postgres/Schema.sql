@@ -1568,3 +1568,79 @@ COMMENT ON COLUMN my_schema.gtt_transactions.trigger_id IS 'Kite API trigger ID 
 COMMENT ON COLUMN my_schema.gtt_transactions.status IS 'Current status: ACTIVE, CANCELLED, TRIGGERED, etc.';
 COMMENT ON COLUMN my_schema.gtt_transactions.response IS 'Full JSON response from Kite API';
 COMMENT ON COLUMN my_schema.gtt_transactions.notes IS 'Additional notes or metadata about the GTT order';
+
+-- Table to store Swing Trade Recommendations (persist recommendations for audit and analysis)
+CREATE TABLE IF NOT EXISTS my_schema.swing_trade_suggestions (
+    id SERIAL PRIMARY KEY,
+    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    analysis_date DATE,
+    run_date DATE DEFAULT CURRENT_DATE,
+    scrip_id VARCHAR(10),
+    instrument_token BIGINT,
+    pattern_type VARCHAR(50),
+    direction VARCHAR(10) DEFAULT 'BUY',
+    entry_price DOUBLE PRECISION,
+    target_price DOUBLE PRECISION,
+    stop_loss DOUBLE PRECISION,
+    potential_gain_pct DOUBLE PRECISION,
+    risk_reward_ratio DOUBLE PRECISION,
+    confidence_score DOUBLE PRECISION,
+    holding_period_days INT,
+    current_price DOUBLE PRECISION,
+    sma_20 DOUBLE PRECISION,
+    sma_50 DOUBLE PRECISION,
+    sma_200 DOUBLE PRECISION,
+    rsi_14 DOUBLE PRECISION,
+    macd DOUBLE PRECISION,
+    macd_signal DOUBLE PRECISION,
+    atr_14 DOUBLE PRECISION,
+    volume_trend VARCHAR(20),
+    support_level DOUBLE PRECISION,
+    resistance_level DOUBLE PRECISION,
+    rationale TEXT,
+    technical_context JSONB,
+    diagnostics JSONB,
+    filtering_criteria JSONB,
+    status VARCHAR(20) DEFAULT 'ACTIVE'
+);
+
+-- Indexes for swing trade suggestions table
+CREATE INDEX IF NOT EXISTS idx_swing_trade_analysis_date ON my_schema.swing_trade_suggestions(analysis_date);
+CREATE INDEX IF NOT EXISTS idx_swing_trade_scrip_id ON my_schema.swing_trade_suggestions(scrip_id);
+CREATE INDEX IF NOT EXISTS idx_swing_trade_pattern ON my_schema.swing_trade_suggestions(pattern_type);
+CREATE INDEX IF NOT EXISTS idx_swing_trade_confidence ON my_schema.swing_trade_suggestions(confidence_score DESC);
+CREATE INDEX IF NOT EXISTS idx_swing_trade_run_date ON my_schema.swing_trade_suggestions(run_date);
+
+-- Comments on swing trade suggestions table
+COMMENT ON TABLE my_schema.swing_trade_suggestions IS 'Stores swing trade recommendations generated from technical analysis';
+COMMENT ON COLUMN my_schema.swing_trade_suggestions.analysis_date IS 'Date when the analysis was performed';
+COMMENT ON COLUMN my_schema.swing_trade_suggestions.filtering_criteria IS 'JSON object containing the filtering criteria used to generate this recommendation';
+
+-- Table to store Prophet price predictions (30-day forecasts)
+CREATE TABLE IF NOT EXISTS my_schema.prophet_predictions (
+    id SERIAL PRIMARY KEY,
+    scrip_id VARCHAR(10) NOT NULL,
+    run_date DATE DEFAULT CURRENT_DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    prediction_days INTEGER DEFAULT 30,
+    current_price DOUBLE PRECISION,
+    predicted_price_30d DOUBLE PRECISION,
+    predicted_price_change_pct DOUBLE PRECISION,
+    prediction_confidence DOUBLE PRECISION,
+    prediction_details JSONB,
+    status VARCHAR(20) DEFAULT 'ACTIVE',
+    UNIQUE(scrip_id, run_date, prediction_days)
+);
+
+-- Indexes for prophet predictions table
+CREATE INDEX IF NOT EXISTS idx_prophet_run_date ON my_schema.prophet_predictions(run_date);
+CREATE INDEX IF NOT EXISTS idx_prophet_scrip_id ON my_schema.prophet_predictions(scrip_id);
+CREATE INDEX IF NOT EXISTS idx_prophet_price_change ON my_schema.prophet_predictions(predicted_price_change_pct DESC);
+CREATE INDEX IF NOT EXISTS idx_prophet_status ON my_schema.prophet_predictions(status);
+
+-- Comments on prophet predictions table
+COMMENT ON TABLE my_schema.prophet_predictions IS 'Stores Prophet-based 30-day price predictions for stocks';
+COMMENT ON COLUMN my_schema.prophet_predictions.predicted_price_30d IS 'Predicted price after 30 days';
+COMMENT ON COLUMN my_schema.prophet_predictions.predicted_price_change_pct IS 'Predicted percentage change from current price to 30-day target';
+COMMENT ON COLUMN my_schema.prophet_predictions.prediction_confidence IS 'Confidence score of the prediction (0-100)';
+COMMENT ON COLUMN my_schema.prophet_predictions.prediction_details IS 'JSON object containing detailed prediction data including daily forecasts';

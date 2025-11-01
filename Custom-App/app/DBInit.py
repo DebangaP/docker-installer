@@ -381,6 +381,108 @@ class DBInit:
         
         results = self.execute_safe_ddl(ddl_statements, dry_run=dry_run)
         
+        # Also create swing_trade_suggestions table if it doesn't exist
+        swing_trade_table_ddl = """
+        CREATE TABLE IF NOT EXISTS my_schema.swing_trade_suggestions (
+            id SERIAL PRIMARY KEY,
+            generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            analysis_date DATE,
+            run_date DATE DEFAULT CURRENT_DATE,
+            scrip_id VARCHAR(10),
+            instrument_token BIGINT,
+            pattern_type VARCHAR(50),
+            direction VARCHAR(10) DEFAULT 'BUY',
+            entry_price DOUBLE PRECISION,
+            target_price DOUBLE PRECISION,
+            stop_loss DOUBLE PRECISION,
+            potential_gain_pct DOUBLE PRECISION,
+            risk_reward_ratio DOUBLE PRECISION,
+            confidence_score DOUBLE PRECISION,
+            holding_period_days INT,
+            current_price DOUBLE PRECISION,
+            sma_20 DOUBLE PRECISION,
+            sma_50 DOUBLE PRECISION,
+            sma_200 DOUBLE PRECISION,
+            rsi_14 DOUBLE PRECISION,
+            macd DOUBLE PRECISION,
+            macd_signal DOUBLE PRECISION,
+            atr_14 DOUBLE PRECISION,
+            volume_trend VARCHAR(20),
+            support_level DOUBLE PRECISION,
+            resistance_level DOUBLE PRECISION,
+            rationale TEXT,
+            technical_context JSONB,
+            diagnostics JSONB,
+            filtering_criteria JSONB,
+            status VARCHAR(20) DEFAULT 'ACTIVE'
+        )
+        """
+        
+        # Execute swing trade table creation
+        swing_results = self.execute_safe_ddl([swing_trade_table_ddl], dry_run=dry_run)
+        
+        # Create indexes if table was created
+        if swing_results['success'] or any('already exists' in str(e.get('reason', '')).lower() for e in swing_results.get('skipped', [])):
+            index_statements = [
+                "CREATE INDEX IF NOT EXISTS idx_swing_trade_analysis_date ON my_schema.swing_trade_suggestions(analysis_date)",
+                "CREATE INDEX IF NOT EXISTS idx_swing_trade_scrip_id ON my_schema.swing_trade_suggestions(scrip_id)",
+                "CREATE INDEX IF NOT EXISTS idx_swing_trade_pattern ON my_schema.swing_trade_suggestions(pattern_type)",
+                "CREATE INDEX IF NOT EXISTS idx_swing_trade_confidence ON my_schema.swing_trade_suggestions(confidence_score DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_swing_trade_run_date ON my_schema.swing_trade_suggestions(run_date)"
+            ]
+            index_results = self.execute_safe_ddl(index_statements, dry_run=dry_run)
+            swing_results['executed'].extend(index_results['executed'])
+            swing_results['skipped'].extend(index_results['skipped'])
+            swing_results['errors'].extend(index_results['errors'])
+        
+        # Merge results
+        results['executed'].extend(swing_results['executed'])
+        results['skipped'].extend(swing_results['skipped'])
+        results['errors'].extend(swing_results['errors'])
+        if not swing_results['success']:
+            results['success'] = False
+        
+        # Also create prophet_predictions table if it doesn't exist
+        prophet_table_ddl = """
+        CREATE TABLE IF NOT EXISTS my_schema.prophet_predictions (
+            id SERIAL PRIMARY KEY,
+            scrip_id VARCHAR(10) NOT NULL,
+            run_date DATE DEFAULT CURRENT_DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            prediction_days INTEGER DEFAULT 30,
+            current_price DOUBLE PRECISION,
+            predicted_price_30d DOUBLE PRECISION,
+            predicted_price_change_pct DOUBLE PRECISION,
+            prediction_confidence DOUBLE PRECISION,
+            prediction_details JSONB,
+            status VARCHAR(20) DEFAULT 'ACTIVE',
+            UNIQUE(scrip_id, run_date, prediction_days)
+        )
+        """
+        
+        # Execute prophet predictions table creation
+        prophet_results = self.execute_safe_ddl([prophet_table_ddl], dry_run=dry_run)
+        
+        # Create indexes if table was created
+        if prophet_results['success'] or any('already exists' in str(e.get('reason', '')).lower() for e in prophet_results.get('skipped', [])):
+            prophet_index_statements = [
+                "CREATE INDEX IF NOT EXISTS idx_prophet_run_date ON my_schema.prophet_predictions(run_date)",
+                "CREATE INDEX IF NOT EXISTS idx_prophet_scrip_id ON my_schema.prophet_predictions(scrip_id)",
+                "CREATE INDEX IF NOT EXISTS idx_prophet_price_change ON my_schema.prophet_predictions(predicted_price_change_pct DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_prophet_status ON my_schema.prophet_predictions(status)"
+            ]
+            prophet_index_results = self.execute_safe_ddl(prophet_index_statements, dry_run=dry_run)
+            prophet_results['executed'].extend(prophet_index_results['executed'])
+            prophet_results['skipped'].extend(prophet_index_results['skipped'])
+            prophet_results['errors'].extend(prophet_index_results['errors'])
+        
+        # Merge prophet results
+        results['executed'].extend(prophet_results['executed'])
+        results['skipped'].extend(prophet_results['skipped'])
+        results['errors'].extend(prophet_results['errors'])
+        if not prophet_results['success']:
+            results['success'] = False
+        
         logging.info(f"Database initialization completed. "
                      f"Executed: {len(results['executed'])}, "
                      f"Skipped: {len(results['skipped'])}, "

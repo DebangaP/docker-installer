@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import json
 import io
 import psycopg2
+import psycopg2.extras
 import pandas as pd
 import numpy as np
 try:
@@ -267,6 +268,7 @@ def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, so
 
         # Fetch paginated holdings for the most recent run_date
         # Calculate invested amount and current value with coalesced prices
+        # Include Prophet predictions from latest run_date
         cursor.execute("""
             SELECT 
                 h.trading_symbol,
@@ -282,6 +284,8 @@ def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, so
                     (h.pnl / (h.quantity * h.average_price)) * 100
                 else 0
                 end::numeric, 2) as pnl_pct_change,
+                pp.predicted_price_change_pct,
+                pp.prediction_confidence,
                 (SELECT MAX(run_date) FROM my_schema.holdings) as run_date
             FROM my_schema.holdings h
             LEFT JOIN (
@@ -290,6 +294,14 @@ def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, so
                 WHERE price_date::date <= CURRENT_DATE
                 ORDER BY scrip_id, price_date DESC
             ) rt ON h.trading_symbol = rt.scrip_id
+            LEFT JOIN (
+                SELECT DISTINCT ON (scrip_id) scrip_id, predicted_price_change_pct, prediction_confidence
+                FROM my_schema.prophet_predictions
+                WHERE run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE')
+                AND prediction_days = 30
+                AND status = 'ACTIVE'
+                ORDER BY scrip_id, run_date DESC
+            ) pp ON h.trading_symbol = pp.scrip_id
             {where_clause}
             ORDER BY {sort_by} {sort_dir}
             LIMIT %s OFFSET %s
@@ -1089,12 +1101,29 @@ async def api_premarket_analysis(analysis_date: str = Query(None)):
         # Generate comprehensive pre-market analysis
         analysis = premarket_analyzer.generate_comprehensive_premarket_analysis(target_date)
         
+        # Ensure success field exists
+        if isinstance(analysis, dict) and 'success' not in analysis:
+            analysis['success'] = True
+        
         return analysis
     except Exception as e:
         logging.error(f"Error generating pre-market analysis: {e}")
         import traceback
         logging.error(traceback.format_exc())
-        return {"success": False, "error": str(e)}
+        # Return user-friendly error message
+        error_msg = "Unable to generate pre-market analysis. Please try again later."
+        if "DataFrame" in str(e) or "ambiguous" in str(e).lower():
+            error_msg = "Data processing error in pre-market analysis. Please contact support if this persists."
+        elif "connection" in str(e).lower() or "timeout" in str(e).lower():
+            error_msg = "Connection error while fetching pre-market data. Please check your connection and try again."
+        elif "data" in str(e).lower() and ("not found" in str(e).lower() or "empty" in str(e).lower()):
+            error_msg = "Pre-market data is not available for the selected date. Please select a different date."
+        
+        return {
+            "success": False, 
+            "error": error_msg,
+            "analysis_date": target_date if 'target_date' in locals() else None
+        }
 
 @app.get("/api/footprint_analysis")
 async def api_footprint_analysis(
@@ -1498,6 +1527,346 @@ async def api_refresh_stock_prices():
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
 
+@app.get("/api/swing_trades")
+async def api_swing_trades(
+    min_gain: float = Query(10.0, description="Minimum target gain %"),
+    max_gain: float = Query(20.0, description="Maximum target gain %"),
+    min_confidence: float = Query(70.0, description="Minimum confidence score"),
+    pattern_type: str = Query(None, description="Filter by pattern type"),
+    limit: int = Query(20, description="Number of results"),
+    scan_limit: int = Query(50, description="Limit number of stocks to scan (default: 50)")
+):
+    """API endpoint to get swing trade recommendations for stocks"""
+    try:
+        from SwingTradeScanner import SwingTradeScanner
+        from datetime import date
+        
+        scanner = SwingTradeScanner(
+            min_gain=min_gain,
+            max_gain=max_gain,
+            min_confidence=min_confidence
+        )
+        
+        # Scan stocks with limit (default: 50 to keep scan time reasonable)
+        # If scan_limit is None, use 50 as default
+        actual_scan_limit = scan_limit if scan_limit is not None else 50
+        recommendations = scanner.scan_all_stocks(limit=actual_scan_limit)
+        
+        # Also scan Nifty50 and add to recommendations
+        nifty_recommendations = scanner.scan_nifty()
+        if nifty_recommendations:
+            recommendations.extend(nifty_recommendations)
+        
+        # Filter by pattern type if provided
+        if pattern_type:
+            recommendations = [r for r in recommendations if r.get('pattern_type') == pattern_type]
+        
+        # Get Prophet predictions from latest run_date for all stocks
+        from ProphetPricePredictor import ProphetPricePredictor
+        predictor = ProphetPricePredictor()
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cursor.execute("""
+            SELECT scrip_id, predicted_price_change_pct, prediction_confidence
+            FROM my_schema.prophet_predictions
+            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE' AND prediction_days = 30)
+            AND prediction_days = 30
+            AND status = 'ACTIVE'
+        """)
+        
+        predictions_map = {row['scrip_id']: dict(row) for row in cursor.fetchall()}
+        cursor.close()
+        conn.close()
+        
+        # Add predictions to recommendations
+        for rec in recommendations:
+            scrip_id = rec.get('scrip_id')
+            if scrip_id and scrip_id in predictions_map:
+                pred = predictions_map[scrip_id]
+                rec['prophet_prediction_pct'] = float(pred['predicted_price_change_pct']) if pred['predicted_price_change_pct'] else None
+                rec['prophet_confidence'] = float(pred['prediction_confidence']) if pred['prediction_confidence'] else None
+            else:
+                rec['prophet_prediction_pct'] = None
+                rec['prophet_confidence'] = None
+        
+        # Sort by confidence score (highest first)
+        recommendations.sort(key=lambda x: x.get('confidence_score', 0), reverse=True)
+        
+        # Limit results
+        if limit > 0:
+            recommendations = recommendations[:limit]
+        
+        # Save to database
+        analysis_date = date.today()
+        scanner.save_recommendations(recommendations, analysis_date)
+        
+        return {
+            "success": True,
+            "recommendations": recommendations,
+            "total_found": len(recommendations),
+            "analysis_date": str(analysis_date),
+            "filtering_criteria": {
+                "min_gain": min_gain,
+                "max_gain": max_gain,
+                "min_confidence": min_confidence,
+                "pattern_type": pattern_type
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"Error generating swing trade recommendations: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/swing_trades_nifty")
+async def api_swing_trades_nifty(
+    min_gain: float = Query(10.0, description="Minimum target gain %"),
+    max_gain: float = Query(20.0, description="Maximum target gain %"),
+    min_confidence: float = Query(70.0, description="Minimum confidence score")
+):
+    """API endpoint to get swing trade recommendations for Nifty"""
+    try:
+        from SwingTradeScanner import SwingTradeScanner
+        from datetime import date
+        
+        scanner = SwingTradeScanner(
+            min_gain=min_gain,
+            max_gain=max_gain,
+            min_confidence=min_confidence
+        )
+        
+        # Scan Nifty
+        recommendations = scanner.scan_nifty()
+        
+        # Save to database
+        analysis_date = date.today()
+        scanner.save_recommendations(recommendations, analysis_date)
+        
+        return {
+            "success": True,
+            "recommendations": recommendations,
+            "total_found": len(recommendations),
+            "analysis_date": str(analysis_date),
+            "filtering_criteria": {
+                "min_gain": min_gain,
+                "max_gain": max_gain,
+                "min_confidence": min_confidence
+            }
+        }
+        
+    except Exception as e:
+        logging.error(f"Error generating Nifty swing trade recommendations: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/prophet_predictions/generate")
+async def api_generate_prophet_predictions(
+    prediction_days: int = Query(30, description="Number of days to predict ahead (default: 30, supports 30, 60, 90, 180, etc.)"),
+    limit: int = Query(None, description="Limit number of stocks to process (default: all)"),
+    force: bool = Query(False, description="Force regeneration even if predictions exist for today")
+):
+    """API endpoint to generate Prophet price predictions for all stocks (runs once per day)"""
+    try:
+        from ProphetPricePredictor import ProphetPricePredictor
+        from datetime import date
+        
+        predictor = ProphetPricePredictor(prediction_days=prediction_days)
+        run_date = date.today()
+        
+        # Check if predictions already exist for today and this prediction_days (unless force=True)
+        if not force and predictor.check_predictions_exist_for_date(run_date, prediction_days=prediction_days):
+            return {
+                "success": False,
+                "error": f"Predictions already generated for today with {prediction_days} days. Set force=true to regenerate.",
+                "run_date": str(run_date),
+                "prediction_days": prediction_days
+            }
+        
+        # Generate predictions
+        logging.info(f"Starting Prophet prediction generation for run_date={run_date}, prediction_days={prediction_days}, limit={limit}")
+        predictions = predictor.predict_all_stocks(limit=limit, prediction_days=prediction_days)
+        
+        logging.info(f"Prophet prediction generation completed: {len(predictions)} predictions generated")
+        
+        if not predictions:
+            error_msg = "No predictions generated. This could be due to: insufficient data (need at least 60 days), Prophet model errors, or data quality issues. Check application logs for details."
+            logging.warning(error_msg)
+            return {
+                "success": False,
+                "error": error_msg,
+                "run_date": str(run_date),
+                "prediction_days": prediction_days
+            }
+        
+        # Save predictions
+        save_success = predictor.save_predictions(predictions, run_date, prediction_days=prediction_days)
+        
+        if not save_success:
+            return {
+                "success": False,
+                "error": "Failed to save predictions to database",
+                "predictions_generated": len(predictions),
+                "run_date": str(run_date)
+            }
+        
+        return {
+            "success": True,
+            "predictions_generated": len(predictions),
+            "run_date": str(run_date),
+            "prediction_days": prediction_days,
+            "message": f"Successfully generated and saved {len(predictions)} predictions for {prediction_days} days"
+        }
+        
+    except Exception as e:
+        logging.error(f"Error generating Prophet predictions: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "run_date": str(run_date) if 'run_date' in locals() else None
+        }
+
+@app.get("/api/prophet_predictions/top_gainers")
+async def api_prophet_top_gainers(
+    limit: int = Query(10, description="Number of top gainers to return"),
+    prediction_days: int = Query(30, description="Number of prediction days to filter by (default: 30)")
+):
+    """API endpoint to get top N potential gainers based on Prophet predictions"""
+    try:
+        from ProphetPricePredictor import ProphetPricePredictor
+        
+        predictor = ProphetPricePredictor()
+        top_gainers = predictor.get_top_gainers(limit=limit, prediction_days=prediction_days)
+        
+        return {
+            "success": True,
+            "top_gainers": top_gainers,
+            "count": len(top_gainers)
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting top gainers: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "top_gainers": []}
+
+@app.get("/api/prophet_predictions/{scrip_id}")
+async def api_get_prophet_prediction(scrip_id: str):
+    """API endpoint to get Prophet prediction for a specific stock"""
+    try:
+        from ProphetPricePredictor import ProphetPricePredictor
+        
+        predictor = ProphetPricePredictor()
+        prediction = predictor.get_prediction_for_stock(scrip_id)
+        
+        if not prediction:
+            return {
+                "success": False,
+                "error": f"No prediction found for {scrip_id}",
+                "prediction": None
+            }
+        
+        return {
+            "success": True,
+            "prediction": prediction
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting prediction for {scrip_id}: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "prediction": None}
+
+@app.get("/api/swing_trades_history")
+async def api_swing_trades_history(
+    start_date: str = Query(None, description="Start date YYYY-MM-DD"),
+    end_date: str = Query(None, description="End date YYYY-MM-DD"),
+    scrip_id: str = Query(None, description="Filter by stock symbol"),
+    pattern_type: str = Query(None, description="Filter by pattern type"),
+    limit: int = Query(100, ge=1, le=1000)
+):
+    """API endpoint to get historical swing trade recommendations"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        where_clauses = []
+        params = []
+        
+        if start_date:
+            where_clauses.append("analysis_date >= %s")
+            params.append(start_date)
+        if end_date:
+            where_clauses.append("analysis_date <= %s")
+            params.append(end_date)
+        if scrip_id:
+            where_clauses.append("scrip_id = %s")
+            params.append(scrip_id)
+        if pattern_type:
+            where_clauses.append("pattern_type = %s")
+            params.append(pattern_type)
+        
+        sql = f"""
+            SELECT id, generated_at, analysis_date, run_date, scrip_id, instrument_token,
+                   pattern_type, direction, entry_price, target_price, stop_loss,
+                   potential_gain_pct, risk_reward_ratio, confidence_score, holding_period_days,
+                   current_price, sma_20, sma_50, sma_200, rsi_14, macd, macd_signal, atr_14,
+                   volume_trend, support_level, resistance_level, rationale,
+                   technical_context, diagnostics, filtering_criteria, status
+            FROM my_schema.swing_trade_suggestions
+            {('WHERE ' + ' AND '.join(where_clauses)) if where_clauses else ''}
+            ORDER BY analysis_date DESC, confidence_score DESC
+            LIMIT %s
+        """
+        params.append(limit)
+        
+        cursor.execute(sql, tuple(params))
+        rows = cursor.fetchall()
+        
+        # Convert to list of dicts
+        recommendations = []
+        for row in rows:
+            rec = dict(row)
+            # Parse JSONB fields
+            if rec.get('technical_context'):
+                try:
+                    if isinstance(rec['technical_context'], str):
+                        rec['technical_context'] = json.loads(rec['technical_context'])
+                except:
+                    pass
+            if rec.get('diagnostics'):
+                try:
+                    if isinstance(rec['diagnostics'], str):
+                        rec['diagnostics'] = json.loads(rec['diagnostics'])
+                except:
+                    pass
+            if rec.get('filtering_criteria'):
+                try:
+                    if isinstance(rec['filtering_criteria'], str):
+                        rec['filtering_criteria'] = json.loads(rec['filtering_criteria'])
+                except:
+                    pass
+            recommendations.append(rec)
+        
+        cursor.close()
+        conn.close()
+        
+        return {
+            "success": True,
+            "recommendations": recommendations,
+            "total_found": len(recommendations)
+        }
+        
+    except Exception as e:
+        logging.error(f"Error fetching swing trade history: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/scanner_with_confirmation")
 async def api_scanner_with_confirmation(
     strategy_type: str = Query("covered_call", description="Strategy type"),
@@ -1601,7 +1970,7 @@ async def api_gainers():
             and "Curr".scrip_id = ms.scrip_id
             and ms.scrip_country = 'IN'
             order by 100*("Curr".price_close - "Prev".price_close)/"Prev".price_close desc
-            limit 15
+            limit 10
         """)
         
         gainers = cursor.fetchall()
@@ -1654,7 +2023,7 @@ async def api_losers():
             and "Curr".scrip_id = ms.scrip_id
             and ms.scrip_country = 'IN'
             order by 100*("Prev".price_close - "Curr".price_close)/"Prev".price_close desc
-            limit 15
+            limit 10
         """)
         
         losers = cursor.fetchall()
@@ -1986,11 +2355,42 @@ async def api_mf_holdings():
             })
         
         return {"mf_holdings": mf_holdings_list}
+        
     except Exception as e:
         logging.error(f"Error fetching MF holdings: {e}")
         import traceback
         logging.error(traceback.format_exc())
         return {"error": str(e), "mf_holdings": []}
+
+@app.get("/api/holdings/patterns")
+async def api_holdings_patterns():
+    """API endpoint to get detected patterns for all holdings"""
+    try:
+        from SwingTradeScanner import SwingTradeScanner
+        scanner = SwingTradeScanner(min_gain=10.0, max_gain=20.0, min_confidence=70.0)
+        
+        # Get holdings symbols
+        holdings_info = get_holdings_data(page=1, per_page=10000, sort_by='trading_symbol', sort_dir='asc')
+        symbols = [h["trading_symbol"] for h in holdings_info.get("holdings", [])]
+        
+        # Get patterns for each holding
+        patterns_map = {}
+        for symbol in symbols:
+            try:
+                patterns = scanner.get_patterns_for_stock(symbol)
+                if patterns:
+                    patterns_map[symbol] = patterns
+            except Exception as e:
+                logging.debug(f"Error getting patterns for {symbol}: {e}")
+                continue
+        
+        return {"success": True, "patterns": patterns_map}
+        
+    except Exception as e:
+        logging.error(f"Error fetching holdings patterns: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "patterns": {}}
 
 @app.get("/api/today_pnl_summary")
 async def api_today_pnl_summary():
@@ -3577,53 +3977,85 @@ async def api_options_scanner(
             strike_range = (strike_range_min, strike_range_max)
         
         # Scan options chain
-        candidates = scanner.scan_options_chain(
-            expiry=expiry_date,
-            strike_range=strike_range,
-            option_type=option_type,
-            strategy_type=strategy_type,
-            min_iv_rank=min_iv_rank,
-            max_iv_rank=max_iv_rank,
-            min_liquidity_score=min_liquidity_score,
-            min_volume=min_volume,
-            min_oi=min_oi,
-            max_days_to_expiry=max_days_to_expiry,
-            min_days_to_expiry=min_days_to_expiry,
-            min_delta=min_delta,
-            max_delta=max_delta,
-            current_spot=None  # Auto-fetch
-        )
-        
-        # Limit results to top 5 for display
-        candidates = candidates[:5] if candidates else []
-        
-        return {
-            "success": True,
-            "candidates": candidates,
-            "total_candidates": len(candidates),
-            "filters_applied": {
-                "expiry": expiry,
-                "strike_range": strike_range,
-                "option_type": option_type,
-                "strategy_type": strategy_type,
-                "min_iv_rank": min_iv_rank,
-                "max_iv_rank": max_iv_rank,
-                "min_liquidity_score": min_liquidity_score,
-                "min_volume": min_volume,
-                "min_oi": min_oi,
-                "max_days_to_expiry": max_days_to_expiry,
-                "min_days_to_expiry": min_days_to_expiry,
-                "min_delta": min_delta,
-                "max_delta": max_delta
+        try:
+            candidates = scanner.scan_options_chain(
+                expiry=expiry_date,
+                strike_range=strike_range,
+                option_type=option_type,
+                strategy_type=strategy_type,
+                min_iv_rank=min_iv_rank,
+                max_iv_rank=max_iv_rank,
+                min_liquidity_score=min_liquidity_score,
+                min_volume=min_volume,
+                min_oi=min_oi,
+                max_days_to_expiry=max_days_to_expiry,
+                min_days_to_expiry=min_days_to_expiry,
+                min_delta=min_delta,
+                max_delta=max_delta,
+                current_spot=None  # Auto-fetch
+            )
+            
+            # Ensure candidates is a list
+            if candidates is None:
+                candidates = []
+            elif not isinstance(candidates, list):
+                candidates = list(candidates) if hasattr(candidates, '__iter__') else []
+            
+            # Sort by overall score if available, otherwise keep original order
+            if candidates and isinstance(candidates[0], dict) and 'overall_score' in candidates[0]:
+                candidates.sort(key=lambda x: x.get('overall_score', 0), reverse=True)
+            
+            # Return all candidates (frontend will limit to top 5)
+            return {
+                "success": True,
+                "candidates": candidates,
+                "total_candidates": len(candidates),
+                "filters_applied": {
+                    "expiry": expiry,
+                    "strike_range": strike_range,
+                    "option_type": option_type,
+                    "strategy_type": strategy_type,
+                    "min_iv_rank": min_iv_rank,
+                    "max_iv_rank": max_iv_rank,
+                    "min_liquidity_score": min_liquidity_score,
+                    "min_volume": min_volume,
+                    "min_oi": min_oi,
+                    "max_days_to_expiry": max_days_to_expiry,
+                    "min_days_to_expiry": min_days_to_expiry,
+                    "min_delta": min_delta,
+                    "max_delta": max_delta
+                }
             }
-        }
+        except Exception as scan_error:
+            logging.error(f"Error in options chain scanning: {scan_error}")
+            import traceback
+            logging.error(traceback.format_exc())
+            # Return graceful error message
+            error_msg = f"Unable to scan options chain. Please try again or adjust your filters."
+            if "connection" in str(scan_error).lower() or "timeout" in str(scan_error).lower():
+                error_msg = "Connection error while fetching options data. Please check your internet connection and try again."
+            elif "authentication" in str(scan_error).lower() or "token" in str(scan_error).lower():
+                error_msg = "Authentication error. Please refresh your session and try again."
+            
+            return {
+                "success": False,
+                "error": error_msg,
+                "candidates": []
+            }
     except Exception as e:
         logging.error(f"Error scanning options chain: {e}")
         import traceback
         logging.error(traceback.format_exc())
+        # Return user-friendly error message
+        error_msg = "An error occurred while scanning options. Please try again later."
+        if "connection" in str(e).lower():
+            error_msg = "Unable to connect to the options data service. Please check your connection."
+        elif "timeout" in str(e).lower():
+            error_msg = "Request timed out. Please try again with fewer filters or later."
+        
         return {
             "success": False,
-            "error": str(e),
+            "error": error_msg,
             "candidates": []
         }
 

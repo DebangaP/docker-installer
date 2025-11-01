@@ -594,7 +594,7 @@ class PremarketAnalyzer:
     
     def _calculate_poc_strength(self, tpo_profile: TPOProfile) -> str:
         """Calculate POC strength indicator"""
-        if not tpo_profile.tpo_data or tpo_profile.tpo_data.empty:
+        if tpo_profile.tpo_data is None or (hasattr(tpo_profile.tpo_data, 'empty') and tpo_profile.tpo_data.empty):
             return 'Weak'
         
         max_tpo = float(tpo_profile.tpo_data['tpo_count'].max())

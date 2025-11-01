@@ -26,7 +26,8 @@
         }
 
         .header-content {
-            max-width: 1200px;
+            max-width: 80%;
+            width: 80%;
             margin: 0 auto;
             padding: 0 20px;
             display: flex;
@@ -77,7 +78,8 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 80%;
+            width: 80%;
             margin: 0 auto;
             padding: 20px;
         }
@@ -317,7 +319,8 @@
         }
 
         .tab-nav-container {
-            max-width: 1200px;
+            max-width: 80%;
+            width: 80%;
             margin: 0 auto;
             padding: 0 20px;
             display: flex;
@@ -357,13 +360,25 @@
         }
 
         @media (max-width: 768px) {
-            .dashboard-grid {
-                grid-template-columns: 1fr;
-            }
-            
             .header-content {
+                width: 95%;
+                max-width: 95%;
                 flex-direction: column;
                 gap: 15px;
+            }
+            
+            .container {
+                width: 95%;
+                max-width: 95%;
+            }
+            
+            .tab-nav-container {
+                width: 95%;
+                max-width: 95%;
+            }
+            
+            .dashboard-grid {
+                grid-template-columns: 1fr;
             }
             
             .status-bar {
@@ -718,23 +733,23 @@
                 <!-- Top Gainers -->
                 <div class="card" style="margin-bottom: 20px;">
                     <div class="card-header" style="justify-content: space-between; background-color: #28a745; color: white;">
-                        <h3 class="card-title" style="color: white;">📈 Top 15 Gainers (Last Trading Day)</h3>
+                        <h3 class="card-title" style="color: white;">📈 Top 10 Gainers (Last Trading Day)</h3>
                     </div>
                     <div style="overflow-x: auto;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                             <thead>
                                 <tr style="background-color: #f8f9fa;">
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Rank</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Symbol</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Sparkline (last 30D)</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Previous Price</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Current Price</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Change %</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Rank</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Symbol</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Sparkline (last 30D)</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Previous Price</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Current Price</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Change %</th>
                                 </tr>
                             </thead>
                             <tbody id="gainersTableBody">
                                 <tr>
-                                    <td colspan="6" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading...</td>
+                                    <td colspan="6" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Loading...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -744,27 +759,148 @@
                 <!-- Top Losers -->
                 <div class="card">
                     <div class="card-header" style="justify-content: space-between; background-color: #dc3545; color: white;">
-                        <h3 class="card-title" style="color: white;">📉 Top 15 Losers (Last Trading Day)</h3>
+                        <h3 class="card-title" style="color: white;">📉 Top 10 Losers (Last Trading Day)</h3>
                     </div>
                     <div style="overflow-x: auto;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                             <thead>
                                 <tr style="background-color: #f8f9fa;">
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Rank</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Symbol</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Sparkline (last 30D)</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Previous Price</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Current Price</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Change %</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Rank</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Symbol</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Sparkline (last 30D)</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Previous Price</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Current Price</th>
+                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Change %</th>
                                 </tr>
                             </thead>
                             <tbody id="losersTableBody">
                                 <tr>
-                                    <td colspan="6" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading...</td>
+                                    <td colspan="6" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Loading...</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+            
+            <!-- Swing Trade Recommendations Section -->
+            <div class="card" style="margin-top: 20px;">
+                <div class="card-header" style="background-color: #6f42c1; color: white;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 class="card-title" style="color: white;">🎯 Swing Trade Recommendations</h3>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <select id="swingTradePatternFilter" onchange="filterSwingTrades()" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #ddd; font-size: 12px;">
+                                <option value="">All Patterns</option>
+                                <option value="Pullback to Support">Pullback to Support</option>
+                                <option value="Breakout from Consolidation">Breakout from Consolidation</option>
+                                <option value="Golden Cross">Golden Cross</option>
+                                <option value="Oversold Bounce">Oversold Bounce</option>
+                                <option value="MACD Bullish Crossover">MACD Bullish Crossover</option>
+                                <option value="Head and Shoulders">Head and Shoulders</option>
+                                <option value="Double Top">Double Top</option>
+                                <option value="Double Bottom">Double Bottom</option>
+                                <option value="Cup and Handle">Cup and Handle</option>
+                                <option value="Flag (Bullish)">Flag (Bullish)</option>
+                                <option value="Flag (Bearish)">Flag (Bearish)</option>
+                                <option value="Ascending Triangle">Ascending Triangle</option>
+                                <option value="Descending Triangle">Descending Triangle</option>
+                                <option value="Symmetrical Triangle (Bullish)">Symmetrical Triangle (Bullish)</option>
+                                <option value="Symmetrical Triangle (Bearish)">Symmetrical Triangle (Bearish)</option>
+                                <option value="Rounding Bottom">Rounding Bottom</option>
+                                <option value="Bullish Engulfing">Bullish Engulfing</option>
+                                <option value="Bearish Engulfing">Bearish Engulfing</option>
+                            </select>
+                            <select id="swingTradeGainFilter" onchange="filterSwingTrades()" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #ddd; font-size: 12px;">
+                                <option value="">All Gains</option>
+                                <option value="10-15">10-15%</option>
+                                <option value="15-20">15-20%</option>
+                                <option value="20+">20%+</option>
+                            </select>
+                            <button onclick="loadSwingTrades()" class="btn btn-primary" style="padding: 6px 12px; font-size: 12px;">
+                                🔄 Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div style="padding: 15px;">
+                    <div style="margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 4px; font-size: 12px;">
+                        <strong>Filtering Criteria:</strong>
+                        <span id="swingTradeFilterCriteria" style="margin-left: 10px; color: #666;">Loading...</span>
+                    </div>
+                    
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <thead>
+                                <tr style="background-color: #f8f9fa;">
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Symbol</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Sparkline (last 30D)</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Pattern(s)</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Entry</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Target</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Stop Loss</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Gain %</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">R/R</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Ghost Prediction</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Confidence</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Days</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Rationale</th>
+                                </tr>
+                            </thead>
+                            <tbody id="swingTradesTableBody">
+                                <tr>
+                                    <td colspan="12" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Click Refresh to load swing trade recommendations</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div id="swingTradePagination"></div>
+                    <div id="swingTradesStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                </div>
+            </div>
+            
+            <!-- Top 10 Potential Gainers Section -->
+            <div class="card" style="margin-top: 20px;">
+                <div class="card-header" style="background-color: #28a745; color: white;">
+                    <h3 class="card-title" style="color: white;">🚀 Top 10 Potential Gainers (Prophet Predictions)</h3>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <label style="color: white; font-size: 12px; margin-right: 5px;">Prediction Days:</label>
+                        <select id="predictionDaysSelect" style="padding: 4px 8px; font-size: 12px; border: none; border-radius: 4px;">
+                            <option value="30">30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="180">180 Days</option>
+                        </select>
+                        <button onclick="generateProphetPredictionsWithDays()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #17a2b8; color: white; border: none;">
+                            ⚡ Generate Predictions
+                        </button>
+                        <button onclick="loadTopGainers()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #28a745; border: none;">
+                            🔄 Refresh
+                        </button>
+                    </div>
+                </div>
+                <div style="padding: 15px;">
+                    <div id="topGainersContainer" style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <thead>
+                                <tr style="background-color: #f8f9fa;">
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Rank</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Symbol</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Sparkline (last 30D)</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Current Price</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Ghost Prediction</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Predicted Gain %</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="topGainersTableBody">
+                                <tr>
+                                    <td colspan="7" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Click Refresh to load top gainers</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="topGainersStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
                 </div>
             </div>
         </div>
@@ -1041,57 +1177,75 @@
                 </div>
             </div>
             <div style="overflow-x: auto;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                     <thead id="holdingsTableHeader">
                         <tr style="background-color: #f8f9fa;">
-                            <th onclick="sortHoldings('trading_symbol')" style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; cursor: pointer; user-select: none;" id="header_trading_symbol">Symbol ↕</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Sparkline (last 30D)</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Qty</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Avg. Price</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">LTP</th>
-                            <th onclick="sortHoldings('invested_amount')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none;" id="header_invested_amount">Invested Amount ↕</th>
-                            <th onclick="sortHoldings('current_amount')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none;" id="header_current_amount">Current Amount ↕</th>
-                            <th onclick="sortHoldings('pnl')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none;" id="header_pnl">Total P&L ↕</th>
-                            <th onclick="sortHoldings('today_pnl')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none;" id="header_today_pnl">Today's P&L ↕</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Existing GTT</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Set New GTT</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Actions</th>
+                            <th onclick="sortHoldings('trading_symbol')" style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_trading_symbol">Symbol ↕</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Sparkline (last 30D)</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Pattern</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Prediction (30D)</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Qty</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Avg. Price</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">LTP</th>
+                            <th onclick="sortHoldings('invested_amount')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_invested_amount">Invested Amount ↕</th>
+                            <th onclick="sortHoldings('current_amount')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_current_amount">Current Amount ↕</th>
+                            <th onclick="sortHoldings('pnl')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_pnl">Total P&L ↕</th>
+                            <th onclick="sortHoldings('today_pnl')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_today_pnl">Today's P&L ↕</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Existing GTT</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Set New GTT</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="holdingsTableBody">
                         {% for holding in holdings_info.holdings %}
                         <tr style="border-bottom: 1px solid #eee;">
-                            <td style="padding: 12px; border: 1px solid #ddd;">
+                            <td style="padding: 12px; border: 1px solid #ddd; font-size: 14px;">
                                 <strong>{{ holding.trading_symbol }}</strong>
                             </td>
                             <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
                                 <canvas id="sparkline-{{ holding.trading_symbol }}" width="120" height="40" onclick="showCandlestick('{{ holding.trading_symbol }}')" style="cursor: pointer;"></canvas>
                             </td>
-                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
-                                {{ holding.quantity }}
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 12px; max-width: 150px; word-wrap: break-word;">
+                                <span id="pattern-{{ holding.trading_symbol }}" style="color: #666;">Loading...</span>
                             </td>
-                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
-                                ₹{{ "%.2f"|format(holding.average_price) }}
-                            </td>
-                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
-                                ₹{{ "%.2f"|format(holding.last_price) }}
-                            </td>
-                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
-                                ₹{{ "%.2f"|format(holding.quantity * holding.average_price) }}
-                            </td>
-                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
-                                ₹{{ "%.2f"|format(holding.quantity * holding.last_price) }}
-                            </td>
-                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
-                                {% if holding.pnl >= 0 %}
-                                    <div style="color: #28a745; font-weight: bold;">₹{{ "%.2f"|format(holding.pnl) }}</div>
-                                    <div style="font-size: 10px; color: #28a745;">{{ "+%.2f"|format(holding.pnl_pct_change) }}%</div>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
+                                {% if holding.predicted_price_change_pct is not none %}
+                                    {% if holding.predicted_price_change_pct >= 0 %}
+                                        <div style="color: #28a745; font-weight: bold;">+{{ "%.2f"|format(holding.predicted_price_change_pct) }}%</div>
+                                        <div style="font-size: 11px; color: #666;">Conf: {{ "%.0f"|format(holding.prediction_confidence or 0) }}%</div>
+                                    {% else %}
+                                        <div style="color: #dc3545; font-weight: bold;">{{ "%.2f"|format(holding.predicted_price_change_pct) }}%</div>
+                                        <div style="font-size: 11px; color: #666;">Conf: {{ "%.0f"|format(holding.prediction_confidence or 0) }}%</div>
+                                    {% endif %}
                                 {% else %}
-                                    <div style="color: #dc3545; font-weight: bold;">₹{{ "%.2f"|format(holding.pnl) }}</div>
-                                    <div style="font-size: 10px; color: #dc3545;">{{ "%.2f"|format(holding.pnl_pct_change) }}%</div>
+                                    <span style="color: #999; font-size: 12px;">N/A</span>
                                 {% endif %}
                             </td>
-                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
+                                {{ holding.quantity }}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
+                                ₹{{ "%.2f"|format(holding.average_price) }}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
+                                ₹{{ "%.2f"|format(holding.last_price) }}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
+                                ₹{{ "%.2f"|format(holding.quantity * holding.average_price) }}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
+                                ₹{{ "%.2f"|format(holding.quantity * holding.last_price) }}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
+                                {% if holding.pnl >= 0 %}
+                                    <div style="color: #28a745; font-weight: bold; font-size: 14px;">₹{{ "%.2f"|format(holding.pnl) }}</div>
+                                    <div style="font-size: 12px; color: #28a745;">{{ "+%.2f"|format(holding.pnl_pct_change) }}%</div>
+                                {% else %}
+                                    <div style="color: #dc3545; font-weight: bold; font-size: 14px;">₹{{ "%.2f"|format(holding.pnl) }}</div>
+                                    <div style="font-size: 12px; color: #dc3545;">{{ "%.2f"|format(holding.pnl_pct_change) }}%</div>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
                                 {%- if holding.today_pnl is defined -%}
                                     {% set today_pnl = holding.today_pnl %}
                                 {%- else -%}
@@ -1103,43 +1257,43 @@
                                     {% set pct_change = 0 %}
                                 {%- endif -%}
                                 {% if today_pnl >= 0 %}
-                                    <div style="color: #28a745; font-weight: bold;">₹{{ "%.2f"|format(today_pnl) }}</div>
-                                    <div style="font-size: 10px; color: #28a745;">{{ "+%.2f"|format(pct_change) }}%</div>
+                                    <div style="color: #28a745; font-weight: bold; font-size: 14px;">₹{{ "%.2f"|format(today_pnl) }}</div>
+                                    <div style="font-size: 12px; color: #28a745;">{{ "+%.2f"|format(pct_change) }}%</div>
                                 {% else %}
-                                    <div style="color: #dc3545; font-weight: bold;">₹{{ "%.2f"|format(today_pnl) }}</div>
-                                    <div style="font-size: 10px; color: #dc3545;">{{ "%.2f"|format(pct_change) }}%</div>
+                                    <div style="color: #dc3545; font-weight: bold; font-size: 14px;">₹{{ "%.2f"|format(today_pnl) }}</div>
+                                    <div style="font-size: 12px; color: #dc3545;">{{ "%.2f"|format(pct_change) }}%</div>
                                 {% endif %}
                             </td>
-                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 11px;">
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
                                 {% if holding.existing_gtt %}
                                 <div style="display: flex; flex-direction: column; gap: 4px;">
-                                    <span style="color: #28a745; font-weight: bold;">✓ Active</span>
-                                    <span style="color: #666;">₹{{ "%.2f"|format(holding.existing_gtt.trigger_price) }}</span>
+                                    <span style="color: #28a745; font-weight: bold; font-size: 13px;">✓ Active</span>
+                                    <span style="color: #666; font-size: 13px;">₹{{ "%.2f"|format(holding.existing_gtt.trigger_price) }}</span>
                                     <button onclick="cancelGTT({{ holding.existing_gtt.trigger_id }}, '{{ holding.trading_symbol }}')" 
-                                            class="btn" style="padding: 2px 6px; font-size: 10px; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">
+                                            class="btn" style="padding: 2px 6px; font-size: 12px; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">
                                         Cancel
                                     </button>
                                 </div>
                                 {% else %}
-                                <span style="color: #999;">No GTT</span>
+                                <span style="color: #999; font-size: 13px;">No GTT</span>
                                 {% endif %}
                             </td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">
                                 <form onsubmit="setGTT(event, '{{ holding.instrument_token }}', '{{ holding.trading_symbol }}', {{ holding.quantity }})" style="display: flex; gap: 8px; align-items: center; justify-content: center;">
                                     <input type="number" id="trigger_price_{{ holding.instrument_token }}" step="0.05" placeholder="Price" 
-                                           style="width: 80px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" required>
-                                    <button type="submit" class="btn btn-secondary" style="padding: 4px 12px; font-size: 12px;">Set</button>
+                                           style="width: 80px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;" required>
+                                    <button type="submit" class="btn btn-secondary" style="padding: 4px 12px; font-size: 13px;">Set</button>
                                 </form>
                             </td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">
                                 <div style="display: flex; gap: 4px; justify-content: center; flex-wrap: wrap;">
-                                    <button class="btn btn-success" style="padding: 4px 8px; font-size: 11px;" onclick="buyMore('{{ holding.instrument_token }}', '{{ holding.trading_symbol }}')">
+                                    <button class="btn btn-success" style="padding: 4px 8px; font-size: 13px;" onclick="buyMore('{{ holding.instrument_token }}', '{{ holding.trading_symbol }}')">
                                         Buy More
                                     </button>
-                                    <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="sellSome('{{ holding.instrument_token }}', '{{ holding.trading_symbol }}', {{ holding.quantity }})">
+                                    <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 13px;" onclick="sellSome('{{ holding.instrument_token }}', '{{ holding.trading_symbol }}', {{ holding.quantity }})">
                                         Sell Some
                                     </button>
-                                    <button class="btn" style="padding: 4px 8px; font-size: 11px; background-color: #dc3545; color: white;" onclick="sellAll('{{ holding.instrument_token }}', '{{ holding.trading_symbol }}', {{ holding.quantity }})">
+                                    <button class="btn" style="padding: 4px 8px; font-size: 13px; background-color: #dc3545; color: white;" onclick="sellAll('{{ holding.instrument_token }}', '{{ holding.trading_symbol }}', {{ holding.quantity }})">
                                         Sell All
                                     </button>
                                 </div>
@@ -1982,65 +2136,68 @@
                         
                         const row = `
                             <tr style="border-bottom: 1px solid #eee;">
-                                <td style="padding: 12px; border: 1px solid #ddd;">
+                                <td style="padding: 12px; border: 1px solid #ddd; font-size: 14px;">
                                     <strong>${holding.trading_symbol}</strong>
                                 </td>
                                 <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
                                     <canvas id="sparkline-ajax-${holding.trading_symbol}" width="120" height="40" onclick="showCandlestick('${holding.trading_symbol}')" style="cursor: pointer;"></canvas>
                                 </td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 12px; max-width: 150px; word-wrap: break-word;">
+                                    <span id="pattern-ajax-${holding.trading_symbol}" style="color: #666;">Loading...</span>
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
                                     ${holding.quantity}
                                 </td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
                                     ₹${holding.average_price.toFixed(2)}
                                 </td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
                                     ₹${holding.last_price.toFixed(2)}
                                 </td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
                                     ₹${holding.invested_amount.toFixed(2)}
                                 </td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
                                     ₹${holding.current_amount.toFixed(2)}
                                 </td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
-                                    <div style="${pnlColor}">₹${holding.pnl.toFixed(2)}</div>
-                                    <div style="font-size: 10px; ${holding.pnl >= 0 ? 'color: #28a745;' : 'color: #dc3545;'}">${holding.pnl_pct_change >= 0 ? '+' : ''}${holding.pnl_pct_change.toFixed(2)}%</div>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
+                                    <div style="${pnlColor} font-size: 14px;">₹${holding.pnl.toFixed(2)}</div>
+                                    <div style="font-size: 12px; ${holding.pnl >= 0 ? 'color: #28a745;' : 'color: #dc3545;'}">${holding.pnl_pct_change >= 0 ? '+' : ''}${holding.pnl_pct_change.toFixed(2)}%</div>
                                 </td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
-                                    <div style="${holding.today_pnl >= 0 ? 'color: #28a745; font-weight: bold;' : 'color: #dc3545; font-weight: bold;'}">₹${holding.today_pnl.toFixed(2)}</div>
-                                    <div style="font-size: 10px; ${holding.today_pnl >= 0 ? 'color: #28a745;' : 'color: #dc3545;'}">${holding.pct_change >= 0 ? '+' : ''}${holding.pct_change.toFixed(2)}%</div>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
+                                    <div style="${holding.today_pnl >= 0 ? 'color: #28a745; font-weight: bold;' : 'color: #dc3545; font-weight: bold;'} font-size: 14px;">₹${holding.today_pnl.toFixed(2)}</div>
+                                    <div style="font-size: 12px; ${holding.today_pnl >= 0 ? 'color: #28a745;' : 'color: #dc3545;'}">${holding.pct_change >= 0 ? '+' : ''}${holding.pct_change.toFixed(2)}%</div>
                                 </td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 11px;">
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
                                     ${holding.existing_gtt ? `
                                     <div style="display: flex; flex-direction: column; gap: 4px;">
-                                        <span style="color: #28a745; font-weight: bold;">✓ Active</span>
-                                        <span style="color: #666;">₹${holding.existing_gtt.trigger_price.toFixed(2)}</span>
+                                        <span style="color: #28a745; font-weight: bold; font-size: 13px;">✓ Active</span>
+                                        <span style="color: #666; font-size: 13px;">₹${holding.existing_gtt.trigger_price.toFixed(2)}</span>
                                         <button onclick="cancelGTT(${holding.existing_gtt.trigger_id}, '${holding.trading_symbol}')" 
-                                                class="btn" style="padding: 2px 6px; font-size: 10px; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">
+                                                class="btn" style="padding: 2px 6px; font-size: 12px; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">
                                             Cancel
                                         </button>
                                     </div>
                                     ` : `
-                                    <span style="color: #999;">No GTT</span>
+                                    <span style="color: #999; font-size: 13px;">No GTT</span>
                                     `}
                                 </td>
                                 <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">
                                     <form onsubmit="setGTT(event, '${holding.instrument_token}', '${holding.trading_symbol}', ${holding.quantity})" style="display: flex; gap: 8px; align-items: center; justify-content: center;">
                                         <input type="number" id="trigger_price_ajax_${holding.instrument_token}" step="0.05" placeholder="Price" 
-                                               style="width: 80px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;" required>
-                                        <button type="submit" class="btn btn-secondary" style="padding: 4px 12px; font-size: 12px;">Set</button>
+                                               style="width: 80px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;" required>
+                                        <button type="submit" class="btn btn-secondary" style="padding: 4px 12px; font-size: 13px;">Set</button>
                                     </form>
                                 </td>
                                 <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">
                                     <div style="display: flex; gap: 4px; justify-content: center; flex-wrap: wrap;">
-                                        <button class="btn btn-success" style="padding: 4px 8px; font-size: 11px;" onclick="buyMore('${holding.instrument_token}', '${holding.trading_symbol}')">
+                                        <button class="btn btn-success" style="padding: 4px 8px; font-size: 13px;" onclick="buyMore('${holding.instrument_token}', '${holding.trading_symbol}')">
                                             Buy More
                                         </button>
-                                        <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="sellSome('${holding.instrument_token}', '${holding.trading_symbol}', ${holding.quantity})">
+                                        <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 13px;" onclick="sellSome('${holding.instrument_token}', '${holding.trading_symbol}', ${holding.quantity})">
                                             Sell Some
                                         </button>
-                                        <button class="btn" style="padding: 4px 8px; font-size: 11px; background-color: #dc3545; color: white;" onclick="sellAll('${holding.instrument_token}', '${holding.trading_symbol}', ${holding.quantity})">
+                                        <button class="btn" style="padding: 4px 8px; font-size: 13px; background-color: #dc3545; color: white;" onclick="sellAll('${holding.instrument_token}', '${holding.trading_symbol}', ${holding.quantity})">
                                             Sell All
                                         </button>
                                     </div>
@@ -2078,9 +2235,83 @@
                     data.holdings.forEach(holding => {
                         loadSparkline(holding.trading_symbol);
                     });
+                    
+                    // Load patterns for holdings
+                    loadHoldingsPatterns(data.holdings);
                 })
                 .catch(error => {
                     console.error('Error fetching holdings:', error);
+                });
+        }
+        
+        // Load patterns for holdings
+        function loadHoldingsPatterns(holdings) {
+            if (!holdings || holdings.length === 0) return;
+            
+            // Get unique symbols
+            const symbols = [...new Set(holdings.map(h => h.trading_symbol))];
+            
+            fetch('/api/holdings/patterns')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        console.error('Error loading holdings patterns:', data.error);
+                        // Set "None" for all on error
+                        symbols.forEach(symbol => {
+                            const patternElements = [
+                                document.getElementById(`pattern-${symbol}`),
+                                document.getElementById(`pattern-ajax-${symbol}`)
+                            ];
+                            patternElements.forEach(elem => {
+                                if (elem) {
+                                    elem.textContent = 'Error';
+                                    elem.style.color = '#dc3545';
+                                }
+                            });
+                        });
+                        return;
+                    }
+                    
+                    const patternsMap = data.patterns || {};
+                    
+                    // Update pattern display for each holding
+                    symbols.forEach(symbol => {
+                        const patterns = patternsMap[symbol] || [];
+                        const patternElements = [
+                            document.getElementById(`pattern-${symbol}`),
+                            document.getElementById(`pattern-ajax-${symbol}`)
+                        ];
+                        
+                        patternElements.forEach(elem => {
+                            if (elem) {
+                                if (patterns.length > 0) {
+                                    const patternText = patterns.join(', ');
+                                    elem.textContent = patternText;
+                                    elem.style.color = '#17a2b8';
+                                    elem.title = patternText;
+                                } else {
+                                    elem.textContent = 'None';
+                                    elem.style.color = '#999';
+                                }
+                            }
+                        });
+                    });
+                })
+                .catch(error => {
+                    console.error('Error loading holdings patterns:', error);
+                    // Set "Error" for all on error
+                    symbols.forEach(symbol => {
+                        const patternElements = [
+                            document.getElementById(`pattern-${symbol}`),
+                            document.getElementById(`pattern-ajax-${symbol}`)
+                        ];
+                        patternElements.forEach(elem => {
+                            if (elem) {
+                                elem.textContent = 'Error';
+                                elem.style.color = '#dc3545';
+                            }
+                        });
+                    });
                 });
         }
         
@@ -2093,7 +2324,7 @@
                     if (data.error) {
                         console.error('Error loading gainers:', data.error);
                         document.getElementById('gainersTableBody').innerHTML = 
-                            '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading gainers</td></tr>';
+                            '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading gainers</td></tr>';
                         return;
                     }
                     
@@ -2101,7 +2332,7 @@
                     tbody.innerHTML = '';
                     
                     if (!data.gainers || data.gainers.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">No gainers data available</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">No gainers data available</td></tr>';
                         return;
                     }
                     
@@ -2111,14 +2342,14 @@
                         symbols.push(symbol);
                         const row = `
                             <tr style="border-bottom: 1px solid #eee;">
-                                <td style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666;">${index + 1}</td>
-                                <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666; font-size: 14px;">${index + 1}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;">${symbol}</td>
                                 <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
                                     <canvas id="sparkline-gainer-${symbol}" width="120" height="40" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
                                 </td>
-                                <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-size: 11px;">₹${gainer.previous_price.toFixed(2)}</td>
-                                <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold; font-size: 11px;">₹${gainer.current_price.toFixed(2)}</td>
-                                <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: #28a745; font-size: 12px;">
+                                <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-size: 14px;">₹${gainer.previous_price.toFixed(2)}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold; font-size: 14px;">₹${gainer.current_price.toFixed(2)}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: #28a745; font-size: 14px;">
                                     +${gainer.gain.toFixed(2)}%
                                 </td>
                             </tr>
@@ -2138,7 +2369,7 @@
                 .catch(error => {
                     console.error('Error fetching gainers:', error);
                     document.getElementById('gainersTableBody').innerHTML = 
-                        '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading gainers</td></tr>';
+                        '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading gainers</td></tr>';
                 });
             
             // Load losers
@@ -2148,7 +2379,7 @@
                     if (data.error) {
                         console.error('Error loading losers:', data.error);
                         document.getElementById('losersTableBody').innerHTML = 
-                            '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading losers</td></tr>';
+                            '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading losers</td></tr>';
                         return;
                     }
                     
@@ -2156,7 +2387,7 @@
                     tbody.innerHTML = '';
                     
                     if (!data.losers || data.losers.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">No losers data available</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">No losers data available</td></tr>';
                         return;
                     }
                     
@@ -2166,14 +2397,14 @@
                         symbols.push(symbol);
                         const row = `
                             <tr style="border-bottom: 1px solid #eee;">
-                                <td style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666;">${index + 1}</td>
-                                <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666; font-size: 14px;">${index + 1}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;">${symbol}</td>
                                 <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
                                     <canvas id="sparkline-loser-${symbol}" width="120" height="40" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
                                 </td>
-                                <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-size: 11px;">₹${loser.previous_price.toFixed(2)}</td>
-                                <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold; font-size: 11px;">₹${loser.current_price.toFixed(2)}</td>
-                                <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: #dc3545; font-size: 12px;">
+                                <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-size: 14px;">₹${loser.previous_price.toFixed(2)}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold; font-size: 14px;">₹${loser.current_price.toFixed(2)}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: #dc3545; font-size: 14px;">
                                     ${loser.gain.toFixed(2)}%
                                 </td>
                             </tr>
@@ -2193,7 +2424,7 @@
                 .catch(error => {
                     console.error('Error fetching losers:', error);
                     document.getElementById('losersTableBody').innerHTML = 
-                        '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading losers</td></tr>';
+                        '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading losers</td></tr>';
                 });
         }
         
@@ -4009,6 +4240,13 @@
                 // Load tab-specific data when switching
                 if (tabName === 'gainers-losers') {
                     loadGainersLosers();
+                    // Initialize auto-refresh for swing trades (30-minute interval)
+                    initSwingTradeAutoRefresh();
+                    // Don't auto-load swing trades on tab switch - only load when user clicks Refresh button or after 30 minutes
+                    // Load top gainers when Stocks tab is active
+                    loadTopGainers();
+                    // Check if predictions exist, show warning if not
+                    checkProphetPredictionsExist();
                 } else if (tabName === 'holdings') {
                     {% if show_holdings %}
                     // Load P&L, Portfolio chart, and Portfolio Hedge Analysis when Holdings tab is shown
@@ -4068,22 +4306,47 @@
             {% for holding in holdings_info.holdings %}
             loadSparkline('{{ holding.trading_symbol }}');
             {% endfor %}
+            
+            // Load patterns for initial holdings
+            {% if show_holdings and holdings_info.holdings %}
+            const initialHoldings = [
+                {% for holding in holdings_info.holdings %}
+                { trading_symbol: '{{ holding.trading_symbol }}' },
+                {% endfor %}
+            ];
+            loadHoldingsPatterns(initialHoldings);
+            {% endif %}
         }
 
         function loadSparkline(symbolOrId) {
-            // Extract actual symbol from ID if it's a prefixed ID (e.g., "gainer-RELIANCE" -> "RELIANCE")
+            // Extract actual symbol from ID if it's a prefixed ID
             let symbol = symbolOrId;
-            let canvasId = `sparkline-${symbolOrId}`;
+            let canvasId = symbolOrId;
             
-            // Handle prefixed IDs like "gainer-RELIANCE" or "loser-RELIANCE" or "ajax-RELIANCE"
-            const knownPrefixes = ['gainer', 'loser', 'ajax'];
-            if (symbolOrId.includes('-')) {
+            // Handle prefixed IDs like "sparkline-swing-RELIANCE", "sparkline-gainer-RELIANCE", etc.
+            if (symbolOrId.startsWith('sparkline-')) {
+                canvasId = symbolOrId; // Keep the full ID for canvas lookup
+                // Extract the symbol by removing "sparkline-" prefix and any known middle prefixes
+                const withoutPrefix = symbolOrId.replace(/^sparkline-/, '');
+                const knownMiddlePrefixes = ['swing', 'gainer', 'loser', 'ajax'];
+                const parts = withoutPrefix.split('-');
+                if (parts.length >= 2 && knownMiddlePrefixes.includes(parts[0])) {
+                    // Remove the middle prefix to get the actual symbol
+                    symbol = parts.slice(1).join('-');
+                } else {
+                    symbol = withoutPrefix;
+                }
+            } else if (symbolOrId.includes('-')) {
+                // Handle formats like "gainer-RELIANCE" or "swing-RELIANCE"
+                const knownPrefixes = ['gainer', 'loser', 'ajax', 'swing'];
                 const parts = symbolOrId.split('-');
                 if (parts.length >= 2 && knownPrefixes.includes(parts[0])) {
                     // Remove the known prefix to get the actual symbol
                     symbol = parts.slice(1).join('-');
                     canvasId = `sparkline-${symbolOrId}`;
                 }
+            } else {
+                canvasId = `sparkline-${symbolOrId}`;
             }
             
             fetch(`/api/sparkline/${symbol}?days=30`)
@@ -4099,10 +4362,26 @@
                     if (!canvas) {
                         canvas = document.getElementById(`sparkline-ajax-${symbol}`);
                     }
-                    if (!canvas && canvasId !== `sparkline-${symbol}`) {
-                        canvas = document.getElementById(canvasId);
+                    if (!canvas) {
+                        canvas = document.getElementById(`sparkline-swing-${symbol}`);
                     }
-                    if (!canvas) return;
+                    if (!canvas && canvasId && canvasId !== `sparkline-${symbol}`) {
+                        // If canvasId is provided (e.g., "swing-RELIANCE"), try to extract and find
+                        const extractedSymbol = canvasId.replace(/^(sparkline-)?(swing-|ajax-)?/, '').replace(/^swing-/, '');
+                        if (extractedSymbol && extractedSymbol !== canvasId) {
+                            canvas = document.getElementById(`sparkline-swing-${extractedSymbol}`);
+                            if (!canvas) {
+                                canvas = document.getElementById(`sparkline-${extractedSymbol}`);
+                            }
+                        }
+                        if (!canvas) {
+                            canvas = document.getElementById(canvasId);
+                        }
+                    }
+                    if (!canvas) {
+                        console.warn(`Canvas not found for symbol: ${symbol}, canvasId: ${canvasId}`);
+                        return;
+                    }
                     
                     const ctx = canvas.getContext('2d');
                     const prices = data.prices;
@@ -4143,6 +4422,483 @@
                     ctx.stroke();
                 })
                 .catch(error => console.error(`Error loading sparkline for ${symbol}:`, error));
+        }
+        
+        // Swing Trade Recommendations Functions
+        let allSwingTrades = [];
+        let filteredSwingTrades = [];
+        let swingTradeScanInProgress = false;
+        let swingTradeRefreshInterval = null;
+        let swingTradeCurrentPage = 1;
+        let swingTradeItemsPerPage = 10;
+        
+        function loadSwingTrades() {
+            // Prevent multiple simultaneous scans
+            if (swingTradeScanInProgress) {
+                console.log('Swing trade scan already in progress, skipping...');
+                return;
+            }
+            
+            const statusDiv = document.getElementById('swingTradesStatus');
+            const tbody = document.getElementById('swingTradesTableBody');
+            const criteriaDiv = document.getElementById('swingTradeFilterCriteria');
+            
+            if (!statusDiv || !tbody || !criteriaDiv) {
+                console.error('Required elements not found for swing trades');
+                return;
+            }
+            
+            swingTradeScanInProgress = true;
+            statusDiv.innerHTML = '<span style="color: #666;">⏳ Scanning stocks and generating recommendations... (This may take a few minutes)</span>';
+            tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Scanning stocks...</td></tr>';
+            
+            fetch('/api/swing_trades?min_gain=10&max_gain=20&min_confidence=70&limit=100&scan_limit=50')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${data.error || 'Failed to load recommendations'}</span>`;
+                        tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading recommendations</td></tr>';
+                        return;
+                    }
+                    
+                    allSwingTrades = data.recommendations || [];
+                    filteredSwingTrades = [...allSwingTrades];
+                    swingTradeCurrentPage = 1; // Reset to first page on new data
+                    
+                    // Group by symbol to count unique stocks
+                    const groupedTrades = {};
+                    allSwingTrades.forEach(trade => {
+                        const symbol = trade.scrip_id || '-';
+                        if (!groupedTrades[symbol]) {
+                            groupedTrades[symbol] = [];
+                        }
+                        groupedTrades[symbol].push(trade);
+                    });
+                    const uniqueStocksCount = Object.keys(groupedTrades).length;
+                    const totalRecommendationsCount = allSwingTrades.length;
+                    
+                    // Display filtering criteria
+                    if (data.filtering_criteria) {
+                        const criteria = data.filtering_criteria;
+                        let criteriaText = `Min Gain: ${criteria.min_gain}% | Max Gain: ${criteria.max_gain}% | Min Confidence: ${criteria.min_confidence}`;
+                        if (criteria.pattern_type) {
+                            criteriaText += ` | Pattern: ${criteria.pattern_type}`;
+                        }
+                        criteriaDiv.textContent = criteriaText;
+                    }
+                    
+                    displaySwingTrades();
+                    
+                    // Show status with unique stocks count (matching pagination display)
+                    statusDiv.innerHTML = `<span style="color: #28a745;">✓ Loaded ${uniqueStocksCount} stocks (${totalRecommendationsCount} pattern${totalRecommendationsCount !== 1 ? 's' : ''})</span>`;
+                    swingTradeScanInProgress = false;
+                })
+                .catch(error => {
+                    console.error('Error loading swing trades:', error);
+                    statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message || 'Failed to load recommendations'}</span>`;
+                    tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading recommendations</td></tr>';
+                    swingTradeScanInProgress = false;
+                });
+        }
+        
+        // Set up 30-minute auto-refresh for swing trades (only when Stocks tab is active)
+        function startSwingTradeAutoRefresh() {
+            // Clear existing interval if any
+            if (swingTradeRefreshInterval) {
+                clearInterval(swingTradeRefreshInterval);
+            }
+            
+            // Refresh every 30 minutes (30 * 60 * 1000 milliseconds)
+            swingTradeRefreshInterval = setInterval(() => {
+                // Only refresh if Stocks tab is currently active and no scan is in progress
+                const stocksTab = document.getElementById('gainers-losers-tab');
+                if (stocksTab && stocksTab.classList.contains('active') && !swingTradeScanInProgress) {
+                    console.log('Auto-refreshing swing trade recommendations (30-minute interval)...');
+                    loadSwingTrades();
+                }
+            }, 30 * 60 * 1000); // 30 minutes
+            
+            console.log('Swing trade auto-refresh started (every 30 minutes)');
+        }
+        
+        // Stop auto-refresh
+        function stopSwingTradeAutoRefresh() {
+            if (swingTradeRefreshInterval) {
+                clearInterval(swingTradeRefreshInterval);
+                swingTradeRefreshInterval = null;
+                console.log('Swing trade auto-refresh stopped');
+            }
+        }
+        
+        // Start auto-refresh when Stocks tab is first activated
+        let swingTradeAutoRefreshStarted = false;
+        function initSwingTradeAutoRefresh() {
+            if (!swingTradeAutoRefreshStarted) {
+                startSwingTradeAutoRefresh();
+                swingTradeAutoRefreshStarted = true;
+            }
+        }
+        
+        function filterSwingTrades() {
+            const patternFilter = document.getElementById('swingTradePatternFilter')?.value || '';
+            const gainFilter = document.getElementById('swingTradeGainFilter')?.value || '';
+            
+            filteredSwingTrades = allSwingTrades.filter(trade => {
+                if (patternFilter && trade.pattern_type !== patternFilter) {
+                    return false;
+                }
+                
+                if (gainFilter) {
+                    const gain = trade.potential_gain_pct || 0;
+                    if (gainFilter === '10-15' && (gain < 10 || gain > 15)) {
+                        return false;
+                    }
+                    if (gainFilter === '15-20' && (gain < 15 || gain > 20)) {
+                        return false;
+                    }
+                    if (gainFilter === '20+' && gain < 20) {
+                        return false;
+                    }
+                }
+                
+                return true;
+            });
+            
+            swingTradeCurrentPage = 1; // Reset to first page when filtering
+            displaySwingTrades();
+        }
+        
+        function displaySwingTrades() {
+            const tbody = document.getElementById('swingTradesTableBody');
+            if (!tbody) return;
+            
+            tbody.innerHTML = '';
+            
+            if (filteredSwingTrades.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">No recommendations found matching the filters</td></tr>';
+                updateSwingTradePagination(0);
+                return;
+            }
+            
+            // Group trades by stock symbol
+            const groupedTrades = {};
+            filteredSwingTrades.forEach(trade => {
+                const symbol = trade.scrip_id || '-';
+                if (!groupedTrades[symbol]) {
+                    groupedTrades[symbol] = [];
+                }
+                groupedTrades[symbol].push(trade);
+            });
+            
+            // Sort stocks by highest confidence score
+            const sortedSymbols = Object.keys(groupedTrades).sort((a, b) => {
+                const maxConfA = Math.max(...groupedTrades[a].map(t => t.confidence_score || 0));
+                const maxConfB = Math.max(...groupedTrades[b].map(t => t.confidence_score || 0));
+                return maxConfB - maxConfA;
+            });
+            
+            // Calculate pagination
+            const totalItems = sortedSymbols.length;
+            const totalPages = Math.ceil(totalItems / swingTradeItemsPerPage);
+            const startIndex = (swingTradeCurrentPage - 1) * swingTradeItemsPerPage;
+            const endIndex = Math.min(startIndex + swingTradeItemsPerPage, totalItems);
+            const currentPageSymbols = sortedSymbols.slice(startIndex, endIndex);
+            
+            const symbols = [];
+            
+            currentPageSymbols.forEach(symbol => {
+                const trades = groupedTrades[symbol];
+                const patterns = trades.map(t => t.pattern_type).join(', ');
+                const entryPrice = trades[0].entry_price || 0;
+                const targetPrice = Math.max(...trades.map(t => t.target_price || 0));
+                const stopLoss = Math.min(...trades.map(t => t.stop_loss || 0));
+                const maxGain = Math.max(...trades.map(t => t.potential_gain_pct || 0));
+                const maxRR = Math.max(...trades.map(t => t.risk_reward_ratio || 0));
+                const maxConfidence = Math.max(...trades.map(t => t.confidence_score || 0));
+                const avgHoldingPeriod = Math.round(trades.reduce((sum, t) => sum + (t.holding_period_days || 0), 0) / trades.length);
+                const rationale = trades.map(t => `${t.pattern_type}: ${t.rationale || '-'}`).join('; ');
+                
+                // Get Prophet prediction from first trade (all trades for same symbol should have same prediction)
+                const prophetPred = trades[0].prophet_prediction_pct !== undefined ? trades[0].prophet_prediction_pct : null;
+                const prophetConf = trades[0].prophet_confidence !== undefined ? trades[0].prophet_confidence : null;
+                
+                symbols.push(symbol);
+                
+                const gainColor = maxGain >= 15 ? '#28a745' : '#17a2b8';
+                const confidenceColor = maxConfidence >= 80 ? '#28a745' : maxConfidence >= 70 ? '#ffc107' : '#dc3545';
+                const prophetColor = prophetPred !== null && prophetPred >= 0 ? '#28a745' : prophetPred !== null ? '#dc3545' : '#999';
+                
+                const row = `
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 12px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;">${symbol}</td>
+                        <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">
+                            <canvas id="sparkline-swing-${symbol}" width="120" height="40" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
+                        </td>
+                        <td style="padding: 12px; border: 1px solid #ddd; font-size: 13px; max-width: 200px; word-wrap: break-word; white-space: normal; line-height: 1.4;">${patterns}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">₹${entryPrice.toFixed(2)}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px; font-weight: bold;">₹${targetPrice.toFixed(2)}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px; color: #dc3545;">₹${stopLoss.toFixed(2)}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: ${gainColor}; font-size: 14px;">
+                            +${maxGain.toFixed(2)}%
+                        </td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">${maxRR.toFixed(2)}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">
+                            ${prophetPred !== null ? `
+                                <div style="color: ${prophetColor}; font-weight: bold;">${prophetPred >= 0 ? '+' : ''}${prophetPred.toFixed(2)}%</div>
+                                <div style="font-size: 11px; color: #666;">Conf: ${prophetConf !== null ? prophetConf.toFixed(0) : 'N/A'}%</div>
+                            ` : '<span style="color: #999; font-size: 12px;">N/A</span>'}
+                        </td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${confidenceColor}; font-size: 13px;">
+                            ${maxConfidence.toFixed(0)}%
+                        </td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">${avgHoldingPeriod || '-'}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; font-size: 12px; max-width: 350px; word-wrap: break-word; white-space: normal; line-height: 1.4;" title="${rationale}">${rationale}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+            
+            // Load sparklines after a delay
+            setTimeout(() => {
+                symbols.forEach(symbol => {
+                    if (symbol && symbol !== '-') {
+                        // Pass the canvas ID to loadSparkline
+                        loadSparkline(`sparkline-swing-${symbol}`);
+                    }
+                });
+            }, 100);
+            
+            // Update pagination controls
+            updateSwingTradePagination(totalItems);
+        }
+        
+        function updateSwingTradePagination(totalItems) {
+            const paginationDiv = document.getElementById('swingTradePagination');
+            if (!paginationDiv) return;
+            
+            if (totalItems === 0) {
+                paginationDiv.innerHTML = '';
+                return;
+            }
+            
+            const totalPages = Math.ceil(totalItems / swingTradeItemsPerPage);
+            
+            let html = '<div style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 4px;">';
+            
+            // Previous button
+            html += `<button onclick="swingTradeGoToPage(${swingTradeCurrentPage - 1})" ${swingTradeCurrentPage === 1 ? 'disabled' : ''} style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; background-color: ${swingTradeCurrentPage === 1 ? '#e9ecef' : 'white'}; color: ${swingTradeCurrentPage === 1 ? '#6c757d' : '#007bff'}; cursor: ${swingTradeCurrentPage === 1 ? 'not-allowed' : 'pointer'}; font-size: 13px;">Previous</button>`;
+            
+            // Page numbers
+            let startPage = Math.max(1, swingTradeCurrentPage - 2);
+            let endPage = Math.min(totalPages, swingTradeCurrentPage + 2);
+            
+            if (startPage > 1) {
+                html += `<button onclick="swingTradeGoToPage(1)" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; background-color: white; color: #007bff; cursor: pointer; font-size: 13px;">1</button>`;
+                if (startPage > 2) {
+                    html += `<span style="padding: 6px; color: #666; font-size: 13px;">...</span>`;
+                }
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                html += `<button onclick="swingTradeGoToPage(${i})" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; background-color: ${i === swingTradeCurrentPage ? '#007bff' : 'white'}; color: ${i === swingTradeCurrentPage ? 'white' : '#007bff'}; cursor: pointer; font-size: 13px; font-weight: ${i === swingTradeCurrentPage ? 'bold' : 'normal'};">${i}</button>`;
+            }
+            
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    html += `<span style="padding: 6px; color: #666; font-size: 13px;">...</span>`;
+                }
+                html += `<button onclick="swingTradeGoToPage(${totalPages})" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; background-color: white; color: #007bff; cursor: pointer; font-size: 13px;">${totalPages}</button>`;
+            }
+            
+            // Next button
+            html += `<button onclick="swingTradeGoToPage(${swingTradeCurrentPage + 1})" ${swingTradeCurrentPage === totalPages ? 'disabled' : ''} style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; background-color: ${swingTradeCurrentPage === totalPages ? '#e9ecef' : 'white'}; color: ${swingTradeCurrentPage === totalPages ? '#6c757d' : '#007bff'}; cursor: ${swingTradeCurrentPage === totalPages ? 'not-allowed' : 'pointer'}; font-size: 13px;">Next</button>`;
+            
+            // Page info
+            html += `<span style="margin-left: 15px; font-size: 13px; color: #666;">Showing ${((swingTradeCurrentPage - 1) * swingTradeItemsPerPage) + 1}-${Math.min(swingTradeCurrentPage * swingTradeItemsPerPage, totalItems)} of ${totalItems} results</span>`;
+            
+            html += '</div>';
+            paginationDiv.innerHTML = html;
+        }
+        
+        function swingTradeGoToPage(page) {
+            // Group trades to get total unique symbols
+            const groupedTrades = {};
+            filteredSwingTrades.forEach(trade => {
+                const symbol = trade.scrip_id || '-';
+                if (!groupedTrades[symbol]) {
+                    groupedTrades[symbol] = [];
+                }
+                groupedTrades[symbol].push(trade);
+            });
+            
+            const totalItems = Object.keys(groupedTrades).length;
+            const totalPages = Math.ceil(totalItems / swingTradeItemsPerPage);
+            
+            if (page >= 1 && page <= totalPages) {
+                swingTradeCurrentPage = page;
+                displaySwingTrades();
+            }
+        }
+        
+        // Generate Prophet predictions with selected days from dropdown
+        function generateProphetPredictionsWithDays() {
+            const daysSelect = document.getElementById('predictionDaysSelect');
+            const predictionDays = daysSelect ? parseInt(daysSelect.value) : 30;
+            generateProphetPredictions(predictionDays);
+        }
+        
+        // Prophet Predictions Generation Function
+        function generateProphetPredictions(predictionDays = 30, limit = null, force = false) {
+            const statusDiv = document.getElementById('topGainersStatus');
+            const tbody = document.getElementById('topGainersTableBody');
+            
+            if (statusDiv) {
+                statusDiv.innerHTML = `<span style="color: #17a2b8;">⏳ Generating Prophet predictions for ${predictionDays} days... This may take a few minutes.</span>`;
+            }
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Generating predictions... Please wait...</td></tr>';
+            }
+            
+            let url = `/api/prophet_predictions/generate?prediction_days=${predictionDays}`;
+            if (limit) {
+                url += `&limit=${limit}`;
+            }
+            if (force) {
+                url += '&force=true';
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        if (statusDiv) {
+                            statusDiv.innerHTML = `<span style="color: #28a745;">✓ Successfully generated ${data.predictions_generated} predictions for ${data.prediction_days} days (${data.run_date})</span>`;
+                        }
+                        // Auto-load top gainers after generation
+                        setTimeout(() => {
+                            loadTopGainers();
+                        }, 1000);
+                    } else {
+                        if (statusDiv) {
+                            statusDiv.innerHTML = `<span style="color: #dc3545;">✗ Error: ${data.error || 'Failed to generate predictions'}</span>`;
+                        }
+                        if (tbody) {
+                            tbody.innerHTML = `<tr><td colspan="7" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">${data.error || 'Failed to generate predictions'}</td></tr>`;
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error generating Prophet predictions:', error);
+                    if (statusDiv) {
+                        statusDiv.innerHTML = `<span style="color: #dc3545;">✗ Error: ${error.message || 'Failed to generate predictions'}</span>`;
+                    }
+                    if (tbody) {
+                        tbody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error generating predictions</td></tr>';
+                    }
+                });
+        }
+        
+        // Check if Prophet predictions exist for today
+        function checkProphetPredictionsExist() {
+            fetch('/api/prophet_predictions/top_gainers?limit=1')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success || !data.top_gainers || data.top_gainers.length === 0) {
+                        const statusDiv = document.getElementById('topGainersStatus');
+                        if (statusDiv) {
+                            statusDiv.innerHTML = '<span style="color: #ffc107;">⚠️ No predictions found. Click "Generate Predictions" to create 30-day price forecasts.</span>';
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking predictions:', error);
+                });
+        }
+        
+        function loadTopGainers() {
+            const tbody = document.getElementById('topGainersTableBody');
+            const statusDiv = document.getElementById('topGainersStatus');
+            const daysSelect = document.getElementById('predictionDaysSelect');
+            const predictionDays = daysSelect ? parseInt(daysSelect.value) : 30;
+            
+            if (!tbody || !statusDiv) {
+                console.error('Required elements not found for top gainers');
+                return;
+            }
+            
+            statusDiv.innerHTML = `<span style="color: #666;">⏳ Loading top gainers for ${predictionDays} days...</span>`;
+            tbody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Loading...</td></tr>';
+            
+            fetch(`/api/prophet_predictions/top_gainers?limit=10&prediction_days=${predictionDays}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${data.error || 'Failed to load top gainers'}</span>`;
+                        tbody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading top gainers</td></tr>';
+                        return;
+                    }
+                    
+                    const topGainers = data.top_gainers || [];
+                    
+                    if (topGainers.length === 0) {
+                        statusDiv.innerHTML = '<span style="color: #ffc107;">⚠️ No predictions available. Click "Generate Predictions" button to create predictions.</span>';
+                        tbody.innerHTML = `<tr><td colspan="7" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">
+                            No top gainers found. <button onclick="generateProphetPredictionsWithDays()" style="padding: 8px 16px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px;">⚡ Generate Predictions Now</button>
+                        </td></tr>`;
+                        return;
+                    }
+                    
+                    tbody.innerHTML = '';
+                    const symbols = [];
+                    
+                    topGainers.forEach((gainer, index) => {
+                        const symbol = gainer.scrip_id || '-';
+                        const currentPrice = gainer.current_price || 0;
+                        const predictedPrice = gainer.predicted_price_30d || 0;
+                        const predictedChangePct = gainer.predicted_price_change_pct || 0;
+                        const confidence = gainer.prediction_confidence || 0;
+                        
+                        symbols.push(symbol);
+                        
+                        const gainColor = predictedChangePct >= 15 ? '#28a745' : predictedChangePct >= 10 ? '#ffc107' : '#17a2b8';
+                        const confidenceColor = confidence >= 70 ? '#28a745' : confidence >= 50 ? '#ffc107' : '#dc3545';
+                        
+                        const row = `
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666; font-size: 14px;">${index + 1}</td>
+                                <td style="padding: 12px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;">${symbol}</td>
+                                <td style="padding: 10px; border: 1px solid #ddd; text-align: center;">
+                                    <canvas id="sparkline-gainer-${symbol}" width="120" height="40" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">₹${currentPrice.toFixed(2)}</td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px; font-weight: bold;">₹${predictedPrice.toFixed(2)}</td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: ${gainColor}; font-size: 14px;">
+                                    +${predictedChangePct.toFixed(2)}%
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${confidenceColor}; font-size: 13px;">
+                                    ${confidence.toFixed(0)}%
+                                </td>
+                            </tr>
+                        `;
+                        tbody.innerHTML += row;
+                    });
+                    
+                    // Load sparklines after a delay
+                    setTimeout(() => {
+                        symbols.forEach(symbol => {
+                            if (symbol && symbol !== '-') {
+                                loadSparkline(`sparkline-gainer-${symbol}`);
+                            }
+                        });
+                    }, 100);
+                    
+                    statusDiv.innerHTML = `<span style="color: #28a745;">✓ Loaded ${topGainers.length} top gainers</span>`;
+                })
+                .catch(error => {
+                    console.error('Error loading top gainers:', error);
+                    statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message || 'Failed to load top gainers'}</span>`;
+                    tbody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading top gainers</td></tr>';
+                });
         }
 
         function showCandlestick(symbol) {
