@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi import Request, Query, Form, File, UploadFile
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
+from typing import Optional
 import os
 from datetime import datetime, timedelta
 import json
@@ -3267,6 +3268,157 @@ async def api_mf_holdings():
         logging.error(traceback.format_exc())
         return cached_json_response({"error": str(e), "mf_holdings": []}, "/api/mf_holdings")
 
+@app.get("/api/mf_nav/{mf_symbol}")
+async def api_mf_nav(
+    mf_symbol: str,
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    limit: int = Query(365, description="Maximum number of records")
+):
+    """API endpoint to get historical NAV data for a mutual fund"""
+    try:
+        from datetime import datetime
+        from holdings.MFNAVFetcher import MFNAVFetcher
+        
+        # Parse dates
+        start = None
+        end = None
+        
+        if start_date:
+            start = datetime.strptime(start_date, '%Y-%m-%d').date()
+        if end_date:
+            end = datetime.strptime(end_date, '%Y-%m-%d').date()
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        query = """
+            SELECT nav_date, nav_value, scheme_code, fund_name
+            FROM my_schema.mf_nav_history
+            WHERE mf_symbol = %s
+        """
+        params = [mf_symbol]
+        
+        if start:
+            query += " AND nav_date >= %s"
+            params.append(start)
+        if end:
+            query += " AND nav_date <= %s"
+            params.append(end)
+        
+        query += " ORDER BY nav_date DESC LIMIT %s"
+        params.append(limit)
+        
+        cursor.execute(query, params)
+        nav_records = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        nav_list = []
+        for record in nav_records:
+            nav_list.append({
+                "nav_date": record["nav_date"].strftime('%Y-%m-%d') if record["nav_date"] else None,
+                "nav_value": float(record["nav_value"]) if record["nav_value"] else 0.0,
+                "scheme_code": record["scheme_code"],
+                "fund_name": record["fund_name"]
+            })
+        
+        return cached_json_response({
+            "success": True,
+            "mf_symbol": mf_symbol,
+            "nav_data": nav_list,
+            "count": len(nav_list)
+        }, f"/api/mf_nav/{mf_symbol}")
+        
+    except Exception as e:
+        logging.error(f"Error fetching NAV data for {mf_symbol}: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return cached_json_response({
+            "success": False,
+            "error": str(e),
+            "mf_symbol": mf_symbol,
+            "nav_data": []
+        }, f"/api/mf_nav/{mf_symbol}")
+
+@app.get("/api/mf_benchmark_comparison")
+async def api_mf_benchmark_comparison(
+    mf_symbol: Optional[str] = Query(None, description="Mutual Fund symbol (if not provided, returns for all MFs)"),
+    benchmark_symbol: Optional[str] = Query(None, description="Benchmark symbol (auto-detected if not provided)")
+):
+    """API endpoint to get MF performance vs benchmark metrics"""
+    try:
+        from holdings.MFPerformanceAnalyzer import MFPerformanceAnalyzer
+        
+        analyzer = MFPerformanceAnalyzer()
+        
+        if mf_symbol:
+            # Get benchmark for this specific MF
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT DISTINCT tradingsymbol, fund
+                FROM my_schema.mf_holdings
+                WHERE tradingsymbol = %s
+                LIMIT 1
+            """, (mf_symbol,))
+            
+            result = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            
+            if not result:
+                return cached_json_response({
+                    "success": False,
+                    "error": f"MF {mf_symbol} not found in holdings"
+                }, "/api/mf_benchmark_comparison")
+            
+            fund_name = result[1]
+            performance = analyzer.analyze_mf_performance(mf_symbol, fund_name, benchmark_symbol)
+            
+            return cached_json_response(performance, "/api/mf_benchmark_comparison")
+        else:
+            # Get comparison for all MFs
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT DISTINCT tradingsymbol, fund
+                FROM my_schema.mf_holdings
+                WHERE tradingsymbol IS NOT NULL AND tradingsymbol != ''
+                ORDER BY tradingsymbol
+            """)
+            
+            mf_list = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            comparisons = []
+            for mf_symbol_item, fund_name in mf_list:
+                try:
+                    performance = analyzer.analyze_mf_performance(mf_symbol_item, fund_name)
+                    if performance.get('success'):
+                        comparisons.append(performance)
+                except Exception as e:
+                    logging.warning(f"Error analyzing {mf_symbol_item}: {e}")
+                    continue
+            
+            return cached_json_response({
+                "success": True,
+                "comparisons": comparisons,
+                "count": len(comparisons)
+            }, "/api/mf_benchmark_comparison")
+        
+    except Exception as e:
+        logging.error(f"Error fetching benchmark comparison: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return cached_json_response({
+            "success": False,
+            "error": str(e)
+        }, "/api/mf_benchmark_comparison")
+
 @app.get("/api/holdings/patterns")
 async def api_holdings_patterns():
     """API endpoint to get detected patterns for all holdings"""
@@ -4033,24 +4185,181 @@ async def download_holdings_excel():
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
+        # Get holdings with calculated fields
         cursor.execute("""
             SELECT 
-                trading_symbol,
-                quantity,
-                average_price,
-                last_price,
-                (quantity * average_price) as invested_amount,
-                (quantity * last_price) as current_amount,
-                pnl
-            FROM my_schema.holdings
-            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
-            ORDER BY trading_symbol
+                h.trading_symbol,
+                h.instrument_token,
+                h.quantity,
+                h.average_price,
+                h.last_price,
+                (h.quantity * h.average_price) as invested_amount,
+                (h.quantity * COALESCE(h.last_price, rt.price_close, 0)) as current_amount,
+                h.pnl,
+                round(case when (h.quantity * h.average_price) != 0 then
+                    (h.pnl / (h.quantity * h.average_price)) * 100
+                else 0
+                end::numeric, 2) as pnl_pct_change
+            FROM my_schema.holdings h
+            LEFT JOIN (
+                SELECT DISTINCT ON (scrip_id) scrip_id, price_close, price_date
+                FROM my_schema.rt_intraday_price
+                WHERE price_date::date <= CURRENT_DATE
+                ORDER BY scrip_id, price_date DESC
+            ) rt ON h.trading_symbol = rt.scrip_id
+            WHERE h.run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+            ORDER BY h.trading_symbol
         """)
         
         holdings = cursor.fetchall()
+        
+        # Get today's P&L data
+        cursor.execute("SELECT CURRENT_DATE as today_date")
+        today = cursor.fetchone()['today_date']
+        today_str = today.strftime('%Y-%m-%d')
+        
+        cursor.execute("""
+            SELECT MAX(price_date) as prev_date
+            FROM my_schema.rt_intraday_price
+            WHERE price_date < %s
+        """, (today_str,))
+        
+        prev_date_result = cursor.fetchone()
+        prev_date = prev_date_result['prev_date'] if prev_date_result and prev_date_result['prev_date'] else None
+        
+        # Create today's P&L map
+        today_pnl_map = {}
+        for row in holdings:
+            instrument_token = row.get('instrument_token')
+            if instrument_token:
+                today_pnl_map[instrument_token] = {
+                    'today_pnl': 0.0,
+                    'pct_change': 0.0
+                }
+        
+        if prev_date:
+            prev_date_str = prev_date.strftime('%Y-%m-%d') if hasattr(prev_date, 'strftime') else str(prev_date)
+            cursor.execute("""
+                WITH holdings_today AS (
+                    SELECT h.instrument_token, h.trading_symbol, h.quantity, h.last_price
+                    FROM my_schema.holdings h
+                    WHERE h.run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+                ),
+                today_prices AS (
+                    SELECT scrip_id, price_close
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date = %s
+                ),
+                latest_prices AS (
+                    SELECT scrip_id, price_close, 
+                           ROW_NUMBER() OVER (PARTITION BY scrip_id ORDER BY price_date DESC) as rn
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date::date <= CURRENT_DATE
+                ),
+                prev_prices AS (
+                    SELECT scrip_id, price_close
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date = %s
+                )
+                SELECT 
+                    h.instrument_token,
+                    COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) as today_price,
+                    COALESCE(prev_p.price_close, 0) as prev_price,
+                    CASE 
+                        WHEN (COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NULL OR COALESCE(h.last_price, today_p.price_close, latest_p.price_close) = 0) THEN 0
+                        WHEN (COALESCE(prev_p.price_close, 0) = 0) THEN 0
+                        ELSE h.quantity * (COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))
+                    END as today_pnl,
+                    round(case when prev_p.price_close != 0 AND COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NOT NULL AND COALESCE(h.last_price, today_p.price_close, latest_p.price_close) != 0 then 
+                        ((COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
+                    else 0
+                    end::numeric, 2) as pct_change
+                FROM holdings_today h
+                LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
+                LEFT JOIN latest_prices latest_p ON h.trading_symbol = latest_p.scrip_id AND latest_p.rn = 1
+                LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
+            """, (today_str, prev_date_str))
+            
+            for row in cursor.fetchall():
+                instrument_token = row['instrument_token']
+                today_pnl_map[instrument_token] = {
+                    'today_pnl': float(row['today_pnl']) if row['today_pnl'] else 0.0,
+                    'pct_change': float(row['pct_change']) if row['pct_change'] else 0.0
+                }
+        
+        # Get Prophet predictions (60-day preferred, fallback to latest)
+        cursor.execute("""
+            SELECT DISTINCT ON (scrip_id) scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days
+            FROM my_schema.prophet_predictions
+            WHERE status = 'ACTIVE'
+            ORDER BY scrip_id, 
+                     CASE WHEN prediction_days = 60 THEN 1 ELSE 2 END,
+                     run_date DESC
+        """)
+        
+        prophet_map = {}
+        for row in cursor.fetchall():
+            scrip_id = row['scrip_id'].upper()
+            prophet_map[scrip_id] = {
+                'prediction_pct': float(row['predicted_price_change_pct']) if row['predicted_price_change_pct'] is not None else None,
+                'confidence': float(row['prediction_confidence']) if row['prediction_confidence'] is not None else None,
+                'prediction_days': int(row['prediction_days']) if row['prediction_days'] is not None else None
+            }
+        
         conn.close()
         
-        df = pd.DataFrame([dict(row) for row in holdings])
+        # Enrich holdings data
+        holdings_list = []
+        for row in holdings:
+            row_dict = dict(row)
+            symbol = row_dict['trading_symbol']
+            instrument_token = row_dict.get('instrument_token')
+            
+            # Add today's P&L
+            today_pnl_info = today_pnl_map.get(instrument_token, {'today_pnl': 0.0, 'pct_change': 0.0})
+            row_dict['today_pnl'] = today_pnl_info['today_pnl']
+            row_dict['today_pnl_pct'] = today_pnl_info['pct_change']
+            
+            # Add Prophet predictions
+            prophet_info = prophet_map.get(symbol.upper() if symbol else '', {})
+            row_dict['ghost_prediction_pct'] = prophet_info.get('prediction_pct')
+            row_dict['confidence'] = prophet_info.get('confidence')
+            row_dict['prediction_days'] = prophet_info.get('prediction_days')
+            
+            holdings_list.append(row_dict)
+        
+        # Create DataFrame with proper column order
+        df = pd.DataFrame(holdings_list)
+        
+        # Reorder columns for better readability
+        column_order = [
+            'trading_symbol', 'quantity', 'average_price', 'last_price',
+            'invested_amount', 'current_amount', 'pnl', 'pnl_pct_change',
+            'today_pnl', 'today_pnl_pct',
+            'ghost_prediction_pct', 'confidence', 'prediction_days'
+        ]
+        
+        # Only include columns that exist
+        available_columns = [col for col in column_order if col in df.columns]
+        df = df[available_columns]
+        
+        # Rename columns for readability
+        df = df.rename(columns={
+            'trading_symbol': 'Symbol',
+            'quantity': 'Qty',
+            'average_price': 'Avg Price',
+            'last_price': 'LTP',
+            'invested_amount': 'Invested Amount',
+            'current_amount': 'Current Amount',
+            'pnl': 'Total P&L',
+            'pnl_pct_change': 'Total P&L %',
+            'today_pnl': "Today's P&L",
+            'today_pnl_pct': "Today's P&L %",
+            'ghost_prediction_pct': 'Ghost Prediction %',
+            'confidence': 'Confidence %',
+            'prediction_days': 'Prediction Days'
+        })
+        
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, sheet_name='Holdings', index=False)
@@ -4064,34 +4373,197 @@ async def download_holdings_excel():
         )
     except Exception as e:
         logging.error(f"Error generating Excel file: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         return {"error": str(e)}
 
 @app.get("/api/download/holdings/csv")
 async def download_holdings_csv():
-    """Download holdings data as CSV file"""
+    """Download holdings data as CSV file - uses same logic as Excel"""
     try:
+        # Reuse the Excel download logic but return as CSV
+        from io import StringIO
+        
+        # Use the same data fetching logic as Excel
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
+        # Get holdings with calculated fields
         cursor.execute("""
             SELECT 
-                trading_symbol,
-                quantity,
-                average_price,
-                last_price,
-                (quantity * average_price) as invested_amount,
-                (quantity * last_price) as current_amount,
-                pnl
-            FROM my_schema.holdings
-            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
-            ORDER BY trading_symbol
+                h.trading_symbol,
+                h.instrument_token,
+                h.quantity,
+                h.average_price,
+                h.last_price,
+                (h.quantity * h.average_price) as invested_amount,
+                (h.quantity * COALESCE(h.last_price, rt.price_close, 0)) as current_amount,
+                h.pnl,
+                round(case when (h.quantity * h.average_price) != 0 then
+                    (h.pnl / (h.quantity * h.average_price)) * 100
+                else 0
+                end::numeric, 2) as pnl_pct_change
+            FROM my_schema.holdings h
+            LEFT JOIN (
+                SELECT DISTINCT ON (scrip_id) scrip_id, price_close, price_date
+                FROM my_schema.rt_intraday_price
+                WHERE price_date::date <= CURRENT_DATE
+                ORDER BY scrip_id, price_date DESC
+            ) rt ON h.trading_symbol = rt.scrip_id
+            WHERE h.run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+            ORDER BY h.trading_symbol
         """)
         
         holdings = cursor.fetchall()
+        
+        # Get today's P&L data
+        cursor.execute("SELECT CURRENT_DATE as today_date")
+        today = cursor.fetchone()['today_date']
+        today_str = today.strftime('%Y-%m-%d')
+        
+        cursor.execute("""
+            SELECT MAX(price_date) as prev_date
+            FROM my_schema.rt_intraday_price
+            WHERE price_date < %s
+        """, (today_str,))
+        
+        prev_date_result = cursor.fetchone()
+        prev_date = prev_date_result['prev_date'] if prev_date_result and prev_date_result['prev_date'] else None
+        
+        # Create today's P&L map
+        today_pnl_map = {}
+        for row in holdings:
+            instrument_token = row.get('instrument_token')
+            if instrument_token:
+                today_pnl_map[instrument_token] = {
+                    'today_pnl': 0.0,
+                    'pct_change': 0.0
+                }
+        
+        if prev_date:
+            prev_date_str = prev_date.strftime('%Y-%m-%d') if hasattr(prev_date, 'strftime') else str(prev_date)
+            cursor.execute("""
+                WITH holdings_today AS (
+                    SELECT h.instrument_token, h.trading_symbol, h.quantity, h.last_price
+                    FROM my_schema.holdings h
+                    WHERE h.run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+                ),
+                today_prices AS (
+                    SELECT scrip_id, price_close
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date = %s
+                ),
+                latest_prices AS (
+                    SELECT scrip_id, price_close, 
+                           ROW_NUMBER() OVER (PARTITION BY scrip_id ORDER BY price_date DESC) as rn
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date::date <= CURRENT_DATE
+                ),
+                prev_prices AS (
+                    SELECT scrip_id, price_close
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date = %s
+                )
+                SELECT 
+                    h.instrument_token,
+                    COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) as today_price,
+                    COALESCE(prev_p.price_close, 0) as prev_price,
+                    CASE 
+                        WHEN (COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NULL OR COALESCE(h.last_price, today_p.price_close, latest_p.price_close) = 0) THEN 0
+                        WHEN (COALESCE(prev_p.price_close, 0) = 0) THEN 0
+                        ELSE h.quantity * (COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))
+                    END as today_pnl,
+                    round(case when prev_p.price_close != 0 AND COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NOT NULL AND COALESCE(h.last_price, today_p.price_close, latest_p.price_close) != 0 then 
+                        ((COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
+                    else 0
+                    end::numeric, 2) as pct_change
+                FROM holdings_today h
+                LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
+                LEFT JOIN latest_prices latest_p ON h.trading_symbol = latest_p.scrip_id AND latest_p.rn = 1
+                LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
+            """, (today_str, prev_date_str))
+            
+            for row in cursor.fetchall():
+                instrument_token = row['instrument_token']
+                today_pnl_map[instrument_token] = {
+                    'today_pnl': float(row['today_pnl']) if row['today_pnl'] else 0.0,
+                    'pct_change': float(row['pct_change']) if row['pct_change'] else 0.0
+                }
+        
+        # Get Prophet predictions (60-day preferred, fallback to latest)
+        cursor.execute("""
+            SELECT DISTINCT ON (scrip_id) scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days
+            FROM my_schema.prophet_predictions
+            WHERE status = 'ACTIVE'
+            ORDER BY scrip_id, 
+                     CASE WHEN prediction_days = 60 THEN 1 ELSE 2 END,
+                     run_date DESC
+        """)
+        
+        prophet_map = {}
+        for row in cursor.fetchall():
+            scrip_id = row['scrip_id'].upper()
+            prophet_map[scrip_id] = {
+                'prediction_pct': float(row['predicted_price_change_pct']) if row['predicted_price_change_pct'] is not None else None,
+                'confidence': float(row['prediction_confidence']) if row['prediction_confidence'] is not None else None,
+                'prediction_days': int(row['prediction_days']) if row['prediction_days'] is not None else None
+            }
+        
         conn.close()
         
-        df = pd.DataFrame([dict(row) for row in holdings])
-        output = io.StringIO()
+        # Enrich holdings data
+        holdings_list = []
+        for row in holdings:
+            row_dict = dict(row)
+            symbol = row_dict['trading_symbol']
+            instrument_token = row_dict.get('instrument_token')
+            
+            # Add today's P&L
+            today_pnl_info = today_pnl_map.get(instrument_token, {'today_pnl': 0.0, 'pct_change': 0.0})
+            row_dict['today_pnl'] = today_pnl_info['today_pnl']
+            row_dict['today_pnl_pct'] = today_pnl_info['pct_change']
+            
+            # Add Prophet predictions
+            prophet_info = prophet_map.get(symbol.upper() if symbol else '', {})
+            row_dict['ghost_prediction_pct'] = prophet_info.get('prediction_pct')
+            row_dict['confidence'] = prophet_info.get('confidence')
+            row_dict['prediction_days'] = prophet_info.get('prediction_days')
+            
+            holdings_list.append(row_dict)
+        
+        # Create DataFrame with proper column order
+        df = pd.DataFrame(holdings_list)
+        
+        # Reorder columns for better readability
+        column_order = [
+            'trading_symbol', 'quantity', 'average_price', 'last_price',
+            'invested_amount', 'current_amount', 'pnl', 'pnl_pct_change',
+            'today_pnl', 'today_pnl_pct',
+            'ghost_prediction_pct', 'confidence', 'prediction_days'
+        ]
+        
+        # Only include columns that exist
+        available_columns = [col for col in column_order if col in df.columns]
+        df = df[available_columns]
+        
+        # Rename columns for readability
+        df = df.rename(columns={
+            'trading_symbol': 'Symbol',
+            'quantity': 'Qty',
+            'average_price': 'Avg Price',
+            'last_price': 'LTP',
+            'invested_amount': 'Invested Amount',
+            'current_amount': 'Current Amount',
+            'pnl': 'Total P&L',
+            'pnl_pct_change': 'Total P&L %',
+            'today_pnl': "Today's P&L",
+            'today_pnl_pct': "Today's P&L %",
+            'ghost_prediction_pct': 'Ghost Prediction %',
+            'confidence': 'Confidence %',
+            'prediction_days': 'Prediction Days'
+        })
+        
+        output = StringIO()
         df.to_csv(output, index=False)
         
         return StreamingResponse(
@@ -4101,6 +4573,8 @@ async def download_holdings_csv():
         )
     except Exception as e:
         logging.error(f"Error generating CSV file: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         return {"error": str(e)}
 
 @app.get("/api/download/mf/excel")
@@ -4574,18 +5048,148 @@ async def download_holdings_pdf():
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
+        # Get holdings with calculated fields
         cursor.execute("""
             SELECT 
-                trading_symbol, quantity, average_price, last_price,
-                (quantity * average_price) as invested_amount,
-                (quantity * last_price) as current_amount, pnl
-            FROM my_schema.holdings
-            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
-            ORDER BY trading_symbol
+                h.trading_symbol,
+                h.instrument_token,
+                h.quantity,
+                h.average_price,
+                h.last_price,
+                (h.quantity * h.average_price) as invested_amount,
+                (h.quantity * COALESCE(h.last_price, rt.price_close, 0)) as current_amount,
+                h.pnl,
+                round(case when (h.quantity * h.average_price) != 0 then
+                    (h.pnl / (h.quantity * h.average_price)) * 100
+                else 0
+                end::numeric, 2) as pnl_pct_change
+            FROM my_schema.holdings h
+            LEFT JOIN (
+                SELECT DISTINCT ON (scrip_id) scrip_id, price_close, price_date
+                FROM my_schema.rt_intraday_price
+                WHERE price_date::date <= CURRENT_DATE
+                ORDER BY scrip_id, price_date DESC
+            ) rt ON h.trading_symbol = rt.scrip_id
+            WHERE h.run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+            ORDER BY h.trading_symbol
         """)
         
         holdings = cursor.fetchall()
+        
+        # Get today's P&L data
+        cursor.execute("SELECT CURRENT_DATE as today_date")
+        today = cursor.fetchone()['today_date']
+        today_str = today.strftime('%Y-%m-%d')
+        
+        cursor.execute("""
+            SELECT MAX(price_date) as prev_date
+            FROM my_schema.rt_intraday_price
+            WHERE price_date < %s
+        """, (today_str,))
+        
+        prev_date_result = cursor.fetchone()
+        prev_date = prev_date_result['prev_date'] if prev_date_result and prev_date_result['prev_date'] else None
+        
+        # Create today's P&L map
+        today_pnl_map = {}
+        for row in holdings:
+            instrument_token = row.get('instrument_token')
+            if instrument_token:
+                today_pnl_map[instrument_token] = {
+                    'today_pnl': 0.0,
+                    'pct_change': 0.0
+                }
+        
+        if prev_date:
+            prev_date_str = prev_date.strftime('%Y-%m-%d') if hasattr(prev_date, 'strftime') else str(prev_date)
+            cursor.execute("""
+                WITH holdings_today AS (
+                    SELECT h.instrument_token, h.trading_symbol, h.quantity, h.last_price
+                    FROM my_schema.holdings h
+                    WHERE h.run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+                ),
+                today_prices AS (
+                    SELECT scrip_id, price_close
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date = %s
+                ),
+                latest_prices AS (
+                    SELECT scrip_id, price_close, 
+                           ROW_NUMBER() OVER (PARTITION BY scrip_id ORDER BY price_date DESC) as rn
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date::date <= CURRENT_DATE
+                ),
+                prev_prices AS (
+                    SELECT scrip_id, price_close
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date = %s
+                )
+                SELECT 
+                    h.instrument_token,
+                    COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) as today_price,
+                    COALESCE(prev_p.price_close, 0) as prev_price,
+                    CASE 
+                        WHEN (COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NULL OR COALESCE(h.last_price, today_p.price_close, latest_p.price_close) = 0) THEN 0
+                        WHEN (COALESCE(prev_p.price_close, 0) = 0) THEN 0
+                        ELSE h.quantity * (COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))
+                    END as today_pnl,
+                    round(case when prev_p.price_close != 0 AND COALESCE(h.last_price, today_p.price_close, latest_p.price_close) IS NOT NULL AND COALESCE(h.last_price, today_p.price_close, latest_p.price_close) != 0 then 
+                        ((COALESCE(h.last_price, today_p.price_close, latest_p.price_close, 0) - COALESCE(prev_p.price_close, 0))/COALESCE(prev_p.price_close, 0)) * 100
+                    else 0
+                    end::numeric, 2) as pct_change
+                FROM holdings_today h
+                LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
+                LEFT JOIN latest_prices latest_p ON h.trading_symbol = latest_p.scrip_id AND latest_p.rn = 1
+                LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
+            """, (today_str, prev_date_str))
+            
+            for row in cursor.fetchall():
+                instrument_token = row['instrument_token']
+                today_pnl_map[instrument_token] = {
+                    'today_pnl': float(row['today_pnl']) if row['today_pnl'] else 0.0,
+                    'pct_change': float(row['pct_change']) if row['pct_change'] else 0.0
+                }
+        
+        # Get Prophet predictions (60-day preferred, fallback to latest)
+        cursor.execute("""
+            SELECT DISTINCT ON (scrip_id) scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days
+            FROM my_schema.prophet_predictions
+            WHERE status = 'ACTIVE'
+            ORDER BY scrip_id, 
+                     CASE WHEN prediction_days = 60 THEN 1 ELSE 2 END,
+                     run_date DESC
+        """)
+        
+        prophet_map = {}
+        for row in cursor.fetchall():
+            scrip_id = row['scrip_id'].upper()
+            prophet_map[scrip_id] = {
+                'prediction_pct': float(row['predicted_price_change_pct']) if row['predicted_price_change_pct'] is not None else None,
+                'confidence': float(row['prediction_confidence']) if row['prediction_confidence'] is not None else None,
+                'prediction_days': int(row['prediction_days']) if row['prediction_days'] is not None else None
+            }
+        
         conn.close()
+        
+        # Enrich holdings data
+        holdings_list = []
+        for row in holdings:
+            row_dict = dict(row)
+            symbol = row_dict['trading_symbol']
+            instrument_token = row_dict.get('instrument_token')
+            
+            # Add today's P&L
+            today_pnl_info = today_pnl_map.get(instrument_token, {'today_pnl': 0.0, 'pct_change': 0.0})
+            row_dict['today_pnl'] = today_pnl_info['today_pnl']
+            row_dict['today_pnl_pct'] = today_pnl_info['pct_change']
+            
+            # Add Prophet predictions
+            prophet_info = prophet_map.get(symbol.upper() if symbol else '', {})
+            row_dict['ghost_prediction_pct'] = prophet_info.get('prediction_pct')
+            row_dict['confidence'] = prophet_info.get('confidence')
+            row_dict['prediction_days'] = prophet_info.get('prediction_days')
+            
+            holdings_list.append(row_dict)
         
         # Create PDF in memory
         output = io.BytesIO()
@@ -4595,9 +5199,10 @@ async def download_holdings_pdf():
         title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor('#1a1a1a'), spaceAfter=12)
         
         # Calculate totals
-        total_invested = sum(row['invested_amount'] for row in holdings)
-        total_current = sum(row['current_amount'] for row in holdings)
-        total_pnl = sum(row['pnl'] for row in holdings)
+        total_invested = sum(row['invested_amount'] for row in holdings_list)
+        total_current = sum(row['current_amount'] for row in holdings_list)
+        total_pnl = sum(row['pnl'] for row in holdings_list)
+        total_today_pnl = sum(row['today_pnl'] for row in holdings_list)
         
         elements = []
         elements.append(Paragraph("Equity Holdings Report", title_style))
@@ -4608,7 +5213,8 @@ async def download_holdings_pdf():
         summary_data = [
             ['Total Invested:', f'Rs {total_invested:,.2f}'],
             ['Current Value:', f'Rs {total_current:,.2f}'],
-            ['Total P&L:', f'Rs {total_pnl:,.2f}']
+            ['Total P&L:', f'Rs {total_pnl:,.2f}'],
+            ["Today's P&L:", f'Rs {total_today_pnl:,.2f}']
         ]
         summary_table = Table(summary_data, colWidths=[2*inch, 2*inch])
         summary_table.setStyle(TableStyle([
@@ -4630,10 +5236,17 @@ async def download_holdings_pdf():
         elements.append(summary_table)
         elements.append(Spacer(1, 0.3*inch))
         
-        # Create table data
-        data = [['Symbol', 'Qty', 'Avg Price', 'LTP', 'Invested', 'Current', 'P&L']]
-        for row in holdings:
+        # Create table data with updated columns
+        data = [['Symbol', 'Qty', 'Avg Price', 'LTP', 'Invested', 'Current', 'P&L', 'P&L %', "Today's P&L", "Today's P&L %", 'Ghost Pred %', 'Conf %', 'Pred Days']]
+        for row in holdings_list:
             row_dict = dict(row)
+            pnl_pct = row_dict.get('pnl_pct_change', 0) or 0
+            today_pnl = row_dict.get('today_pnl', 0) or 0
+            today_pnl_pct = row_dict.get('today_pnl_pct', 0) or 0
+            ghost_pred = row_dict.get('ghost_prediction_pct')
+            confidence = row_dict.get('confidence')
+            pred_days = row_dict.get('prediction_days')
+            
             data.append([
                 row_dict['trading_symbol'],
                 str(row_dict['quantity']),
@@ -4641,7 +5254,13 @@ async def download_holdings_pdf():
                 f"Rs {row_dict['last_price']:.2f}",
                 f"Rs {row_dict['invested_amount']:.2f}",
                 f"Rs {row_dict['current_amount']:.2f}",
-                f"Rs {row_dict['pnl']:.2f}"
+                f"Rs {row_dict['pnl']:.2f}",
+                f"{pnl_pct:.2f}%" if pnl_pct else "0.00%",
+                f"Rs {today_pnl:.2f}",
+                f"{today_pnl_pct:.2f}%" if today_pnl_pct else "0.00%",
+                f"{ghost_pred:.2f}%" if ghost_pred is not None else "N/A",
+                f"{confidence:.0f}%" if confidence is not None else "N/A",
+                str(pred_days) if pred_days is not None else "N/A"
             ])
         
         # Add totals row
@@ -4652,10 +5271,18 @@ async def download_holdings_pdf():
             '',
             f'Rs {total_invested:,.2f}',
             f'Rs {total_current:,.2f}',
-            f'Rs {total_pnl:,.2f}'
+            f'Rs {total_pnl:,.2f}',
+            '',
+            f'Rs {total_today_pnl:,.2f}',
+            '',
+            '',
+            '',
+            ''
         ])
         
-        table = Table(data, repeatRows=1, colWidths=[1.5*inch, 0.6*inch, 0.9*inch, 0.9*inch, 1.1*inch, 1.1*inch, 1*inch])
+        # Adjust column widths for more columns (using landscape-friendly sizing)
+        col_widths = [0.8*inch, 0.5*inch, 0.7*inch, 0.7*inch, 0.9*inch, 0.9*inch, 0.8*inch, 0.6*inch, 0.8*inch, 0.7*inch, 0.7*inch, 0.5*inch, 0.5*inch]
+        table = Table(data, repeatRows=1, colWidths=col_widths)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -4681,6 +5308,244 @@ async def download_holdings_pdf():
         )
     except Exception as e:
         logging.error(f"Error generating PDF: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"error": str(e)}
+
+@app.get("/api/download/swing_trades/excel")
+async def download_swing_trades_excel():
+    """Download swing trade recommendations data as Excel file"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get latest swing trade recommendations from database
+        cursor.execute("""
+            SELECT 
+                s.scrip_id,
+                s.pattern_type,
+                s.entry_price,
+                s.target_price,
+                s.stop_loss,
+                s.potential_gain_pct,
+                s.risk_reward_ratio,
+                s.confidence_score,
+                s.holding_period_days,
+                s.rationale,
+                pp.predicted_price_change_pct as prophet_prediction_pct,
+                pp.prediction_confidence as prophet_confidence,
+                pp.prediction_days
+            FROM my_schema.swing_trade_suggestions s
+            LEFT JOIN (
+                SELECT DISTINCT ON (scrip_id) scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days
+                FROM my_schema.prophet_predictions
+                WHERE status = 'ACTIVE'
+                ORDER BY scrip_id, 
+                         CASE WHEN prediction_days = 60 THEN 1 ELSE 2 END,
+                         run_date DESC
+            ) pp ON s.scrip_id = pp.scrip_id
+            WHERE s.run_date = (SELECT MAX(run_date) FROM my_schema.swing_trade_suggestions)
+            AND s.status = 'ACTIVE'
+            ORDER BY s.confidence_score DESC, s.potential_gain_pct DESC
+        """)
+        
+        swing_trades = cursor.fetchall()
+        conn.close()
+        
+        # Enrich data
+        swing_trades_list = []
+        for row in swing_trades:
+            row_dict = dict(row)
+            swing_trades_list.append(row_dict)
+        
+        # Create DataFrame
+        df = pd.DataFrame(swing_trades_list)
+        
+        # Reorder columns for better readability
+        column_order = [
+            'scrip_id', 'pattern_type', 'entry_price', 'target_price', 'stop_loss',
+            'potential_gain_pct', 'confidence_score', 'risk_reward_ratio',
+            'holding_period_days', 'prophet_prediction_pct', 'prophet_confidence', 'prediction_days',
+            'rationale'
+        ]
+        
+        # Only include columns that exist
+        available_columns = [col for col in column_order if col in df.columns]
+        df = df[available_columns]
+        
+        # Rename columns for readability
+        df = df.rename(columns={
+            'scrip_id': 'Symbol',
+            'pattern_type': 'Pattern',
+            'entry_price': 'Entry Price',
+            'target_price': 'Target Price',
+            'stop_loss': 'Stop Loss',
+            'potential_gain_pct': 'Gain %',
+            'confidence_score': 'Confidence %',
+            'risk_reward_ratio': 'R/R Ratio',
+            'holding_period_days': 'Holding Period (Days)',
+            'prophet_prediction_pct': 'Ghost Prediction %',
+            'prophet_confidence': 'Ghost Confidence %',
+            'prediction_days': 'Prediction Days',
+            'rationale': 'Rationale'
+        })
+        
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Swing Trades', index=False)
+        
+        output.seek(0)
+        
+        return StreamingResponse(
+            io.BytesIO(output.read()),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=swing_trades_{datetime.now().strftime('%Y%m%d')}.xlsx"}
+        )
+    except Exception as e:
+        logging.error(f"Error generating Swing Trades Excel file: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"error": str(e)}
+
+@app.get("/api/download/swing_trades/pdf")
+async def download_swing_trades_pdf():
+    """Download swing trade recommendations data as PDF file"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get latest swing trade recommendations from database
+        cursor.execute("""
+            SELECT 
+                s.scrip_id,
+                s.pattern_type,
+                s.entry_price,
+                s.target_price,
+                s.stop_loss,
+                s.potential_gain_pct,
+                s.risk_reward_ratio,
+                s.confidence_score,
+                s.holding_period_days,
+                s.rationale,
+                pp.predicted_price_change_pct as prophet_prediction_pct,
+                pp.prediction_confidence as prophet_confidence,
+                pp.prediction_days
+            FROM my_schema.swing_trade_suggestions s
+            LEFT JOIN (
+                SELECT DISTINCT ON (scrip_id) scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days
+                FROM my_schema.prophet_predictions
+                WHERE status = 'ACTIVE'
+                ORDER BY scrip_id, 
+                         CASE WHEN prediction_days = 60 THEN 1 ELSE 2 END,
+                         run_date DESC
+            ) pp ON s.scrip_id = pp.scrip_id
+            WHERE s.run_date = (SELECT MAX(run_date) FROM my_schema.swing_trade_suggestions)
+            AND s.status = 'ACTIVE'
+            ORDER BY s.confidence_score DESC, s.potential_gain_pct DESC
+        """)
+        
+        swing_trades = cursor.fetchall()
+        conn.close()
+        
+        # Enrich data
+        swing_trades_list = []
+        for row in swing_trades:
+            row_dict = dict(row)
+            swing_trades_list.append(row_dict)
+        
+        # Create PDF in memory
+        output = io.BytesIO()
+        doc = SimpleDocTemplate(output, pagesize=letter, topMargin=0.5*inch)
+        
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor('#1a1a1a'), spaceAfter=12)
+        
+        elements = []
+        elements.append(Paragraph("Swing Trade Recommendations Report", title_style))
+        elements.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Calculate summary
+        total_recommendations = len(swing_trades_list)
+        avg_gain = sum(row.get('potential_gain_pct', 0) or 0 for row in swing_trades_list) / total_recommendations if total_recommendations > 0 else 0
+        avg_confidence = sum(row.get('confidence_score', 0) or 0 for row in swing_trades_list) / total_recommendations if total_recommendations > 0 else 0
+        
+        # Add summary box
+        summary_data = [
+            ['Total Recommendations:', str(total_recommendations)],
+            ['Average Gain %:', f'{avg_gain:.2f}%'],
+            ['Average Confidence:', f'{avg_confidence:.2f}%']
+        ]
+        summary_table = Table(summary_data, colWidths=[2*inch, 2*inch])
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.grey),
+            ('BACKGROUND', (1, 0), (1, -1), colors.beige),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(summary_table)
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Create table data
+        data = [['Symbol', 'Pattern', 'Entry', 'Target', 'Stop Loss', 'Gain %', 'Conf %', 'R/R', 'Days', 'Ghost %', 'Ghost Conf %', 'Pred Days']]
+        for row in swing_trades_list:
+            row_dict = dict(row)
+            ghost_pred = row_dict.get('prophet_prediction_pct')
+            ghost_conf = row_dict.get('prophet_confidence')
+            pred_days = row_dict.get('prediction_days')
+            
+            data.append([
+                row_dict.get('scrip_id', '-'),
+                row_dict.get('pattern_type', '-')[:30],  # Truncate long patterns
+                f"Rs {row_dict.get('entry_price', 0):.2f}" if row_dict.get('entry_price') else '-',
+                f"Rs {row_dict.get('target_price', 0):.2f}" if row_dict.get('target_price') else '-',
+                f"Rs {row_dict.get('stop_loss', 0):.2f}" if row_dict.get('stop_loss') else '-',
+                f"{row_dict.get('potential_gain_pct', 0):.2f}%" if row_dict.get('potential_gain_pct') else '-',
+                f"{row_dict.get('confidence_score', 0):.0f}%" if row_dict.get('confidence_score') else '-',
+                f"{row_dict.get('risk_reward_ratio', 0):.2f}" if row_dict.get('risk_reward_ratio') else '-',
+                str(row_dict.get('holding_period_days', '-')) if row_dict.get('holding_period_days') else '-',
+                f"{ghost_pred:.2f}%" if ghost_pred is not None else "N/A",
+                f"{ghost_conf:.0f}%" if ghost_conf is not None else "N/A",
+                str(pred_days) if pred_days is not None else "N/A"
+            ])
+        
+        # Adjust column widths for readability
+        col_widths = [0.7*inch, 1.2*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.6*inch, 0.6*inch, 0.5*inch, 0.5*inch, 0.7*inch, 0.7*inch, 0.5*inch]
+        table = Table(data, repeatRows=1, colWidths=col_widths)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -1), 6),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        
+        elements.append(table)
+        doc.build(elements)
+        
+        output.seek(0)
+        return StreamingResponse(
+            io.BytesIO(output.read()),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=swing_trades_{datetime.now().strftime('%Y%m%d')}.pdf"}
+        )
+    except Exception as e:
+        logging.error(f"Error generating Swing Trades PDF: {e}")
         import traceback
         logging.error(traceback.format_exc())
         return {"error": str(e)}

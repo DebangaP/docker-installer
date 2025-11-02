@@ -249,6 +249,30 @@ COMMENT ON COLUMN my_schema.mf_holdings.current_value IS 'Current value of the h
 COMMENT ON COLUMN my_schema.mf_holdings.net_change_percentage IS 'Overall change percentage from invested amount';
 COMMENT ON COLUMN my_schema.mf_holdings.day_change_percentage IS 'Change percentage for the day';
 
+-- MF NAV History table
+CREATE TABLE IF NOT EXISTS my_schema.mf_nav_history (
+    mf_symbol VARCHAR(50) NOT NULL,
+    scheme_code VARCHAR(20),  -- AMFI scheme code
+    fund_name VARCHAR(200),
+    nav_date DATE NOT NULL,
+    nav_value FLOAT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	run_date date default current_date,
+    CONSTRAINT mf_nav_history_pk PRIMARY KEY (mf_symbol, nav_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mf_nav_symbol_date ON my_schema.mf_nav_history(mf_symbol, nav_date DESC);
+CREATE INDEX IF NOT EXISTS idx_mf_nav_scheme_code ON my_schema.mf_nav_history(scheme_code);
+
+-- Comments on MF NAV history table
+COMMENT ON TABLE my_schema.mf_nav_history IS 'Stores historical NAV data for Mutual Funds from AMFI or Yahoo Finance';
+COMMENT ON COLUMN my_schema.mf_nav_history.mf_symbol IS 'Mutual Fund trading symbol';
+COMMENT ON COLUMN my_schema.mf_nav_history.scheme_code IS 'AMFI scheme code for the mutual fund';
+COMMENT ON COLUMN my_schema.mf_nav_history.fund_name IS 'Mutual Fund name';
+COMMENT ON COLUMN my_schema.mf_nav_history.nav_date IS 'Date of NAV value';
+COMMENT ON COLUMN my_schema.mf_nav_history.nav_value IS 'Net Asset Value on the given date';
+
 CREATE TABLE IF NOT EXISTS my_schema.margins (
     fetch_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     run_date DATE DEFAULT CURRENT_DATE,

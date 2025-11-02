@@ -854,6 +854,12 @@
                             <button onclick="loadSwingTrades()" class="btn btn-primary" style="padding: 6px 12px; font-size: 12px;">
                                 🔄 Refresh
                             </button>
+                            <button onclick="downloadSwingTrades('excel')" class="btn btn-primary" style="padding: 6px 12px; font-size: 12px;" title="Download as Excel">
+                                📥 Excel
+                            </button>
+                            <button onclick="downloadSwingTrades('pdf')" class="btn btn-danger" style="padding: 6px 12px; font-size: 12px;" title="Download as PDF">
+                                📥 PDF
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -884,7 +890,7 @@
                                         Confidence <span id="sort-confidence-icon"></span>
                                     </th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">R/R</th>
-                                    <th onclick="sortSwingTrades('ghost')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px; cursor: pointer; user-select: none;" title="Click to sort by Ghost Prediction">
+                                    <th onclick="sortSwingTrades('ghost')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px; cursor: pointer; user-select: none; color: #87CEEB;" title="Click to sort by Ghost Prediction">
                                         Ghost Prediction <span id="sort-ghost-icon"></span>
                                     </th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Days</th>
@@ -1304,9 +1310,12 @@
                     <label for="holdingsSearch" style="font-weight: 600; font-size: 13px;">Search Stock:</label>
                     <input type="text" id="holdingsSearch" placeholder="Enter stock symbol..." 
                            style="flex: 1; max-width: 300px; padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;"
-                           oninput="searchHoldings()" onkeypress="if(event.key === 'Enter') event.preventDefault();">
-                    <button onclick="clearHoldingsSearch()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #6c757d; color: white;" title="Clear search">
-                        Clear
+                           onkeypress="if(event.key === 'Enter') { event.preventDefault(); searchHoldings(); }">
+                    <button onclick="searchHoldings()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;" title="Search holdings">
+                        🔍 Search
+                    </button>
+                    <button onclick="clearHoldingsSearch()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;" title="Clear search">
+                        ✕ Clear
                     </button>
                 </div>
             </div>
@@ -1492,11 +1501,18 @@
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">P&L</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Net Change %</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Day Change %</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Benchmark</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">1M vs BM</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">3M vs BM</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">6M vs BM</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">1Y vs BM</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Alpha</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Beta</th>
                         </tr>
                     </thead>
                     <tbody id="mfHoldingsTableBody">
                         <tr>
-                            <td colspan="6" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading MF holdings...</td>
+                            <td colspan="13" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading MF holdings...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -2716,6 +2732,11 @@
             window.location.href = url;
         }
         
+        function downloadSwingTrades(format) {
+            const url = format === 'excel' ? '/api/download/swing_trades/excel' : '/api/download/swing_trades/pdf';
+            window.location.href = url;
+        }
+        
         function downloadMFHoldings(format) {
             const url = format === 'excel' ? '/api/download/mf/excel' : '/api/download/mf/pdf';
             window.location.href = url;
@@ -3504,7 +3525,7 @@
                     if (data.error) {
                         console.error('Error loading MF holdings:', data.error);
                         document.getElementById('mfHoldingsTableBody').innerHTML = 
-                            '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading MF holdings data</td></tr>';
+                            '<tr><td colspan="13" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading MF holdings data</td></tr>';
                         return;
                     }
                     
@@ -3512,38 +3533,114 @@
                     tbody.innerHTML = '';
                     
                     if (!data.mf_holdings || data.mf_holdings.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">No MF holdings found</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="13" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">No MF holdings found</td></tr>';
                         return;
                     }
                     
-                    data.mf_holdings.forEach(mf => {
-                        const pnlColor = mf.pnl >= 0 ? 'color: #28a745; font-weight: bold;' : 'color: #dc3545; font-weight: bold;';
-                        const netChangeColor = mf.net_change_percentage >= 0 ? 'color: #28a745;' : 'color: #dc3545;';
-                        const dayChangeColor = mf.day_change_percentage >= 0 ? 'color: #28a745;' : 'color: #dc3545;';
-                        
-                        const row = `
-                            <tr style="border-bottom: 1px solid #eee;">
-                                <td style="padding: 12px; border: 1px solid #ddd; font-weight: bold;">${mf.fund || mf.tradingsymbol || '-'}</td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">₹${mf.invested_amount.toFixed(2)}</td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">₹${mf.current_value.toFixed(2)}</td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
-                                    <span style="${pnlColor}">₹${mf.pnl.toFixed(2)}</span>
-                                </td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
-                                    <span style="${netChangeColor}">${mf.net_change_percentage >= 0 ? '+' : ''}${mf.net_change_percentage.toFixed(2)}%</span>
-                                </td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
-                                    <span style="${dayChangeColor}">${mf.day_change_percentage >= 0 ? '+' : ''}${mf.day_change_percentage.toFixed(2)}%</span>
-                                </td>
-                            </tr>
-                        `;
-                        tbody.innerHTML += row;
-                    });
+                    // Fetch benchmark comparison data
+                    cachedFetch('/api/mf_benchmark_comparison')
+                        .then(response => response.json())
+                        .then(benchmarkData => {
+                            // Create a map of MF symbol to benchmark metrics
+                            const benchmarkMap = {};
+                            if (benchmarkData.comparisons) {
+                                benchmarkData.comparisons.forEach(comp => {
+                                    if (comp.success) {
+                                        benchmarkMap[comp.mf_symbol] = comp;
+                                    }
+                                });
+                            }
+                            
+                            // Render MF holdings with benchmark data
+                            data.mf_holdings.forEach(mf => {
+                                const pnlColor = mf.pnl >= 0 ? 'color: #28a745; font-weight: bold;' : 'color: #dc3545; font-weight: bold;';
+                                const netChangeColor = mf.net_change_percentage >= 0 ? 'color: #28a745;' : 'color: #dc3545;';
+                                const dayChangeColor = mf.day_change_percentage >= 0 ? 'color: #28a745;' : 'color: #dc3545;';
+                                
+                                // Get benchmark metrics for this MF
+                                const benchmarkMetrics = benchmarkMap[mf.tradingsymbol] || null;
+                                
+                                const formatExcessReturn = (value) => {
+                                    if (value === null || value === undefined) return '-';
+                                    const color = value >= 0 ? '#28a745' : '#dc3545';
+                                    return `<span style="color: ${color};">${value >= 0 ? '+' : ''}${value.toFixed(2)}%</span>`;
+                                };
+                                
+                                const formatMetric = (value, decimals = 2) => {
+                                    if (value === null || value === undefined) return '-';
+                                    return value.toFixed(decimals);
+                                };
+                                
+                                const benchmarkName = benchmarkMetrics ? (benchmarkMetrics.benchmark_symbol || '-') : '-';
+                                const excessReturns = benchmarkMetrics ? (benchmarkMetrics.excess_returns || {}) : {};
+                                const alpha = benchmarkMetrics ? formatMetric(benchmarkMetrics.alpha, 2) : '-';
+                                const beta = benchmarkMetrics ? formatMetric(benchmarkMetrics.beta, 2) : '-';
+                                
+                                const row = `
+                                    <tr style="border-bottom: 1px solid #eee;">
+                                        <td style="padding: 12px; border: 1px solid #ddd; font-weight: bold;">${mf.fund || mf.tradingsymbol || '-'}</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">₹${mf.invested_amount.toFixed(2)}</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">₹${mf.current_value.toFixed(2)}</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                            <span style="${pnlColor}">₹${mf.pnl.toFixed(2)}</span>
+                                        </td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                            <span style="${netChangeColor}">${mf.net_change_percentage >= 0 ? '+' : ''}${mf.net_change_percentage.toFixed(2)}%</span>
+                                        </td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                            <span style="${dayChangeColor}">${mf.day_change_percentage >= 0 ? '+' : ''}${mf.day_change_percentage.toFixed(2)}%</span>
+                                        </td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 11px;">${benchmarkName}</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 11px;">${formatExcessReturn(excessReturns['1M'])}</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 11px;">${formatExcessReturn(excessReturns['3M'])}</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 11px;">${formatExcessReturn(excessReturns['6M'])}</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 11px;">${formatExcessReturn(excessReturns['1Y'])}</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 11px;">${alpha}</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 11px;">${beta}</td>
+                                    </tr>
+                                `;
+                                tbody.innerHTML += row;
+                            });
+                        })
+                        .catch(error => {
+                            console.error('Error fetching benchmark comparison:', error);
+                            // Fallback: render without benchmark data
+                            data.mf_holdings.forEach(mf => {
+                                const pnlColor = mf.pnl >= 0 ? 'color: #28a745; font-weight: bold;' : 'color: #dc3545; font-weight: bold;';
+                                const netChangeColor = mf.net_change_percentage >= 0 ? 'color: #28a745;' : 'color: #dc3545;';
+                                const dayChangeColor = mf.day_change_percentage >= 0 ? 'color: #28a745;' : 'color: #dc3545;';
+                                
+                                const row = `
+                                    <tr style="border-bottom: 1px solid #eee;">
+                                        <td style="padding: 12px; border: 1px solid #ddd; font-weight: bold;">${mf.fund || mf.tradingsymbol || '-'}</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">₹${mf.invested_amount.toFixed(2)}</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">₹${mf.current_value.toFixed(2)}</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                            <span style="${pnlColor}">₹${mf.pnl.toFixed(2)}</span>
+                                        </td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                            <span style="${netChangeColor}">${mf.net_change_percentage >= 0 ? '+' : ''}${mf.net_change_percentage.toFixed(2)}%</span>
+                                        </td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right;">
+                                            <span style="${dayChangeColor}">${mf.day_change_percentage >= 0 ? '+' : ''}${mf.day_change_percentage.toFixed(2)}%</span>
+                                        </td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 11px;">-</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 11px;">-</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 11px;">-</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 11px;">-</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 11px;">-</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 11px;">-</td>
+                                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 11px;">-</td>
+                                    </tr>
+                                `;
+                                tbody.innerHTML += row;
+                            });
+                        });
                 })
                 .catch(error => {
                     console.error('Error fetching MF holdings:', error);
                     document.getElementById('mfHoldingsTableBody').innerHTML = 
-                        '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading MF holdings data</td></tr>';
+                        '<tr><td colspan="13" style="padding: 15px; text-align: center; color: #dc3545; font-size: 12px;">Error loading MF holdings data</td></tr>';
                 });
         }
         
@@ -5261,8 +5358,8 @@
                         <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">
                             ${prophetPred !== null && !isNaN(prophetPred) ? `
                                 <div style="color: ${prophetColor}; font-weight: bold;">${prophetPred >= 0 ? '+' : ''}${prophetPred.toFixed(2)}%</div>
-                                <div style="font-size: 11px; color: #666;">Conf: ${prophetConf !== null && !isNaN(prophetConf) ? prophetConf.toFixed(0) : 'N/A'}%</div>
-                                <div style="font-size: 11px; color: #666;">${predictionDays === 30 ? '30D' : '30D - N/A'}</div>
+                                <div style="font-size: 11px; color: #87CEEB;">Conf: ${prophetConf !== null && !isNaN(prophetConf) ? prophetConf.toFixed(0) : 'N/A'}%</div>
+                                <div style="font-size: 11px; color: #87CEEB;">${predictionDays === 30 ? '30D' : predictionDays ? predictionDays + 'D' : 'N/A'}</div>
                             ` : '<span style="color: #999; font-size: 12px;">N/A</span>'}
                         </td>
                         <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">${avgHoldingPeriod || '-'}</td>

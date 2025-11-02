@@ -23,3 +23,6 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 # Refresh swing trade recommendations every 30 minutes during market hours (same frequency as OHLC)
 */30 9-16 * * 1-5 root cd /app && python /app/stocks/RefreshSwingTrades.py >> /app/logs/swing_trades_refresh.log 2>&1 &
+
+# Refresh MF NAV data daily (after market close)
+0 18 * * 1-5 root cd /app && python /app/holdings/RefreshMFNAV.py >> /app/logs/mf_nav_refresh.log 2>&1 &

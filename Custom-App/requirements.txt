@@ -18,3 +18,4 @@ TA-Lib==0.6.8
 python-multipart==0.0.20
 prophet==1.1.5
 cmdstanpy==1.2.0
+mftool>=0.2.0
