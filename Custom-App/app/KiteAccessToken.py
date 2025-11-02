@@ -3,10 +3,98 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi import Request, Query, Form, File, UploadFile
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 import os
 from datetime import datetime, timedelta
 import json
+
+# Helper function to add cache headers based on endpoint refresh frequency
+def get_cache_headers(endpoint_path: str) -> dict:
+    """
+    Returns Cache-Control header based on endpoint refresh frequency
+    Based on crontab refresh intervals:
+    - Options data: 5 minutes
+    - Holdings: 5 minutes  
+    - OHLC: 30 minutes
+    - Derivatives suggestions: 1 minute
+    - System status: 10 seconds
+    - Market data (bias, order flow): 5 minutes
+    - Gainers/Losers: 1 hour
+    """
+    # Cache durations in seconds based on refresh frequency
+    cache_durations = {
+        # Options data - 5 minutes (300 seconds)
+        'options_latest': 300,
+        'options_scanner': 300,
+        'options_chain': 300,
+        'options_data': 300,
+        
+        # Holdings - 5 minutes (300 seconds)
+        'holdings': 300,
+        'mf_holdings': 300,
+        'today_pnl_summary': 300,
+        'portfolio_history': 300,
+        'holdings/patterns': 300,
+        
+        # Derivatives - 1 minute (60 seconds)
+        'derivatives_suggestions': 60,
+        'derivatives_history': 60,
+        
+        # Market data - 5 minutes (300 seconds)
+        'market_bias': 300,
+        'futures_order_flow': 300,
+        'premarket_analysis': 300,
+        'market_dashboard': 300,
+        
+        # System status - 10 seconds
+        'system_status': 10,
+        
+        # Positions - 5 minutes
+        'positions': 300,
+        
+        # Gainers/Losers - 1 hour (3600 seconds)
+        'gainers': 3600,
+        'losers': 3600,
+        'gainers_losers': 3600,
+        'top_gainers': 3600,
+        
+        # Swing trades - 30 minutes (1800 seconds)
+        'swing_trades': 1800,
+        'swing_trades_nifty': 1800,
+        'swing_trades_history': 1800,
+        
+        # Portfolio hedge - 5 minutes
+        'portfolio_hedge_analysis': 300,
+        
+        # Sparklines and charts - 5 minutes
+        'sparkline': 300,
+        'candlestick_chart': 300,
+        'candlestick': 300,
+        
+        # Margin - 5 minutes
+        'margin_data': 300,
+        'margin/available': 300,
+        'margin/calculate': 300,
+    }
+    
+    # Find matching cache duration
+    for key, duration in cache_durations.items():
+        if key in endpoint_path:
+            return {
+                'Cache-Control': f'public, max-age={duration}, s-maxage={duration}, stale-while-revalidate=60'
+            }
+    
+    # Default: 5 minutes for most endpoints
+    return {
+        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60'
+    }
+
+def cached_json_response(data: dict, endpoint_path: str) -> JSONResponse:
+    """
+    Returns a JSONResponse with appropriate cache headers
+    """
+    headers = get_cache_headers(endpoint_path)
+    return JSONResponse(content=data, headers=headers)
 import io
 import psycopg2
 import psycopg2.extras
@@ -725,14 +813,14 @@ async def home(
 async def api_system_status():
     """API endpoint to get current system status"""
     status = get_system_status()
-    return {
+    return cached_json_response({
         "token_valid": status['token_valid'],
         "token_fetched_today": status['token_fetched_today'],
         "tick_active": status['tick_data']['active'],
         "recent_ticks": status['tick_data']['recent_ticks'],
         "total_ticks": status['tick_data']['total_ticks'],
         "last_update": status['last_update']
-    }
+    }, "/api/system_status")
 
 @app.get("/api/tpo_charts")
 async def api_tpo_charts(analysis_date: str = Query(None)):
@@ -1627,13 +1715,220 @@ async def api_swing_trades(
     min_confidence: float = Query(70.0, description="Minimum confidence score"),
     pattern_type: str = Query(None, description="Filter by pattern type"),
     limit: int = Query(20, description="Number of results"),
-    scan_limit: int = Query(50, description="Limit number of stocks to scan (default: 50)")
+    scan_limit: int = Query(50, description="Limit number of stocks to scan (default: 50)"),
+    force_refresh: bool = Query(False, description="Force refresh by generating new recommendations")
 ):
-    """API endpoint to get swing trade recommendations for stocks"""
+    """API endpoint to get swing trade recommendations for stocks
+    
+    By default, reads from database (refreshed every 30 minutes via cron).
+    Set force_refresh=True to generate new recommendations on-demand.
+    """
     try:
         from SwingTradeScanner import SwingTradeScanner
         from datetime import date
+        import json
         
+        today = date.today()
+        
+        # Try to read from database first (unless force_refresh is True)
+        if not force_refresh:
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                
+                # Build query to get latest recommendations for today
+                where_clauses = ["run_date = %s", "status = 'ACTIVE'"]
+                params = [today]
+                
+                # Apply filtering criteria
+                if min_gain:
+                    where_clauses.append("potential_gain_pct >= %s")
+                    params.append(min_gain)
+                if max_gain:
+                    where_clauses.append("potential_gain_pct <= %s")
+                    params.append(max_gain)
+                if min_confidence:
+                    where_clauses.append("confidence_score >= %s")
+                    params.append(min_confidence)
+                if pattern_type:
+                    where_clauses.append("pattern_type = %s")
+                    params.append(pattern_type)
+                
+                sql = f"""
+                    SELECT 
+                        scrip_id, instrument_token, pattern_type, direction,
+                        entry_price, target_price, stop_loss,
+                        potential_gain_pct, risk_reward_ratio, confidence_score,
+                        holding_period_days, current_price,
+                        sma_20, sma_50, sma_200, rsi_14, macd, macd_signal, atr_14,
+                        volume_trend, support_level, resistance_level, rationale,
+                        technical_context, diagnostics, filtering_criteria,
+                        analysis_date, generated_at
+                    FROM my_schema.swing_trade_suggestions
+                    WHERE {' AND '.join(where_clauses)}
+                    ORDER BY confidence_score DESC
+                    LIMIT %s
+                """
+                params.append(limit if limit > 0 else 1000)
+                
+                cursor.execute(sql, tuple(params))
+                rows = cursor.fetchall()
+                
+                if rows and len(rows) > 0:
+                    # Convert database rows to recommendation format
+                    recommendations = []
+                    for row in rows:
+                        rec = {
+                            'scrip_id': row.get('scrip_id'),
+                            'instrument_token': row.get('instrument_token'),
+                            'pattern_type': row.get('pattern_type'),
+                            'direction': row.get('direction', 'BUY'),
+                            'entry_price': float(row.get('entry_price', 0)) if row.get('entry_price') else None,
+                            'target_price': float(row.get('target_price', 0)) if row.get('target_price') else None,
+                            'stop_loss': float(row.get('stop_loss', 0)) if row.get('stop_loss') else None,
+                            'potential_gain_pct': float(row.get('potential_gain_pct', 0)) if row.get('potential_gain_pct') else None,
+                            'risk_reward_ratio': float(row.get('risk_reward_ratio', 0)) if row.get('risk_reward_ratio') else None,
+                            'confidence_score': float(row.get('confidence_score', 0)) if row.get('confidence_score') else None,
+                            'holding_period_days': int(row.get('holding_period_days', 0)) if row.get('holding_period_days') else None,
+                            'current_price': float(row.get('current_price', 0)) if row.get('current_price') else None,
+                            'sma_20': float(row.get('sma_20', 0)) if row.get('sma_20') else None,
+                            'sma_50': float(row.get('sma_50', 0)) if row.get('sma_50') else None,
+                            'sma_200': float(row.get('sma_200', 0)) if row.get('sma_200') else None,
+                            'rsi_14': float(row.get('rsi_14', 0)) if row.get('rsi_14') else None,
+                            'macd': float(row.get('macd', 0)) if row.get('macd') else None,
+                            'macd_signal': float(row.get('macd_signal', 0)) if row.get('macd_signal') else None,
+                            'atr_14': float(row.get('atr_14', 0)) if row.get('atr_14') else None,
+                            'volume_trend': row.get('volume_trend'),
+                            'support_level': float(row.get('support_level', 0)) if row.get('support_level') else None,
+                            'resistance_level': float(row.get('resistance_level', 0)) if row.get('resistance_level') else None,
+                            'rationale': row.get('rationale'),
+                        }
+                        
+                        # Parse JSONB fields
+                        if row.get('technical_context'):
+                            try:
+                                if isinstance(row['technical_context'], str):
+                                    rec['technical_context'] = json.loads(row['technical_context'])
+                                else:
+                                    rec['technical_context'] = row['technical_context']
+                            except:
+                                rec['technical_context'] = {}
+                        
+                        if row.get('diagnostics'):
+                            try:
+                                if isinstance(row['diagnostics'], str):
+                                    rec['diagnostics'] = json.loads(row['diagnostics'])
+                                else:
+                                    rec['diagnostics'] = row['diagnostics']
+                            except:
+                                rec['diagnostics'] = {}
+                        
+                        if row.get('filtering_criteria'):
+                            try:
+                                if isinstance(row['filtering_criteria'], str):
+                                    rec['filtering_criteria'] = json.loads(row['filtering_criteria'])
+                                else:
+                                    rec['filtering_criteria'] = row['filtering_criteria']
+                            except:
+                                rec['filtering_criteria'] = {}
+                        
+                        recommendations.append(rec)
+                    
+                    # Get Prophet predictions and enrich recommendations
+                    try:
+                        cursor.execute("""
+                            SELECT scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days, run_date
+                            FROM my_schema.prophet_predictions
+                            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE' AND prediction_days = 30)
+                            AND prediction_days = 30
+                            AND status = 'ACTIVE'
+                        """)
+                        
+                        predictions_rows = cursor.fetchall()
+                        
+                        if not predictions_rows:
+                            cursor.execute("""
+                                SELECT scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days, run_date
+                                FROM my_schema.prophet_predictions pp1
+                                WHERE status = 'ACTIVE'
+                                AND run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE')
+                            """)
+                            predictions_rows = cursor.fetchall()
+                        
+                        predictions_map = {}
+                        if predictions_rows:
+                            for row in predictions_rows:
+                                scrip_id = row['scrip_id'].upper()
+                                if scrip_id not in predictions_map:
+                                    predictions_map[scrip_id] = dict(row)
+                        
+                        # Add predictions to recommendations
+                        for rec in recommendations:
+                            scrip_id = rec.get('scrip_id')
+                            if scrip_id:
+                                scrip_id_upper = scrip_id.upper()
+                                if scrip_id_upper in predictions_map:
+                                    pred = predictions_map[scrip_id_upper]
+                                    try:
+                                        pred_pct = pred.get('predicted_price_change_pct')
+                                        if pred_pct is not None and not (isinstance(pred_pct, float) and (pred_pct != pred_pct)):
+                                            rec['prophet_prediction_pct'] = float(pred_pct)
+                                        else:
+                                            rec['prophet_prediction_pct'] = None
+                                    except:
+                                        rec['prophet_prediction_pct'] = None
+                                    
+                                    try:
+                                        pred_conf = pred.get('prediction_confidence')
+                                        if pred_conf is not None and not (isinstance(pred_conf, float) and (pred_conf != pred_conf)):
+                                            rec['prophet_confidence'] = float(pred_conf)
+                                        else:
+                                            rec['prophet_confidence'] = None
+                                    except:
+                                        rec['prophet_confidence'] = None
+                                    
+                                    pred_days = pred.get('prediction_days')
+                                    rec['prediction_days'] = int(pred_days) if pred_days is not None else None
+                                else:
+                                    rec['prophet_prediction_pct'] = None
+                                    rec['prophet_confidence'] = None
+                                    rec['prediction_days'] = None
+                            else:
+                                rec['prophet_prediction_pct'] = None
+                                rec['prophet_confidence'] = None
+                                rec['prediction_days'] = None
+                    except Exception as pred_err:
+                        logging.debug(f"Error enriching with Prophet predictions: {pred_err}")
+                        for rec in recommendations:
+                            rec['prophet_prediction_pct'] = None
+                            rec['prophet_confidence'] = None
+                            rec['prediction_days'] = None
+                    
+                    cursor.close()
+                    conn.close()
+                    
+                    # Return cached results
+                    return cached_json_response({
+                        "success": True,
+                        "recommendations": recommendations[:limit] if limit > 0 else recommendations,
+                        "total_found": len(recommendations),
+                        "analysis_date": str(today),
+                        "source": "database",
+                        "filtering_criteria": {
+                            "min_gain": min_gain,
+                            "max_gain": max_gain,
+                            "min_confidence": min_confidence,
+                            "pattern_type": pattern_type
+                        }
+                    }, "/api/swing_trades")
+                
+                cursor.close()
+                conn.close()
+            except Exception as db_err:
+                logging.warning(f"Error reading from database, will generate new recommendations: {db_err}")
+                # Continue to generate new recommendations
+        
+        # If database read failed or force_refresh=True, generate new recommendations
         scanner = SwingTradeScanner(
             min_gain=min_gain,
             max_gain=max_gain,
@@ -1830,18 +2125,19 @@ async def api_swing_trades(
         analysis_date = date.today()
         scanner.save_recommendations(recommendations, analysis_date)
         
-        return {
+        return cached_json_response({
             "success": True,
             "recommendations": recommendations,
             "total_found": len(recommendations),
             "analysis_date": str(analysis_date),
+            "source": "generated",
             "filtering_criteria": {
                 "min_gain": min_gain,
                 "max_gain": max_gain,
                 "min_confidence": min_confidence,
                 "pattern_type": pattern_type
             }
-        }
+        }, "/api/swing_trades")
         
     except Exception as e:
         logging.error(f"Error generating swing trade recommendations: {e}")
@@ -2245,10 +2541,10 @@ async def api_gainers():
             })
         
         conn.close()
-        return {"gainers": gainers_list}
+        return cached_json_response({"gainers": gainers_list}, "/api/gainers")
     except Exception as e:
         logging.error(f"Error fetching gainers: {e}")
-        return {"error": str(e), "gainers": []}
+        return cached_json_response({"error": str(e), "gainers": []}, "/api/gainers")
 
 @app.get("/api/losers")
 async def api_losers():
@@ -2298,10 +2594,10 @@ async def api_losers():
             })
         
         conn.close()
-        return {"losers": losers_list}
+        return cached_json_response({"losers": losers_list}, "/api/losers")
     except Exception as e:
         logging.error(f"Error fetching losers: {e}")
-        return {"error": str(e), "losers": []}
+        return cached_json_response({"error": str(e), "losers": []}, "/api/losers")
 
 @app.get("/api/holdings")
 async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=1), sort_by: str = Query(None), sort_dir: str = Query("asc"), search: str = Query(None)):
@@ -2546,12 +2842,12 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
             "per_page": per_page
         }
         cache_set_json(cache_key, result, ttl_seconds=5)
-        return result
+        return cached_json_response(result, "/api/holdings")
     except Exception as e:
         logging.error(f"Error fetching holdings: {e}")
         import traceback
         logging.error(traceback.format_exc())
-        return {"error": str(e)}
+        return cached_json_response({"error": str(e)}, "/api/holdings")
 
 @app.get("/api/positions")
 async def api_positions():
@@ -2600,10 +2896,10 @@ async def api_positions():
                 "pnl": float(position["pnl"]) if position["pnl"] else 0.0
             })
         
-        return {"positions": positions_list}
+        return cached_json_response({"positions": positions_list}, "/api/positions")
     except Exception as e:
         logging.error(f"Error fetching positions: {e}")
-        return {"error": str(e), "positions": []}
+        return cached_json_response({"error": str(e), "positions": []}, "/api/positions")
 
 @app.get("/api/mf_holdings")
 async def api_mf_holdings():
@@ -2652,13 +2948,13 @@ async def api_mf_holdings():
                 "day_change_percentage": float(mf["day_change_percentage"]) if mf["day_change_percentage"] else 0.0
             })
         
-        return {"mf_holdings": mf_holdings_list}
+        return cached_json_response({"mf_holdings": mf_holdings_list}, "/api/mf_holdings")
         
     except Exception as e:
         logging.error(f"Error fetching MF holdings: {e}")
         import traceback
         logging.error(traceback.format_exc())
-        return {"error": str(e), "mf_holdings": []}
+        return cached_json_response({"error": str(e), "mf_holdings": []}, "/api/mf_holdings")
 
 @app.get("/api/holdings/patterns")
 async def api_holdings_patterns():
@@ -2682,13 +2978,13 @@ async def api_holdings_patterns():
                 logging.debug(f"Error getting patterns for {symbol}: {e}")
                 continue
         
-        return {"success": True, "patterns": patterns_map}
+        return cached_json_response({"success": True, "patterns": patterns_map}, "/api/holdings/patterns")
         
     except Exception as e:
         logging.error(f"Error fetching holdings patterns: {e}")
         import traceback
         logging.error(traceback.format_exc())
-        return {"success": False, "error": str(e), "patterns": {}}
+        return cached_json_response({"success": False, "error": str(e), "patterns": {}}, "/api/holdings/patterns")
 
 @app.get("/api/today_pnl_summary")
 async def api_today_pnl_summary():
@@ -2821,12 +3117,12 @@ async def api_today_pnl_summary():
             "total_overall_pnl": total_overall_pnl
         }
         cache_set_json("today_pnl_summary", result, ttl_seconds=5)
-        return result
+        return cached_json_response(result, "/api/today_pnl_summary")
     except Exception as e:
         logging.error(f"Error fetching today's P&L summary: {e}")
         import traceback
         logging.error(traceback.format_exc())
-        return {
+        return cached_json_response({
             "equity_pnl": 0.0,
             "equity_overall_pnl": 0.0,
             "mf_pnl": 0.0,
@@ -2835,7 +3131,7 @@ async def api_today_pnl_summary():
             "total_today_pnl": 0.0,
             "total_overall_pnl": 0.0,
             "error": str(e)
-        }
+        }, "/api/today_pnl_summary")
 
 @app.get("/api/portfolio_history")
 async def api_portfolio_history(days: int = Query(30, ge=1, le=365)):
@@ -2892,12 +3188,12 @@ async def api_portfolio_history(days: int = Query(30, ge=1, le=365)):
         
         conn.close()
         
-        return {"portfolio_history": chart_data}
+        return cached_json_response({"portfolio_history": chart_data}, "/api/portfolio_history")
     except Exception as e:
         logging.error(f"Error fetching portfolio history: {e}")
         import traceback
         logging.error(traceback.format_exc())
-        return {"error": str(e), "portfolio_history": []}
+        return cached_json_response({"error": str(e), "portfolio_history": []}, "/api/portfolio_history")
 
 @app.get("/api/sparkline/{trading_symbol}")
 async def api_sparkline(trading_symbol: str, days: int = Query(30, ge=7, le=90)):
@@ -4532,19 +4828,19 @@ async def api_options_latest(
                 opt['expiry'] = opt['expiry'].strftime('%Y-%m-%d')
             options_list.append(opt)
         
-        return {
+        return cached_json_response({
             "success": True,
             "options": options_list,
             "total_options": len(options_list)
-        }
+        }, "/api/options_latest")
     except Exception as e:
         logging.error(f"Error fetching latest options: {e}")
         import traceback
         logging.error(traceback.format_exc())
-        return {
+        return cached_json_response({
             "success": False,
             "error": str(e)
-        }
+        }, "/api/options_latest")
 
 @app.get("/api/margin/calculate")
 async def api_margin_calculate(

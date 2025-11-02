@@ -867,16 +867,26 @@
                         <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                             <thead>
                                 <tr style="background-color: #f8f9fa;">
-                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Symbol</th>
+                                    <th onclick="sortSwingTrades('symbol')" style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px; cursor: pointer; user-select: none;" title="Click to sort by Symbol">
+                                        Symbol <span id="sort-symbol-icon"></span>
+                                    </th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Sparkline (last 30D)</th>
-                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Pattern(s)</th>
+                                    <th onclick="sortSwingTrades('pattern')" style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px; cursor: pointer; user-select: none;" title="Click to sort by Pattern">
+                                        Pattern(s) <span id="sort-pattern-icon"></span>
+                                    </th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Entry</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Target</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Stop Loss</th>
-                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Gain %</th>
-                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Confidence</th>
+                                    <th onclick="sortSwingTrades('gain')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px; cursor: pointer; user-select: none;" title="Click to sort by Gain %">
+                                        Gain % <span id="sort-gain-icon"></span>
+                                    </th>
+                                    <th onclick="sortSwingTrades('confidence')" style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px; cursor: pointer; user-select: none;" title="Click to sort by Confidence">
+                                        Confidence <span id="sort-confidence-icon"></span>
+                                    </th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">R/R</th>
-                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Ghost Prediction</th>
+                                    <th onclick="sortSwingTrades('ghost')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px; cursor: pointer; user-select: none;" title="Click to sort by Ghost Prediction">
+                                        Ghost Prediction <span id="sort-ghost-icon"></span>
+                                    </th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Days</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Rationale</th>
                                 </tr>
@@ -1445,6 +1455,139 @@
             if (t.hour === 15 && t.minute >= 30) return true;
             return false;
         }
+        
+        // Browser caching utility based on crontab refresh intervals
+        const DataCache = {
+            // Cache TTLs in milliseconds (based on crontab refresh intervals)
+            TTL: {
+                OPTIONS: 5 * 60 * 1000,        // 5 minutes (options data)
+                HOLDINGS: 5 * 60 * 1000,       // 5 minutes (holdings refresh)
+                OHLC: 30 * 60 * 1000,          // 30 minutes (OHLC update)
+                DERIVATIVES_SUGGESTIONS: 60 * 1000, // 1 minute (derivatives suggestions)
+                GAINERS_LOSERS: 60 * 60 * 1000, // 1 hour (gainers/losers)
+                SWING_TRADES: 30 * 60 * 1000,   // 30 minutes (swing trades)
+                PORTFOLIO: 5 * 60 * 1000,       // 5 minutes (portfolio data)
+                MARKET_BIAS: 5 * 60 * 1000,     // 5 minutes (market data)
+                FUTURES: 5 * 60 * 1000,         // 5 minutes (futures data)
+                PREMARKET: 60 * 60 * 1000,      // 1 hour (premarket analysis)
+                SYSTEM_STATUS: 10 * 1000,       // 10 seconds (system status)
+                DEFAULT: 5 * 60 * 1000          // 5 minutes default
+            },
+            
+            // Get cache key based on URL
+            getCacheKey(url) {
+                return `dashboard_cache_${btoa(url).replace(/[+/=]/g, '')}`;
+            },
+            
+            // Get TTL for a URL based on endpoint pattern
+            getTTL(url) {
+                if (url.includes('options_latest') || url.includes('options_scanner')) return this.TTL.OPTIONS;
+                if (url.includes('holdings') || url.includes('mf_holdings')) return this.TTL.HOLDINGS;
+                if (url.includes('today_pnl_summary') || url.includes('portfolio_history')) return this.TTL.PORTFOLIO;
+                if (url.includes('derivatives_suggestions')) return this.TTL.DERIVATIVES_SUGGESTIONS;
+                if (url.includes('gainers') || url.includes('losers') || url.includes('top_gainers')) return this.TTL.GAINERS_LOSERS;
+                if (url.includes('swing_trades')) return this.TTL.SWING_TRADES;
+                if (url.includes('market_bias') || url.includes('futures_order_flow')) return this.TTL.MARKET_BIAS;
+                if (url.includes('premarket_analysis')) return this.TTL.PREMARKET;
+                if (url.includes('system_status')) return this.TTL.SYSTEM_STATUS;
+                if (url.includes('positions')) return this.TTL.MARKET_BIAS;
+                return this.TTL.DEFAULT;
+            },
+            
+            // Get cached data
+            get(url) {
+                const key = this.getCacheKey(url);
+                try {
+                    const cached = localStorage.getItem(key);
+                    if (!cached) return null;
+                    
+                    const { data, timestamp, ttl } = JSON.parse(cached);
+                    const age = Date.now() - timestamp;
+                    
+                    if (age > ttl) {
+                        localStorage.removeItem(key);
+                        return null;
+                    }
+                    
+                    return data;
+                } catch (e) {
+                    console.warn('Cache get error:', e);
+                    return null;
+                }
+            },
+            
+            // Set cached data
+            set(url, data) {
+                const key = this.getCacheKey(url);
+                const ttl = this.getTTL(url);
+                try {
+                    localStorage.setItem(key, JSON.stringify({
+                        data: data,
+                        timestamp: Date.now(),
+                        ttl: ttl
+                    }));
+                } catch (e) {
+                    console.warn('Cache set error:', e);
+                    // If storage is full, clear old cache entries
+                    this.clearOld();
+                }
+            },
+            
+            // Clear old cache entries
+            clearOld() {
+                try {
+                    const keys = Object.keys(localStorage);
+                    const now = Date.now();
+                    keys.forEach(key => {
+                        if (key.startsWith('dashboard_cache_')) {
+                            try {
+                                const cached = JSON.parse(localStorage.getItem(key));
+                                if (now - cached.timestamp > cached.ttl) {
+                                    localStorage.removeItem(key);
+                                }
+                            } catch (e) {
+                                localStorage.removeItem(key);
+                            }
+                        }
+                    });
+                } catch (e) {
+                    console.warn('Cache clear error:', e);
+                }
+            },
+            
+            // Clear all cache
+            clear() {
+                try {
+                    const keys = Object.keys(localStorage);
+                    keys.forEach(key => {
+                        if (key.startsWith('dashboard_cache_')) {
+                            localStorage.removeItem(key);
+                        }
+                    });
+                } catch (e) {
+                    console.warn('Cache clear all error:', e);
+                }
+            }
+        };
+        
+        // Track which tabs have been loaded
+        const TabLoadTracker = {
+            loaded: {
+                'live-market': false,
+                'holdings': false,
+                'gainers-losers': false,
+                'utilities': false
+            },
+            
+            markLoaded(tabName) {
+                this.loaded[tabName] = true;
+            },
+            
+            isLoaded(tabName) {
+                return this.loaded[tabName] || false;
+            }
+        };
+        
         // Global variables for market bias analysis
         let currentAnalysisDate = null;
         let marketBiasData = null;
@@ -1566,27 +1709,29 @@
             
             // Note: Derivatives suggestions refresh separately every minute (see below)
             
-            // Only update holdings if enabled
+            // Only update holdings if enabled AND the holdings tab has been loaded
             {% if show_holdings %}
-            // Refresh holdings table with current page
-            if (!isMarketClosedIST() && typeof currentHoldingsPage !== 'undefined') {
-                loadHoldingsPage(currentHoldingsPage);
-            }
-            
-            // Update MF holdings
-            if (!isMarketClosedIST()) {
-                loadMFHoldings();
-            }
-            
-            // Update P&L Summary
-            if (!isMarketClosedIST()) {
-                loadPnlSummary();
-            }
-            
-            // Update Portfolio Chart
-            const daysSelector = document.getElementById('portfolioDaysSelector');
-            if (daysSelector && !isMarketClosedIST()) {
-                loadPortfolioChart(daysSelector.value || 30);
+            if (TabLoadTracker.isLoaded('holdings')) {
+                // Refresh holdings table with current page
+                if (!isMarketClosedIST() && typeof currentHoldingsPage !== 'undefined') {
+                    loadHoldingsPage(currentHoldingsPage);
+                }
+                
+                // Update MF holdings
+                if (!isMarketClosedIST()) {
+                    loadMFHoldings();
+                }
+                
+                // Update P&L Summary
+                if (!isMarketClosedIST()) {
+                    loadPnlSummary();
+                }
+                
+                // Update Portfolio Chart
+                const daysSelector = document.getElementById('portfolioDaysSelector');
+                if (daysSelector && !isMarketClosedIST()) {
+                    loadPortfolioChart(daysSelector.value || 30);
+                }
             }
             {% endif %}
         }
@@ -1616,9 +1761,10 @@
         // Load market bias analysis
         function loadMarketBiasAnalysis() {
             const analysisDate = document.getElementById('analysisDate').value || null;
+            const url = `/api/market_bias${analysisDate ? '?analysis_date=' + analysisDate : ''}`;
             
-            // Load market bias data
-            fetch(`/api/market_bias${analysisDate ? '?analysis_date=' + analysisDate : ''}`)
+            // Load market bias data with caching
+            cachedFetch(url)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -1636,7 +1782,7 @@
         
         // Load futures order flow data
         function loadFuturesOrderFlow() {
-            fetch('/api/futures_order_flow')
+            cachedFetch('/api/futures_order_flow')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -1704,7 +1850,7 @@
             document.getElementById('premarketAnalysisContainer').innerHTML = 
                 '<div style="text-align: center; padding: 20px; color: #666;">Loading pre-market analysis...</div>';
             
-            fetch(url)
+            cachedFetch(url)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
@@ -2152,7 +2298,7 @@
                 url += `&search=${encodeURIComponent(holdingsSearchTerm)}`;
             }
             // Pass sort parameters to API for server-side sorting
-            fetch(url)
+            cachedFetch(url)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -2280,10 +2426,15 @@
         function loadHoldingsPatterns(holdings) {
             if (!holdings || holdings.length === 0) return;
             
+            // Only load patterns if holdings tab has been loaded
+            if (!TabLoadTracker.isLoaded('holdings')) {
+                return;
+            }
+            
             // Get unique symbols
             const symbols = [...new Set(holdings.map(h => h.trading_symbol))];
             
-            fetch('/api/holdings/patterns')
+            cachedFetch('/api/holdings/patterns')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
@@ -2349,8 +2500,8 @@
         
         // Load gainers and losers data
         function loadGainersLosers() {
-            // Load gainers
-            fetch('/api/gainers')
+            // Load gainers with caching
+            cachedFetch('/api/gainers')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -2404,8 +2555,8 @@
                             '<tr><td colspan="6" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading gainers</td></tr>';
                 });
             
-            // Load losers
-            fetch('/api/losers')
+            // Load losers with caching
+            cachedFetch('/api/losers')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -2635,7 +2786,7 @@
         
         // Load positions data
         function loadPositions() {
-            fetch('/api/positions')
+            cachedFetch('/api/positions')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -2720,7 +2871,7 @@
                 url += `&strike_range_min=${minStrike}&strike_range_max=${maxStrike}`;
             }
             
-            fetch(url)
+            cachedFetch(url)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -2875,7 +3026,7 @@
             const container = document.getElementById('latestOptionsContainer');
             container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading latest options...</div>';
             
-            fetch('/api/options_latest?limit=5')
+            cachedFetch('/api/options_latest?limit=5')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
@@ -2885,6 +3036,19 @@
                     
                     if (!data.options || data.options.length === 0) {
                         container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">No options data available for today</div>';
+                        return;
+                    }
+                    
+                    // Filter out options that don't have OI, Buy Qty, or Sell Qty
+                    const filteredOptions = data.options.filter(option => {
+                        const hasOI = option.oi && option.oi > 0;
+                        const hasBuyQty = option.buy_quantity && option.buy_quantity > 0;
+                        const hasSellQty = option.sell_quantity && option.sell_quantity > 0;
+                        return hasOI || hasBuyQty || hasSellQty;
+                    });
+                    
+                    if (filteredOptions.length === 0) {
+                        container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">No options with OI, Buy Qty, or Sell Qty available</div>';
                         return;
                     }
                     
@@ -2908,7 +3072,7 @@
                                 <tbody>
                     `;
                     
-                    data.options.forEach((option, index) => {
+                    filteredOptions.forEach((option, index) => {
                         html += `
                             <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : '#f8f9fa'};">
                                 <td style="padding: 8px; border: 1px solid #ddd; font-weight: 600; font-size: 12px;">${option.tradingsymbol || 'N/A'}</td>
@@ -2952,7 +3116,7 @@
             const container = document.getElementById('derivativesSuggestionsContainer');
             container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading suggestions...</div>';
             
-            fetch('/api/derivatives_suggestions')
+            cachedFetch('/api/derivatives_suggestions')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
@@ -3066,7 +3230,7 @@
         
         // Load P&L Summary sdfsdf
         function loadPnlSummary() {
-            fetch('/api/today_pnl_summary')
+            cachedFetch('/api/today_pnl_summary')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -3136,7 +3300,7 @@
         // Load Portfolio Chart
         let portfolioChartInstance = null;
         function loadPortfolioChart(days) {
-            fetch(`/api/portfolio_history?days=${days}`)
+            cachedFetch(`/api/portfolio_history?days=${days}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -3236,7 +3400,7 @@
         
         // Load MF holdings data
         function loadMFHoldings() {
-            fetch('/api/mf_holdings')
+            cachedFetch('/api/mf_holdings')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -4311,20 +4475,57 @@
             }
         });
         
-        // Load initial data
+        // Helper function for cached fetch
+        async function cachedFetch(url, options = {}) {
+            // Check cache first (unless it's a POST request or force refresh)
+            if ((!options.method || options.method === 'GET') && !options.forceRefresh) {
+                const cached = DataCache.get(url);
+                if (cached) {
+                    console.log(`Cache hit: ${url}`);
+                    // Return a Response-like object
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: async () => cached,
+                        clone: function() { return this; }
+                    };
+                }
+            }
+            
+            // Fetch from server
+            console.log(`Cache miss: ${url}`);
+            const response = await fetch(url, options);
+            
+            // Cache successful GET responses
+            if ((!options.method || options.method === 'GET') && response.ok) {
+                try {
+                    const clonedResponse = response.clone();
+                    const data = await clonedResponse.json();
+                    DataCache.set(url, data);
+                } catch (e) {
+                    // Not JSON or clone failed, don't cache
+                }
+            }
+            
+            return response;
+        }
+        
+        // Clear old cache entries on page load
+        DataCache.clearOld();
+        
+        // Load initial data - ONLY Live Market tab data
         document.addEventListener('DOMContentLoaded', function() {
+            // Only load Live Market tab data initially
             loadMarketBiasAnalysis();
             loadFuturesOrderFlow();
             loadPositions();
-            loadGainersLosers();
             loadPremarketAnalysis(); // Load pre-market analysis on page load
             loadOptionsScanner(); // Load options scanner on page load
             loadLatestOptions(); // Load latest 5 options on page load
-            {% if show_holdings %}
-            loadMFHoldings();
-            loadPnlSummary();
-            loadPortfolioChart(30);
-            {% endif %}
+            
+            // Mark Live Market tab as loaded
+            TabLoadTracker.markLoaded('live-market');
+            
             initializeRefreshSystem();
             
             // Start derivatives suggestions refresh (every 1 minute)
@@ -4348,40 +4549,47 @@
             if (selectedTab) {
                 selectedTab.classList.add('active');
                 
-                // Load tab-specific data when switching
-                if (tabName === 'gainers-losers') {
-                    loadGainersLosers();
-                    // Initialize auto-refresh for swing trades (30-minute interval)
-                    initSwingTradeAutoRefresh();
-                    // Don't auto-load swing trades on tab switch - only load when user clicks Refresh button or after 30 minutes
-                    // Load top gainers when Stocks tab is active
-                    loadTopGainers();
-                    // Check if predictions exist, show warning if not
-                    checkProphetPredictionsExist();
-                } else if (tabName === 'holdings') {
-                    {% if show_holdings %}
-                    // Load P&L, Portfolio chart, and Portfolio Hedge Analysis when Holdings tab is shown
-                    loadPnlSummary();
-                    const daysSelector = document.getElementById('portfolioDaysSelector');
-                    if (daysSelector) {
-                        loadPortfolioChart(daysSelector.value || 30);
-                    }
-                    // Load portfolio hedge analysis
-                    loadPortfolioHedgeAnalysis();
-                    {% endif %}
-                } else if (tabName === 'live-market') {
-                    // Load options scanner when Live Market tab is opened
-                    const scannerContainer = document.getElementById('optionsScannerContainer');
-                    if (scannerContainer && (scannerContainer.innerHTML.trim() === '' || 
-                        scannerContainer.innerHTML.includes('Configure filters'))) {
-                        loadOptionsScanner();
-                        loadLatestOptions();
+                // Only load data if this tab hasn't been loaded before
+                if (!TabLoadTracker.isLoaded(tabName)) {
+                    if (tabName === 'gainers-losers') {
+                        loadGainersLosers();
+                        // Initialize auto-refresh for swing trades (30-minute interval)
+                        initSwingTradeAutoRefresh();
+                        // Load top gainers when Stocks tab is active
+                        loadTopGainers();
+                        // Check if predictions exist, show warning if not
+                        checkProphetPredictionsExist();
+                        TabLoadTracker.markLoaded(tabName);
+                    } else if (tabName === 'holdings') {
+                        {% if show_holdings %}
+                        // Load P&L, Portfolio chart, and Portfolio Hedge Analysis when Holdings tab is shown
+                        loadPnlSummary();
+                        loadHoldingsPage(1); // Load first page of holdings (this will also load sparklines and patterns)
+                        loadMFHoldings();
+                        const daysSelector = document.getElementById('portfolioDaysSelector');
+                        if (daysSelector) {
+                            loadPortfolioChart(daysSelector.value || 30);
+                        }
+                        // Load portfolio hedge analysis
+                        loadPortfolioHedgeAnalysis();
+                        // Load sparklines for initial server-rendered holdings
+                        loadSparklines();
+                        TabLoadTracker.markLoaded(tabName);
+                        {% endif %}
+                    } else if (tabName === 'live-market') {
+                        // Live Market is already loaded on initial load
+                        TabLoadTracker.markLoaded(tabName);
+                    } else if (tabName === 'utilities') {
+                        // Utilities tab doesn't need data loading
+                        TabLoadTracker.markLoaded(tabName);
                     }
                 }
             }
             
             // Add active class to clicked button
-            event.target.classList.add('active');
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
         }
     </script>
     
@@ -4543,6 +4751,8 @@
         let swingTradeRefreshInterval = null;
         let swingTradeCurrentPage = 1;
         let swingTradeItemsPerPage = 10;
+        let swingTradeSortColumn = 'confidence'; // Default sort by confidence
+        let swingTradeSortDirection = 'desc'; // Default descending
         
         function loadSwingTrades() {
             // Prevent multiple simultaneous scans
@@ -4564,7 +4774,7 @@
             statusDiv.innerHTML = '<span style="color: #666;">⏳ Scanning stocks and generating recommendations... (This may take a few minutes)</span>';
             tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Scanning stocks...</td></tr>';
             
-            fetch('/api/swing_trades?min_gain=10&max_gain=20&min_confidence=70&limit=100&scan_limit=50')
+            fetch('/api/swing_trades?min_gain=10&max_gain=20&min_confidence=70&limit=100&scan_limit=500')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
@@ -4576,6 +4786,10 @@
                     allSwingTrades = data.recommendations || [];
                     filteredSwingTrades = [...allSwingTrades];
                     swingTradeCurrentPage = 1; // Reset to first page on new data
+                    // Reset sort to default (confidence desc)
+                    swingTradeSortColumn = 'confidence';
+                    swingTradeSortDirection = 'desc';
+                    updateSwingTradeSortIcons();
                     
                     // Debug: Log prophet predictions count
                     if (allSwingTrades.length > 0) {
@@ -4609,6 +4823,8 @@
                     }
                     
                     displaySwingTrades();
+                    // Initialize sort icons after first load
+                    updateSwingTradeSortIcons();
                     
                     // Show status with unique stocks count (matching pagination display)
                     statusDiv.innerHTML = `<span style="color: #28a745;">✓ Loaded ${uniqueStocksCount} stocks (${totalRecommendationsCount} pattern${totalRecommendationsCount !== 1 ? 's' : ''})</span>`;
@@ -4711,11 +4927,53 @@
                 groupedTrades[symbol].push(trade);
             });
             
-            // Sort stocks by highest confidence score
+            // Sort stocks based on current sort column and direction
             const sortedSymbols = Object.keys(groupedTrades).sort((a, b) => {
-                const maxConfA = Math.max(...groupedTrades[a].map(t => t.confidence_score || 0));
-                const maxConfB = Math.max(...groupedTrades[b].map(t => t.confidence_score || 0));
-                return maxConfB - maxConfA;
+                let valueA, valueB;
+                
+                switch(swingTradeSortColumn) {
+                    case 'symbol':
+                        valueA = a.toUpperCase();
+                        valueB = b.toUpperCase();
+                        break;
+                    case 'pattern':
+                        // Get first pattern type for each symbol
+                        const patternA = groupedTrades[a][0]?.pattern_type || '';
+                        const patternB = groupedTrades[b][0]?.pattern_type || '';
+                        valueA = patternA.toLowerCase();
+                        valueB = patternB.toLowerCase();
+                        break;
+                    case 'gain':
+                        // Get max potential gain for each symbol
+                        valueA = Math.max(...groupedTrades[a].map(t => t.potential_gain_pct || 0));
+                        valueB = Math.max(...groupedTrades[b].map(t => t.potential_gain_pct || 0));
+                        break;
+                    case 'confidence':
+                        // Get max confidence for each symbol
+                        valueA = Math.max(...groupedTrades[a].map(t => t.confidence_score || 0));
+                        valueB = Math.max(...groupedTrades[b].map(t => t.confidence_score || 0));
+                        break;
+                    case 'ghost':
+                        // Get max ghost prediction for each symbol
+                        valueA = Math.max(...groupedTrades[a].map(t => t.prophet_prediction_pct || -Infinity));
+                        valueB = Math.max(...groupedTrades[b].map(t => t.prophet_prediction_pct || -Infinity));
+                        // Handle cases where no prediction exists
+                        if (valueA === -Infinity) valueA = -999999;
+                        if (valueB === -Infinity) valueB = -999999;
+                        break;
+                    default:
+                        valueA = Math.max(...groupedTrades[a].map(t => t.confidence_score || 0));
+                        valueB = Math.max(...groupedTrades[b].map(t => t.confidence_score || 0));
+                }
+                
+                let comparison = 0;
+                if (valueA > valueB) {
+                    comparison = 1;
+                } else if (valueA < valueB) {
+                    comparison = -1;
+                }
+                
+                return swingTradeSortDirection === 'asc' ? comparison : -comparison;
             });
             
             // Calculate pagination
@@ -4898,6 +5156,50 @@
             }
         }
         
+        // Sort swing trades function
+        function sortSwingTrades(column) {
+            // If clicking the same column, toggle direction; otherwise, set to ascending
+            if (swingTradeSortColumn === column) {
+                swingTradeSortDirection = swingTradeSortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                swingTradeSortColumn = column;
+                swingTradeSortDirection = 'asc';
+            }
+            
+            // Reset to first page when sorting
+            swingTradeCurrentPage = 1;
+            
+            // Update sort icons
+            updateSwingTradeSortIcons();
+            
+            // Redisplay with new sort
+            displaySwingTrades();
+        }
+        
+        // Update sort icons based on current sort state
+        function updateSwingTradeSortIcons() {
+            // Clear all icons first
+            ['symbol', 'pattern', 'gain', 'confidence', 'ghost'].forEach(col => {
+                const icon = document.getElementById(`sort-${col}-icon`);
+                if (icon) {
+                    icon.innerHTML = '';
+                    icon.style.color = '#999';
+                }
+            });
+            
+            // Set icon for current sort column
+            const currentIcon = document.getElementById(`sort-${swingTradeSortColumn}-icon`);
+            if (currentIcon) {
+                if (swingTradeSortDirection === 'asc') {
+                    currentIcon.innerHTML = ' ▲';
+                    currentIcon.style.color = '#007bff';
+                } else {
+                    currentIcon.innerHTML = ' ▼';
+                    currentIcon.style.color = '#007bff';
+                }
+            }
+        }
+        
         // Generate Prophet predictions with selected days from dropdown
         function generateProphetPredictionsWithDays() {
             const daysSelect = document.getElementById('predictionDaysSelect');
@@ -4987,7 +5289,7 @@
             statusDiv.innerHTML = `<span style="color: #666;">⏳ Loading top gainers for ${predictionDays} days...</span>`;
             tbody.innerHTML = '<tr><td colspan="7" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td></tr>';
             
-            fetch(`/api/prophet_predictions/top_gainers?limit=10&prediction_days=${predictionDays}`)
+            cachedFetch(`/api/prophet_predictions/top_gainers?limit=10&prediction_days=${predictionDays}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
@@ -5276,10 +5578,10 @@
                 .catch(error => console.error('Error loading candlestick data:', error));
         }
 
-        // Load sparklines after page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            loadSparklines();
-        });
+        // Load sparklines after page loads - but only if holdings tab is loaded
+        // Sparklines for holdings will be loaded when holdings tab is first clicked
+        // This prevents holdings API calls on initial page load
+        // Note: loadSparklines() is called when holdings tab is loaded via loadHoldingsPage()
     </script>
 </body>
 </html>

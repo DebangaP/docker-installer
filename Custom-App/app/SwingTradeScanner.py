@@ -1292,6 +1292,14 @@ class SwingTradeScanner:
                 )
                 rows.append(row)
             
+            # First, mark existing records for today as inactive (soft delete)
+            cursor.execute("""
+                UPDATE my_schema.swing_trade_suggestions
+                SET status = 'REPLACED'
+                WHERE run_date = %s AND status = 'ACTIVE'
+            """, (analysis_date,))
+            
+            # Then insert new recommendations
             cursor.executemany("""
                 INSERT INTO my_schema.swing_trade_suggestions (
                     analysis_date, scrip_id, instrument_token, pattern_type, direction,
