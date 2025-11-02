@@ -1,18 +1,19 @@
 services:
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3001:3000" #map Grafana container's 3000 port to host's 3001
-    volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning
-      - grafana-storage:/var/lib/grafana
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=adminpassword
-    depends_on:
-      - postgres
-    networks:
-      - app-network
+
+  #grafana:
+  #  image: grafana/grafana:latest
+  #  ports:
+  #    - "3001:3000" #map Grafana container's 3000 port to host's 3001
+  #  volumes:
+  #    - ./grafana/provisioning:/etc/grafana/provisioning
+  #    - grafana-storage:/var/lib/grafana
+  #  environment:
+  #    - GF_SECURITY_ADMIN_USER=admin
+  #     - GF_SECURITY_ADMIN_PASSWORD=adminpassword
+  #  depends_on:
+  #    - postgres
+  #  networks:
+  #    - app-network
 
   postgres:
     image: postgres:latest
@@ -25,7 +26,7 @@ services:
       - ./postgres:/docker-entrypoint-initdb.d
       - postgres-data:/var/lib/postgresql/data1     #if there are initialization errors after multiple runs --> docker rm -f $(docker ps -a -q),  docker volume rm customapp_postgres-data
     ports:
-      - "5433:5432"
+      - "5434:5432"
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 10s
