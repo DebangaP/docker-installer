@@ -1,4 +1,4 @@
-from Boilerplate import *
+from common.Boilerplate import *
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
@@ -826,7 +826,7 @@ async def api_system_status():
 async def api_tpo_charts(analysis_date: str = Query(None)):
     """API endpoint to generate TPO chart images"""
     try:
-        from CalculateTPO import PostgresDataFetcher, TPOProfile
+        from market.CalculateTPO import PostgresDataFetcher, TPOProfile
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
@@ -982,7 +982,7 @@ async def get_available_dates():
 async def api_refresh_futures():
     """API endpoint to refresh futures data"""
     try:
-        from KiteFetchFuture import fetch_and_save_futures
+        from kite.KiteFetchFuture import fetch_and_save_futures
         result = fetch_and_save_futures()
         return result
     except Exception as e:
@@ -993,7 +993,7 @@ async def api_refresh_futures():
 async def refresh_data():
     """Endpoint to refresh all data including futures"""
     try:
-        from KiteFetchFuture import fetch_and_save_futures
+        from kite.KiteFetchFuture import fetch_and_save_futures
         futures_result = fetch_and_save_futures()
         return {
             "message": "Data refresh initiated", 
@@ -1180,7 +1180,7 @@ async def api_margin_data():
 async def api_market_bias(analysis_date: str = Query(None)):
     """API endpoint to get market bias analysis"""
     try:
-        from MarketBiasAnalyzer import MarketBiasAnalyzer, PostgresDataFetcher
+        from market.MarketBiasAnalyzer import MarketBiasAnalyzer, PostgresDataFetcher
         
         DB_CONFIG = {
             'host': 'postgres',
@@ -1217,7 +1217,7 @@ async def api_market_bias(analysis_date: str = Query(None)):
 async def api_market_bias_chart(analysis_date: str = Query(None)):
     """API endpoint to get market bias analysis chart"""
     try:
-        from MarketBiasAnalyzer import MarketBiasAnalyzer, PostgresDataFetcher
+        from market.MarketBiasAnalyzer import MarketBiasAnalyzer, PostgresDataFetcher
         
         DB_CONFIG = {
             'host': 'postgres',
@@ -1257,8 +1257,8 @@ async def api_market_bias_chart(analysis_date: str = Query(None)):
 async def api_premarket_analysis(analysis_date: str = Query(None)):
     """API endpoint to get comprehensive pre-market TPO analysis"""
     try:
-        from PremarketAnalyzer import PremarketAnalyzer
-        from CalculateTPO import PostgresDataFetcher
+        from market.PremarketAnalyzer import PremarketAnalyzer
+        from market.CalculateTPO import PostgresDataFetcher
         
         DB_CONFIG = {
             'host': 'postgres',
@@ -1315,7 +1315,7 @@ async def api_footprint_analysis(
 ):
     """API endpoint for footprint chart analysis"""
     try:
-        from FootprintChartGenerator import FootprintChartGenerator
+        from market.FootprintChartGenerator import FootprintChartGenerator
         from datetime import datetime, date
         
         footprint_gen = FootprintChartGenerator(instrument_token=instrument_token)
@@ -1354,7 +1354,7 @@ async def api_orderflow_analysis(
 ):
     """API endpoint for order flow analysis"""
     try:
-        from OrderFlowAnalyzer import OrderFlowAnalyzer
+        from market.OrderFlowAnalyzer import OrderFlowAnalyzer
         from datetime import datetime, date
         
         orderflow_analyzer = OrderFlowAnalyzer(instrument_token=instrument_token)
@@ -1393,7 +1393,7 @@ async def api_micro_levels(
 ):
     """API endpoint for micro level detection"""
     try:
-        from MicroLevelDetector import MicroLevelDetector
+        from market.MicroLevelDetector import MicroLevelDetector
         from datetime import datetime, date
         
         detector = MicroLevelDetector(instrument_token=instrument_token)
@@ -1686,7 +1686,7 @@ async def api_import_data(
 async def api_refresh_stock_prices():
     """API endpoint to refresh stock price data from Yahoo Finance"""
     try:
-        from InsertOHLC import refresh_stock_prices
+        from kite.InsertOHLC import refresh_stock_prices
         
         # Get database config from environment or use defaults
         db_config = {
@@ -1724,7 +1724,7 @@ async def api_swing_trades(
     Set force_refresh=True to generate new recommendations on-demand.
     """
     try:
-        from SwingTradeScanner import SwingTradeScanner
+        from stocks.SwingTradeScanner import SwingTradeScanner
         from datetime import date
         import json
         
@@ -1950,7 +1950,7 @@ async def api_swing_trades(
             recommendations = [r for r in recommendations if r.get('pattern_type') == pattern_type]
         
         # Get Prophet predictions from latest run_date for all stocks
-        from ProphetPricePredictor import ProphetPricePredictor
+        from stocks.ProphetPricePredictor import ProphetPricePredictor
         predictor = ProphetPricePredictor()
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -2153,7 +2153,7 @@ async def api_swing_trades_nifty(
 ):
     """API endpoint to get swing trade recommendations for Nifty"""
     try:
-        from SwingTradeScanner import SwingTradeScanner
+        from stocks.SwingTradeScanner import SwingTradeScanner
         from datetime import date
         
         scanner = SwingTradeScanner(
@@ -2195,7 +2195,7 @@ async def api_generate_prophet_predictions(
 ):
     """API endpoint to generate Prophet price predictions for all stocks (runs once per day)"""
     try:
-        from ProphetPricePredictor import ProphetPricePredictor
+        from stocks.ProphetPricePredictor import ProphetPricePredictor
         from datetime import date
         
         predictor = ProphetPricePredictor(prediction_days=prediction_days)
@@ -2262,7 +2262,7 @@ async def api_prophet_top_gainers(
 ):
     """API endpoint to get top N potential gainers based on Prophet predictions"""
     try:
-        from ProphetPricePredictor import ProphetPricePredictor
+        from stocks.ProphetPricePredictor import ProphetPricePredictor
         
         predictor = ProphetPricePredictor()
         top_gainers = predictor.get_top_gainers(limit=limit, prediction_days=prediction_days)
@@ -2279,11 +2279,62 @@ async def api_prophet_top_gainers(
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e), "top_gainers": []}
 
+@app.get("/api/prophet_predictions/symbol_search")
+async def api_prophet_symbol_search(
+    query: str = Query(..., description="Search query for stock symbol"),
+    limit: int = Query(10, description="Maximum number of suggestions")
+):
+    """API endpoint to search for stock symbols with autocomplete"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Search in prophet_predictions for symbols that have predictions
+        cursor.execute("""
+            SELECT DISTINCT scrip_id
+            FROM my_schema.prophet_predictions
+            WHERE scrip_id ILIKE %s
+            AND status = 'ACTIVE'
+            ORDER BY scrip_id
+            LIMIT %s
+        """, (f"%{query}%", limit))
+        
+        suggestions = [row['scrip_id'] for row in cursor.fetchall()]
+        
+        # If not enough results, search in master_scrips table
+        if len(suggestions) < limit:
+            cursor.execute("""
+                SELECT DISTINCT scrip_id
+                FROM my_schema.master_scrips
+                WHERE scrip_id ILIKE %s
+                AND scrip_country = 'IN'
+                AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+                ORDER BY scrip_id
+                LIMIT %s
+            """, (f"%{query}%", limit - len(suggestions)))
+            
+            additional = [row['scrip_id'] for row in cursor.fetchall() if row['scrip_id'] not in suggestions]
+            suggestions.extend(additional)
+        
+        cursor.close()
+        conn.close()
+        
+        return {
+            "success": True,
+            "suggestions": suggestions[:limit]
+        }
+        
+    except Exception as e:
+        logging.error(f"Error searching symbols: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "suggestions": []}
+
 @app.get("/api/prophet_predictions/{scrip_id}")
-async def api_get_prophet_prediction(scrip_id: str):
+async def api_get_prophet_prediction(scrip_id: str, prediction_days: int = Query(60, description="Prediction days (default: 60)")):
     """API endpoint to get Prophet prediction for a specific stock"""
     try:
-        from ProphetPricePredictor import ProphetPricePredictor
+        from stocks.ProphetPricePredictor import ProphetPricePredictor
         
         predictor = ProphetPricePredictor()
         prediction = predictor.get_prediction_for_stock(scrip_id)
@@ -2294,6 +2345,35 @@ async def api_get_prophet_prediction(scrip_id: str):
                 "error": f"No prediction found for {scrip_id}",
                 "prediction": None
             }
+        
+        # Filter by prediction_days if specified
+        if prediction.get('prediction_days') != prediction_days:
+            # Try to get prediction for the specified days
+            conn = get_db_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            
+            cursor.execute("""
+                SELECT * 
+                FROM my_schema.prophet_predictions
+                WHERE scrip_id = %s
+                AND prediction_days = %s
+                AND status = 'ACTIVE'
+                ORDER BY run_date DESC
+                LIMIT 1
+            """, (scrip_id, prediction_days))
+            
+            row = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            
+            if row:
+                prediction = dict(row)
+            else:
+                return {
+                    "success": False,
+                    "error": f"No prediction found for {scrip_id} with {prediction_days} days",
+                    "prediction": None
+                }
         
         return {
             "success": True,
@@ -2435,9 +2515,9 @@ async def api_scanner_with_confirmation(
 ):
     """API endpoint to get options scanner results with order flow confirmation"""
     try:
-        from OptionsScanner import OptionsScanner
-        from MicroLevelDetector import MicroLevelDetector
-        from FootprintChartGenerator import FootprintChartGenerator
+        from options.OptionsScanner import OptionsScanner
+        from market.MicroLevelDetector import MicroLevelDetector
+        from market.FootprintChartGenerator import FootprintChartGenerator
         from datetime import datetime, date
         
         scanner = OptionsScanner()
@@ -2617,7 +2697,7 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
             holdings_info = get_holdings_data(page=page, per_page=per_page, sort_by=sort_by, sort_dir=sort_dir, search=search)
         
         # Get all active GTTs for holdings lookup
-        from KiteGTT import KiteGTTManager
+        from kite.KiteGTT import KiteGTTManager
         manager = KiteGTTManager(kite)
         all_gtts = manager.get_all_gtts()
         
@@ -2960,7 +3040,7 @@ async def api_mf_holdings():
 async def api_holdings_patterns():
     """API endpoint to get detected patterns for all holdings"""
     try:
-        from SwingTradeScanner import SwingTradeScanner
+        from stocks.SwingTradeScanner import SwingTradeScanner
         scanner = SwingTradeScanner(min_gain=10.0, max_gain=20.0, min_confidence=70.0)
         
         # Get holdings symbols
@@ -3448,7 +3528,7 @@ async def api_set_gtt(
 ):
     """API endpoint to set a GTT stop-loss order"""
     try:
-        from KiteGTT import KiteGTTManager
+        from kite.KiteGTT import KiteGTTManager
         
         # Get current price from holdings
         conn = get_db_connection()
@@ -3503,7 +3583,7 @@ async def api_set_gtt(
 async def api_add_gtt_for_all(stop_loss_percentage: float = 5.0):
     """API endpoint to add GTT stop-loss for all holdings"""
     try:
-        from KiteGTT import KiteGTTManager
+        from kite.KiteGTT import KiteGTTManager
         
         manager = KiteGTTManager(kite)
         results = manager.add_gtt_for_all_holdings(
@@ -3525,7 +3605,7 @@ async def api_add_gtt_for_all(stop_loss_percentage: float = 5.0):
 async def api_get_all_gtts():
     """API endpoint to get all active GTT orders"""
     try:
-        from KiteGTT import KiteGTTManager
+        from kite.KiteGTT import KiteGTTManager
         
         manager = KiteGTTManager(kite)
         gtt_list = manager.get_all_gtts()
@@ -3540,7 +3620,7 @@ async def api_get_all_gtts():
 async def api_cancel_gtt(trigger_id: int):
     """API endpoint to cancel a specific GTT"""
     try:
-        from KiteGTT import KiteGTTManager
+        from kite.KiteGTT import KiteGTTManager
         
         manager = KiteGTTManager(kite)
         success = manager.cancel_gtt(trigger_id)
@@ -3555,7 +3635,7 @@ async def api_cancel_gtt(trigger_id: int):
 async def api_cancel_all_gtts():
     """API endpoint to cancel all GTT orders"""
     try:
-        from KiteGTT import KiteGTTManager
+        from kite.KiteGTT import KiteGTTManager
         
         manager = KiteGTTManager(kite)
         results = manager.cancel_all_gtts()
@@ -3573,9 +3653,9 @@ async def api_derivatives_suggestions(
 ):
     """API endpoint to get TPO-based derivatives trading suggestions"""
     try:
-        from CalculateTPO import PostgresDataFetcher
-        from DerivativesTPOAnalyzer import DerivativesTPOAnalyzer
-        from DerivativesSuggestionEngine import DerivativesSuggestionEngine
+        from market.CalculateTPO import PostgresDataFetcher
+        from options.DerivativesTPOAnalyzer import DerivativesTPOAnalyzer
+        from options.DerivativesSuggestionEngine import DerivativesSuggestionEngine
         
         # Get database configuration from Boilerplate
         db_config = {
@@ -4381,7 +4461,7 @@ async def api_portfolio_hedge_analysis(
 ):
     """API endpoint to get portfolio hedge analysis with multiple strategies"""
     try:
-        from PortfolioHedgeAnalyzer import PortfolioHedgeAnalyzer
+        from holdings.PortfolioHedgeAnalyzer import PortfolioHedgeAnalyzer
         
         db_config = {
             'host': os.getenv('PG_HOST', 'postgres'),
@@ -4552,7 +4632,7 @@ async def api_options_scanner(
 ):
     """API endpoint for advanced options chain scanning with Greeks and IV Rank"""
     try:
-        from OptionsScanner import OptionsScanner
+        from options.OptionsScanner import OptionsScanner
         from datetime import datetime, date
         
         scanner = OptionsScanner()
@@ -4664,7 +4744,7 @@ async def api_options_chain(
 ):
     """API endpoint to get options chain for NIFTY"""
     try:
-        from OptionsDataFetcher import OptionsDataFetcher
+        from options.OptionsDataFetcher import OptionsDataFetcher
         from datetime import datetime, date
         
         fetcher = OptionsDataFetcher()
@@ -4736,7 +4816,7 @@ async def api_options_data(
 ):
     """API endpoint to get real-time options data for specific instrument"""
     try:
-        from OptionsDataFetcher import OptionsDataFetcher
+        from options.OptionsDataFetcher import OptionsDataFetcher
         from datetime import datetime, date
         
         fetcher = OptionsDataFetcher()
@@ -4774,7 +4854,7 @@ async def api_options_latest(
 ):
     """API endpoint to get latest N options based on timestamp"""
     try:
-        from OptionsDataFetcher import OptionsDataFetcher
+        from options.OptionsDataFetcher import OptionsDataFetcher
         from datetime import datetime, date
         
         fetcher = OptionsDataFetcher()
@@ -4856,7 +4936,7 @@ async def api_margin_calculate(
 ):
     """API endpoint to calculate margin requirements"""
     try:
-        from MarginCalculator import MarginCalculator
+        from common.MarginCalculator import MarginCalculator
         
         calculator = MarginCalculator()
         
@@ -4911,7 +4991,7 @@ async def api_margin_calculate(
 async def api_margin_available():
     """API endpoint to get available margin"""
     try:
-        from MarginCalculator import MarginCalculator
+        from common.MarginCalculator import MarginCalculator
         
         calculator = MarginCalculator()
         available = calculator.get_available_margin()
