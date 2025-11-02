@@ -936,16 +936,61 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Prediction Target</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Predicted Gain %</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Ghost Confidence</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
                                 </tr>
                             </thead>
                             <tbody id="topGainersTableBody">
                                 <tr>
-                                    <td colspan="7" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Click Refresh to load top gainers</td>
+                                    <td colspan="8" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Click Refresh to load top gainers</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
                     <div id="topGainersStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                </div>
+            </div>
+            
+            <!-- Stock Symbol Search Section -->
+            <div class="card" style="margin-top: 20px;">
+                <div class="card-header" style="background-color: #17a2b8; color: white;">
+                    <h3 class="card-title" style="color: white;">🔍 Search Stock Predictioc</h3>
+                </div>
+                <div style="padding: 15px;">
+                    <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
+                        <label style="font-size: 12px; font-weight: 600; margin-right: 5px;">Symbol:</label>
+                        <div style="position: relative; flex: 1;">
+                            <input type="text" id="stockSymbolSearch" placeholder="Enter stock symbol (e.g., RELIANCE, TCS, INFY)" 
+                                   style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;"
+                                   oninput="handleSymbolSearch(this.value)" 
+                                   onkeydown="handleSymbolSearchKeydown(event)"
+                                   autocomplete="off">
+                            <div id="symbolSuggestions" style="position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ddd; border-top: none; border-radius: 0 0 4px 4px; max-height: 200px; overflow-y: auto; z-index: 1000; display: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"></div>
+                        </div>
+                        <button onclick="searchStockSymbol()" class="btn" style="padding: 8px 16px; font-size: 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            🔍 Search
+                        </button>
+                        <button onclick="clearStockSearch()" class="btn" style="padding: 8px 16px; font-size: 12px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            ✕ Clear
+                        </button>
+                    </div>
+                    <div id="stockSearchContainer" style="display: none;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                            <thead>
+                                <tr style="background-color: #f8f9fa;">
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 12px;">Symbol</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Sparkline (last 30D)</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Current Price</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Prediction Target</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Predicted Gain %</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Ghost Confidence</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stockSearchTableBody">
+                            </tbody>
+                        </table>
+                        <div id="stockSearchStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -4553,9 +4598,16 @@
                 if (!TabLoadTracker.isLoaded(tabName)) {
                     if (tabName === 'gainers-losers') {
                         loadGainersLosers();
+                        // Load swing trade recommendations automatically when tab is opened
+                        loadSwingTrades();
                         // Initialize auto-refresh for swing trades (30-minute interval)
                         initSwingTradeAutoRefresh();
-                        // Load top gainers when Stocks tab is active
+                        // Set prediction days selector to 60 days and load top gainers
+                        const daysSelect = document.getElementById('predictionDaysSelect');
+                        if (daysSelect) {
+                            daysSelect.value = '60';
+                        }
+                        // Load top gainers when Stocks tab is active (with 60 days)
                         loadTopGainers();
                         // Check if predictions exist, show warning if not
                         checkProphetPredictionsExist();
@@ -5287,14 +5339,14 @@
             }
             
             statusDiv.innerHTML = `<span style="color: #666;">⏳ Loading top gainers for ${predictionDays} days...</span>`;
-            tbody.innerHTML = '<tr><td colspan="7" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td></tr>';
             
             cachedFetch(`/api/prophet_predictions/top_gainers?limit=10&prediction_days=${predictionDays}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
                         statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${data.error || 'Failed to load top gainers'}</span>`;
-                        tbody.innerHTML = '<tr><td colspan="7" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading top gainers</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="8" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading top gainers</td></tr>';
                         return;
                     }
                     
@@ -5308,7 +5360,7 @@
                     
                     if (topGainers.length === 0) {
                         statusDiv.innerHTML = '<span style="color: #ffc107;">⚠️ No predictions available. Click "Generate Predictions" button to create predictions.</span>';
-                        tbody.innerHTML = `<tr><td colspan="7" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">
+                        tbody.innerHTML = `<tr><td colspan="8" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">
                             No top gainers found. <button onclick="generateProphetPredictionsWithDays()" style="padding: 6px 12px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 8px; font-size: 11px;">⚡ Generate Predictions Now</button>
                         </td></tr>`;
                         return;
@@ -5320,9 +5372,10 @@
                     topGainers.forEach((gainer, index) => {
                         const symbol = gainer.scrip_id || '-';
                         const currentPrice = gainer.current_price || 0;
-                        const predictedPrice = gainer.predicted_price_30d || 0;
+                        const predictedPrice = gainer.predicted_price_30d || gainer.predicted_price_60d || gainer.predicted_price_90d || gainer.predicted_price_180d || 0;
                         const predictedChangePct = gainer.predicted_price_change_pct || 0;
                         const confidence = gainer.prediction_confidence || 0;
+                        const predictionDays = gainer.prediction_days || 30;
                         
                         symbols.push(symbol);
                         
@@ -5344,6 +5397,9 @@
                                 <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${confidenceColor}; font-size: 12px;">
                                     ${confidence.toFixed(0)}%
                                 </td>
+                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                                    ${predictionDays} days
+                                </td>
                             </tr>
                         `;
                         tbody.innerHTML += row;
@@ -5363,9 +5419,173 @@
                 .catch(error => {
                     console.error('Error loading top gainers:', error);
                     statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message || 'Failed to load top gainers'}</span>`;
-                    tbody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading top gainers</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading top gainers</td></tr>';
                 });
         }
+        
+        // Stock Symbol Search Functions
+        let symbolSuggestionsList = [];
+        let symbolSearchTimeout = null;
+        
+        function handleSymbolSearch(value) {
+            const suggestionsDiv = document.getElementById('symbolSuggestions');
+            if (!value || value.length < 2) {
+                suggestionsDiv.style.display = 'none';
+                return;
+            }
+            
+            // Debounce API calls
+            if (symbolSearchTimeout) {
+                clearTimeout(symbolSearchTimeout);
+            }
+            
+            symbolSearchTimeout = setTimeout(() => {
+                cachedFetch(`/api/prophet_predictions/symbol_search?query=${encodeURIComponent(value)}&limit=10`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success && data.suggestions && data.suggestions.length > 0) {
+                            symbolSuggestionsList = data.suggestions;
+                            displaySymbolSuggestions(data.suggestions);
+                        } else {
+                            suggestionsDiv.style.display = 'none';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching symbol suggestions:', error);
+                        suggestionsDiv.style.display = 'none';
+                    });
+            }, 300);
+        }
+        
+        function displaySymbolSuggestions(suggestions) {
+            const suggestionsDiv = document.getElementById('symbolSuggestions');
+            if (!suggestions || suggestions.length === 0) {
+                suggestionsDiv.style.display = 'none';
+                return;
+            }
+            
+            let html = '';
+            suggestions.forEach(symbol => {
+                html += `<div onclick="selectSymbol('${symbol}')" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #eee;" onmouseover="this.style.backgroundColor='#f8f9fa'" onmouseout="this.style.backgroundColor='white'">${symbol}</div>`;
+            });
+            
+            suggestionsDiv.innerHTML = html;
+            suggestionsDiv.style.display = 'block';
+        }
+        
+        function handleSymbolSearchKeydown(event) {
+            const suggestionsDiv = document.getElementById('symbolSuggestions');
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                const searchInput = document.getElementById('stockSymbolSearch');
+                if (searchInput.value) {
+                    searchStockSymbol();
+                }
+            } else if (event.key === 'Escape') {
+                suggestionsDiv.style.display = 'none';
+            }
+        }
+        
+        function selectSymbol(symbol) {
+            document.getElementById('stockSymbolSearch').value = symbol;
+            document.getElementById('symbolSuggestions').style.display = 'none';
+            searchStockSymbol();
+        }
+        
+        function searchStockSymbol() {
+            const searchInput = document.getElementById('stockSymbolSearch');
+            const symbol = searchInput.value.trim().toUpperCase();
+            const container = document.getElementById('stockSearchContainer');
+            const tbody = document.getElementById('stockSearchTableBody');
+            const statusDiv = document.getElementById('stockSearchStatus');
+            const daysSelect = document.getElementById('predictionDaysSelect');
+            const predictionDays = daysSelect ? parseInt(daysSelect.value) : 60;
+            
+            if (!symbol) {
+                statusDiv.innerHTML = '<span style="color: #dc3545;">Please enter a stock symbol</span>';
+                return;
+            }
+            
+            container.style.display = 'block';
+            statusDiv.innerHTML = `<span style="color: #666;">⏳ Loading prediction for ${symbol}...</span>`;
+            tbody.innerHTML = '<tr><td colspan="7" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td></tr>';
+            
+            cachedFetch(`/api/prophet_predictions/${symbol}?prediction_days=${predictionDays}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success || !data.prediction) {
+                        statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${data.error || 'No prediction found for ' + symbol}</span>`;
+                        tbody.innerHTML = `<tr><td colspan="7" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">${data.error || 'No prediction found'}</td></tr>`;
+                        return;
+                    }
+                    
+                    const prediction = data.prediction;
+                    const currentPrice = prediction.current_price || 0;
+                    const predictedPrice = prediction.predicted_price_30d || prediction.predicted_price_60d || prediction.predicted_price_90d || prediction.predicted_price_180d || 0;
+                    const predictedChangePct = prediction.predicted_price_change_pct || 0;
+                    const confidence = prediction.prediction_confidence || 0;
+                    const predictionDaysValue = prediction.prediction_days || predictionDays || 60;
+                    
+                    // Only show if confidence >= 50%
+                    if (confidence < 50.0) {
+                        statusDiv.innerHTML = '<span style="color: #ffc107;">⚠️ Prediction available but confidence is below 50%</span>';
+                    }
+                    
+                    const gainColor = predictedChangePct >= 15 ? '#28a745' : predictedChangePct >= 10 ? '#ffc107' : '#17a2b8';
+                    const confidenceColor = confidence >= 70 ? '#28a745' : confidence >= 50 ? '#ffc107' : '#dc3545';
+                    
+                    tbody.innerHTML = `
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
+                            <td style="padding: 4px; border: 1px solid #ddd; text-align: center;">
+                                <canvas id="sparkline-search-${symbol}" width="100" height="35" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
+                            </td>
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">₹${currentPrice.toFixed(2)}</td>
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; font-weight: bold;">₹${predictedPrice.toFixed(2)}</td>
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: ${gainColor}; font-size: 12px;">
+                                ${predictedChangePct >= 0 ? '+' : ''}${predictedChangePct.toFixed(2)}%
+                            </td>
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${confidenceColor}; font-size: 12px;">
+                                ${confidence.toFixed(0)}%
+                            </td>
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                                ${predictionDaysValue} days
+                            </td>
+                        </tr>
+                    `;
+                    
+                    // Load sparkline
+                    setTimeout(() => {
+                        if (symbol && symbol !== '-') {
+                            loadSparkline(`sparkline-search-${symbol}`);
+                        }
+                    }, 100);
+                    
+                    statusDiv.innerHTML = `<span style="color: #28a745;">✓ Loaded prediction for ${symbol}</span>`;
+                })
+                .catch(error => {
+                    console.error('Error loading stock prediction:', error);
+                    statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message || 'Failed to load prediction'}</span>`;
+                    tbody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading prediction</td></tr>';
+                });
+        }
+        
+        function clearStockSearch() {
+            document.getElementById('stockSymbolSearch').value = '';
+            document.getElementById('symbolSuggestions').style.display = 'none';
+            document.getElementById('stockSearchContainer').style.display = 'none';
+            document.getElementById('stockSearchStatus').innerHTML = '';
+            symbolSuggestionsList = [];
+        }
+        
+        // Hide suggestions when clicking outside
+        document.addEventListener('click', function(event) {
+            const suggestionsDiv = document.getElementById('symbolSuggestions');
+            const searchInput = document.getElementById('stockSymbolSearch');
+            if (suggestionsDiv && !suggestionsDiv.contains(event.target) && searchInput && !searchInput.contains(event.target)) {
+                suggestionsDiv.style.display = 'none';
+            }
+        });
 
         function showCandlestick(symbol) {
             currentStockSymbol = symbol;
