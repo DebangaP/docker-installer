@@ -1708,6 +1708,237 @@ async def api_refresh_stock_prices():
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
 
+@app.post("/api/add_new_stock")
+async def api_add_new_stock(request: Request):
+    """API endpoint to add a new stock to master_scrips and fetch 6 months of historical data"""
+    try:
+        import pandas as pd
+        import yfinance as yf
+        from datetime import datetime, timedelta
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.orm import sessionmaker
+        
+        # Parse request body
+        body = await request.json()
+        symbol = (body.get('symbol') or '').strip().upper()
+        yahoo_code = (body.get('yahoo_code') or '').strip()
+        country = (body.get('country') or 'IN').strip() or 'IN'
+        sector_code = (body.get('sector_code') or '').strip() or None
+        
+        # Validation
+        if not symbol:
+            return {"success": False, "error": "Stock symbol is required"}
+        
+        if not yahoo_code:
+            return {"success": False, "error": "Yahoo Finance code is required"}
+        
+        # Get database config
+        db_config = {
+            'host': os.getenv('DB_HOST', 'postgres'),
+            'database': os.getenv('DB_NAME', 'mydb'),
+            'user': os.getenv('DB_USER', 'postgres'),
+            'password': os.getenv('DB_PASSWORD', 'postgres'),
+            'port': int(os.getenv('DB_PORT', 5432))
+        }
+        
+        connection_string = f"postgresql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}"
+        engine = create_engine(connection_string)
+        db_connection = engine.connect()
+        session = sessionmaker(bind=engine)()
+        
+        result = {
+            'success': False,
+            'message': '',
+            'records_inserted': 0,
+            'date_range': None,
+            'error': None
+        }
+        
+        try:
+            # Check if stock already exists
+            check_query = text("""
+                SELECT scrip_id, yahoo_code FROM my_schema.master_scrips 
+                WHERE scrip_id = :symbol AND scrip_country = :country
+            """)
+            existing = db_connection.execute(check_query, {'symbol': symbol, 'country': country}).fetchone()
+            
+            stock_exists = existing is not None
+            needs_data_fetch = False
+            
+            if stock_exists:
+                # Check if there's any data in rt_intraday_price
+                check_data_query = text("""
+                    SELECT COUNT(*) as count FROM my_schema.rt_intraday_price 
+                    WHERE scrip_id = :symbol AND country = :country
+                """)
+                data_count = db_connection.execute(check_data_query, {'symbol': symbol, 'country': country}).fetchone()
+                
+                if data_count and data_count[0] > 0:
+                    # Stock exists and has data - return error
+                    db_connection.close()
+                    engine.dispose()
+                    return {"success": False, "error": f"Stock {symbol} already exists in the database with historical data"}
+                
+                # Stock exists but no data - we'll update yahoo_code and fetch data
+                needs_data_fetch = True
+                existing_yahoo_code = existing[1] if existing else None
+                
+                # Update yahoo_code if it's different
+                if existing_yahoo_code != yahoo_code:
+                    update_query = text("""
+                        UPDATE my_schema.master_scrips 
+                        SET yahoo_code = :yahoo_code, updated_at = NOW()
+                        WHERE scrip_id = :symbol AND scrip_country = :country
+                    """)
+                    db_connection.execute(update_query, {'yahoo_code': yahoo_code, 'symbol': symbol, 'country': country})
+                    db_connection.commit()
+                    logging.info(f"Updated yahoo_code for {symbol} from {existing_yahoo_code} to {yahoo_code}")
+                else:
+                    # Use existing yahoo_code
+                    yahoo_code = existing_yahoo_code or yahoo_code
+                    logging.info(f"Stock {symbol} exists with same yahoo_code {yahoo_code}, fetching historical data")
+            else:
+                # Add new stock to master_scrips
+                insert_query = text("""
+                    INSERT INTO my_schema.master_scrips 
+                    (scrip_id, yahoo_code, scrip_country, sector_code, created_at, updated_at)
+                    VALUES (:symbol, :yahoo_code, :country, :sector_code, NOW(), NOW())
+                """)
+                
+                params = {
+                    'symbol': symbol,
+                    'yahoo_code': yahoo_code,
+                    'country': country,
+                    'sector_code': sector_code
+                }
+                
+                db_connection.execute(insert_query, params)
+                db_connection.commit()
+                logging.info(f"Successfully added {symbol} to master_scrips")
+                needs_data_fetch = True
+            
+            # Only fetch data if needed (new stock or existing stock without data)
+            if not needs_data_fetch:
+                db_connection.close()
+                engine.dispose()
+                return {
+                    "success": False,
+                    "error": f"Stock {symbol} already exists in the database with historical data"
+                }
+            
+            # Calculate date range for 6 months
+            end_date = datetime.now().date() + timedelta(days=1)  # Today + 1 day (exclusive end)
+            start_date = end_date - timedelta(days=180)  # Approximately 6 months (180 days)
+            
+            result['date_range'] = {
+                'start': start_date.strftime('%Y-%m-%d'),
+                'end': end_date.strftime('%Y-%m-%d')
+            }
+            
+            # Fetch historical data from Yahoo Finance
+            logging.info(f"Fetching 6 months of historical data for {symbol} ({yahoo_code}) from {start_date} to {end_date}")
+            quote = yf.download(yahoo_code, start=start_date, end=end_date, progress=False)
+            
+            if quote.empty:
+                db_connection.close()
+                engine.dispose()
+                return {
+                    "success": False,
+                    "error": f"No historical data found for {yahoo_code}. Please verify the Yahoo Finance code is correct."
+                }
+            
+            records_inserted = 0
+            
+            # Insert historical data into rt_intraday_price
+            for date, dailyrow in quote.iterrows():
+                insert_price_query = text("""
+                    INSERT INTO my_schema.rt_intraday_price 
+                    (scrip_id, price_close, price_high, price_low, price_open, price_date, country, volume) 
+                    VALUES (:scrip_id, :close, :high, :low, :open, :date, :country, :volume)
+                    ON CONFLICT (scrip_id, price_date) 
+                    DO UPDATE SET 
+                        price_close = EXCLUDED.price_close,
+                        price_high = EXCLUDED.price_high,
+                        price_low = EXCLUDED.price_low,
+                        price_open = EXCLUDED.price_open,
+                        country = EXCLUDED.country,
+                        volume = EXCLUDED.volume
+                """)
+                
+                try:
+                    # Extract values from yfinance data
+                    # yfinance returns DataFrame with columns: Open, High, Low, Close, Adj Close, Volume
+                    # Access by column name (dailyrow is a pandas Series with index as column names)
+                    try:
+                        open_price = float(dailyrow['Open']) if 'Open' in dailyrow.index and not pd.isna(dailyrow['Open']) else None
+                        high_price = float(dailyrow['High']) if 'High' in dailyrow.index and not pd.isna(dailyrow['High']) else None
+                        low_price = float(dailyrow['Low']) if 'Low' in dailyrow.index and not pd.isna(dailyrow['Low']) else None
+                        close_price = float(dailyrow['Close']) if 'Close' in dailyrow.index and not pd.isna(dailyrow['Close']) else None
+                        volume_value = int(dailyrow['Volume']) if 'Volume' in dailyrow.index and not pd.isna(dailyrow['Volume']) else 0
+                    except (KeyError, IndexError):
+                        # Fallback to positional access if column names not available
+                        # yfinance returns: Open, High, Low, Close, Adj Close, Volume
+                        # So: values[0]=Open, values[1]=High, values[2]=Low, values[3]=Close, values[5]=Volume
+                        open_price = float(dailyrow.values[0]) if len(dailyrow.values) > 0 and not pd.isna(dailyrow.values[0]) else None
+                        high_price = float(dailyrow.values[1]) if len(dailyrow.values) > 1 and not pd.isna(dailyrow.values[1]) else None
+                        low_price = float(dailyrow.values[2]) if len(dailyrow.values) > 2 and not pd.isna(dailyrow.values[2]) else None
+                        close_price = float(dailyrow.values[3]) if len(dailyrow.values) > 3 and not pd.isna(dailyrow.values[3]) else None
+                        volume_value = int(dailyrow.values[5]) if len(dailyrow.values) > 5 and not pd.isna(dailyrow.values[5]) else 0
+                    
+                    date_str = date.strftime('%Y-%m-%d') if hasattr(date, 'strftime') else str(date)[:10]
+                    
+                    db_connection.execute(
+                        insert_price_query,
+                        {
+                            'scrip_id': symbol,
+                            'close': close_price,
+                            'high': high_price,
+                            'low': low_price,
+                            'open': open_price,
+                            'date': date_str,
+                            'country': country,
+                            'volume': volume_value
+                        }
+                    )
+                    records_inserted += 1
+                    
+                except Exception as e:
+                    logging.warning(f"Error inserting price data for {symbol} on {date}: {str(e)}")
+                    continue
+            
+            db_connection.commit()
+            
+            result['success'] = True
+            # Determine if this was a new stock or existing stock update
+            if stock_exists:
+                result['message'] = f"Stock {symbol} already existed in database. Updated yahoo_code and fetched {records_inserted} historical records"
+            else:
+                result['message'] = f"Successfully added {symbol} to database and fetched {records_inserted} historical records"
+            result['records_inserted'] = records_inserted
+            
+            logging.info(f"Successfully {'updated' if stock_exists else 'added'} {symbol} with {records_inserted} historical records")
+            
+        except Exception as e:
+            error_msg = f"Error adding stock {symbol}: {str(e)}"
+            logging.error(error_msg)
+            import traceback
+            logging.error(traceback.format_exc())
+            result['error'] = error_msg
+            result['success'] = False
+            result['message'] = error_msg
+            
+        finally:
+            db_connection.close()
+            engine.dispose()
+        
+        return result
+        
+    except Exception as e:
+        logging.error(f"Error in add_new_stock API: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/swing_trades")
 async def api_swing_trades(
     min_gain: float = Query(10.0, description="Minimum target gain %"),

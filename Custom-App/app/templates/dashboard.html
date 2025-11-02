@@ -953,7 +953,7 @@
             <!-- Stock Symbol Search Section -->
             <div class="card" style="margin-top: 20px;">
                 <div class="card-header" style="background-color: #17a2b8; color: white;">
-                    <h3 class="card-title" style="color: white;">🔍 Search Stock Predictioc</h3>
+                    <h3 class="card-title" style="color: white;">🔍 Search Stock Prediction</h3>
                 </div>
                 <div style="padding: 15px;">
                     <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
@@ -1142,6 +1142,59 @@
                     </button>
                     
                     <div id="refreshStockPricesStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                </div>
+                
+                <!-- Add New Stock Section -->
+                <div class="card" style="margin-bottom: 20px;">
+                    <div class="card-header" style="background-color: #17a2b8; color: white;">
+                        <h3 class="card-title" style="color: white;">➕ Add New Stock</h3>
+                    </div>
+                    <div style="padding: 15px;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Stock Symbol (e.g., E2E):</label>
+                            <input type="text" id="newStockSymbol" placeholder="Enter stock symbol" 
+                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; text-transform: uppercase;"
+                                   maxlength="10">
+                            <small style="color: #666; font-size: 11px;">Enter the stock symbol as it appears in NSE/BSE</small>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Yahoo Finance Code (e.g., E2E.NS):</label>
+                            <input type="text" id="newStockYahooCode" placeholder="Enter Yahoo Finance code (e.g., E2E.NS)" 
+                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                            <small style="color: #666; font-size: 11px;">Yahoo Finance code format: SYMBOL.NS for NSE, SYMBOL.BO for BSE. You can find this on Yahoo Finance.</small>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Country:</label>
+                            <select id="newStockCountry" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                <option value="IN">India (IN)</option>
+                                <option value="">Other</option>
+                            </select>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Sector Code (Optional):</label>
+                            <input type="text" id="newStockSector" placeholder="Enter sector code (e.g., PHARMA, IT, etc.)" 
+                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                        </div>
+                        
+                        <div style="margin-bottom: 15px; padding: 10px; background-color: #e7f3ff; border-radius: 4px; border-left: 3px solid #0066cc;">
+                            <div style="font-size: 11px; color: #333; font-weight: 600; margin-bottom: 5px;">📋 What will happen:</div>
+                            <ul style="font-size: 11px; color: #666; margin: 0; padding-left: 20px;">
+                                <li>Stock will be added to master_scrips table</li>
+                                <li>Historical price data for last 6 months will be fetched from Yahoo Finance</li>
+                                <li>Price data will be inserted into rt_intraday_price table</li>
+                                <li>This process may take a few minutes depending on data availability</li>
+                            </ul>
+                        </div>
+                        
+                        <button onclick="addNewStock()" id="addNewStockBtn" class="btn" style="width: 100%; padding: 10px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                            ➕ Add Stock & Fetch Historical Data (6 Months)
+                        </button>
+                        
+                        <div id="addStockStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -4484,6 +4537,99 @@
                 
                 console.error('Error refreshing stock prices:', error);
                 statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message || 'Failed to refresh stock prices'}</span>`;
+            });
+        }
+        
+        function addNewStock() {
+            const statusDiv = document.getElementById('addStockStatus');
+            const btn = document.getElementById('addNewStockBtn');
+            const symbolInput = document.getElementById('newStockSymbol');
+            const yahooCodeInput = document.getElementById('newStockYahooCode');
+            const countrySelect = document.getElementById('newStockCountry');
+            const sectorInput = document.getElementById('newStockSector');
+            
+            if (!statusDiv || !btn || !symbolInput || !yahooCodeInput) {
+                console.error('Required elements not found');
+                return;
+            }
+            
+            const symbol = symbolInput.value.trim().toUpperCase();
+            const yahooCode = yahooCodeInput.value.trim();
+            const country = countrySelect.value.trim() || 'IN';
+            const sector = sectorInput.value.trim() || null;
+            
+            // Validation
+            if (!symbol) {
+                statusDiv.innerHTML = '<span style="color: #dc3545;">❌ Please enter a stock symbol</span>';
+                return;
+            }
+            
+            if (!yahooCode) {
+                statusDiv.innerHTML = '<span style="color: #dc3545;">❌ Please enter a Yahoo Finance code</span>';
+                return;
+            }
+            
+            // Disable button and show loading state
+            btn.disabled = true;
+            btn.style.opacity = '0.6';
+            btn.style.cursor = 'not-allowed';
+            btn.innerHTML = '⏳ Adding Stock & Fetching Data...';
+            statusDiv.innerHTML = '<span style="color: #666;">Adding stock to database and fetching 6 months of historical data... This may take a few minutes.</span>';
+            
+            // Call API endpoint
+            fetch('/api/add_new_stock', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    symbol: symbol,
+                    yahoo_code: yahooCode,
+                    country: country,
+                    sector_code: sector
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Re-enable button
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+                btn.innerHTML = '➕ Add Stock & Fetch Historical Data (6 Months)';
+                
+                if (data.error || !data.success) {
+                    statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${data.error || data.message || 'Failed to add stock'}</span>`;
+                    return;
+                }
+                
+                // Show success message with statistics
+                let message = `<div style="color: #28a745;">`;
+                message += `<strong>✓ ${data.message || 'Stock added successfully!'}</strong><br>`;
+                if (data.records_inserted !== undefined) {
+                    message += `<small>Historical records inserted: ${data.records_inserted}</small>`;
+                }
+                if (data.date_range) {
+                    message += `<br><small>Date range: ${data.date_range.start || 'N/A'} to ${data.date_range.end || 'N/A'}</small>`;
+                }
+                message += `</div>`;
+                
+                statusDiv.innerHTML = message;
+                
+                // Clear form fields
+                symbolInput.value = '';
+                yahooCodeInput.value = '';
+                sectorInput.value = '';
+                countrySelect.value = 'IN';
+            })
+            .catch(error => {
+                // Re-enable button
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+                btn.innerHTML = '➕ Add Stock & Fetch Historical Data (6 Months)';
+                
+                console.error('Error adding stock:', error);
+                statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message || 'Failed to add stock'}</span>`;
             });
         }
         
