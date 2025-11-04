@@ -437,10 +437,6 @@
                 </div>
                 <div class="status-item">
                     <span class="status-indicator status-online"></span>
-                    <span id="marginCash">Cash: ₹0</span>
-                </div>
-                <div class="status-item">
-                    <span class="status-indicator status-online"></span>
                     <span id="marginBalance">Balance: ₹0</span>
                 </div>
                 <div class="status-item">
@@ -876,7 +872,7 @@
                                     <th onclick="sortSwingTrades('symbol')" style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px; cursor: pointer; user-select: none;" title="Click to sort by Symbol">
                                         Symbol <span id="sort-symbol-icon"></span>
                                     </th>
-                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Sparkline (last 30D)</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Sparkline (last 90D)</th>
                                     <th onclick="sortSwingTrades('pattern')" style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px; cursor: pointer; user-select: none;" title="Click to sort by Pattern">
                                         Pattern(s) <span id="sort-pattern-icon"></span>
                                     </th>
@@ -891,7 +887,7 @@
                                     </th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">R/R</th>
                                     <th onclick="sortSwingTrades('ghost')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px; cursor: pointer; user-select: none; color: #87CEEB;" title="Click to sort by Ghost Prediction">
-                                        Ghost Prediction <span id="sort-ghost-icon"></span>
+                                        Ghost Prediction (60D) <span id="sort-ghost-icon"></span>
                                     </th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Days</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Rationale</th>
@@ -939,7 +935,7 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 12px;">Symbol</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Sparkline (last 30D)</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Current Price</th>
-                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Prediction Target</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Prediction (60D) Target</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Predicted Gain %</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Ghost Confidence</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
@@ -986,7 +982,7 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 12px;">Symbol</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Sparkline (last 30D)</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Current Price</th>
-                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Prediction Target</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Prediction (60D) Target</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Predicted Gain %</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Ghost Confidence</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
@@ -1333,7 +1329,7 @@
                             <th onclick="sortHoldings('current_amount')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_current_amount">Current Amount ↕</th>
                             <th onclick="sortHoldings('pnl')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_pnl">Total P&L ↕</th>
                             <th onclick="sortHoldings('today_pnl')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_today_pnl">Today's P&L ↕</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Ghost Prediction</th>
+                            <th onclick="sortHoldings('prophet_prediction_pct')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_prophet_prediction_pct">Ghost Prediction (60D) ↕</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Confidence</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Actions</th>
                         </tr>
@@ -1570,120 +1566,6 @@
             return false;
         }
         
-        // Browser caching utility based on crontab refresh intervals
-        const DataCache = {
-            // Cache TTLs in milliseconds (based on crontab refresh intervals)
-            TTL: {
-                OPTIONS: 5 * 60 * 1000,        // 5 minutes (options data)
-                HOLDINGS: 5 * 60 * 1000,       // 5 minutes (holdings refresh)
-                OHLC: 30 * 60 * 1000,          // 30 minutes (OHLC update)
-                DERIVATIVES_SUGGESTIONS: 60 * 1000, // 1 minute (derivatives suggestions)
-                GAINERS_LOSERS: 60 * 60 * 1000, // 1 hour (gainers/losers)
-                SWING_TRADES: 30 * 60 * 1000,   // 30 minutes (swing trades)
-                PORTFOLIO: 5 * 60 * 1000,       // 5 minutes (portfolio data)
-                MARKET_BIAS: 5 * 60 * 1000,     // 5 minutes (market data)
-                FUTURES: 5 * 60 * 1000,         // 5 minutes (futures data)
-                PREMARKET: 60 * 60 * 1000,      // 1 hour (premarket analysis)
-                SYSTEM_STATUS: 10 * 1000,       // 10 seconds (system status)
-                DEFAULT: 5 * 60 * 1000          // 5 minutes default
-            },
-            
-            // Get cache key based on URL
-            getCacheKey(url) {
-                return `dashboard_cache_${btoa(url).replace(/[+/=]/g, '')}`;
-            },
-            
-            // Get TTL for a URL based on endpoint pattern
-            getTTL(url) {
-                if (url.includes('options_latest') || url.includes('options_scanner')) return this.TTL.OPTIONS;
-                if (url.includes('holdings') || url.includes('mf_holdings')) return this.TTL.HOLDINGS;
-                if (url.includes('today_pnl_summary') || url.includes('portfolio_history')) return this.TTL.PORTFOLIO;
-                if (url.includes('derivatives_suggestions')) return this.TTL.DERIVATIVES_SUGGESTIONS;
-                if (url.includes('gainers') || url.includes('losers') || url.includes('top_gainers')) return this.TTL.GAINERS_LOSERS;
-                if (url.includes('swing_trades')) return this.TTL.SWING_TRADES;
-                if (url.includes('market_bias') || url.includes('futures_order_flow')) return this.TTL.MARKET_BIAS;
-                if (url.includes('premarket_analysis')) return this.TTL.PREMARKET;
-                if (url.includes('system_status')) return this.TTL.SYSTEM_STATUS;
-                if (url.includes('positions')) return this.TTL.MARKET_BIAS;
-                return this.TTL.DEFAULT;
-            },
-            
-            // Get cached data
-            get(url) {
-                const key = this.getCacheKey(url);
-                try {
-                    const cached = localStorage.getItem(key);
-                    if (!cached) return null;
-                    
-                    const { data, timestamp, ttl } = JSON.parse(cached);
-                    const age = Date.now() - timestamp;
-                    
-                    if (age > ttl) {
-                        localStorage.removeItem(key);
-                        return null;
-                    }
-                    
-                    return data;
-                } catch (e) {
-                    console.warn('Cache get error:', e);
-                    return null;
-                }
-            },
-            
-            // Set cached data
-            set(url, data) {
-                const key = this.getCacheKey(url);
-                const ttl = this.getTTL(url);
-                try {
-                    localStorage.setItem(key, JSON.stringify({
-                        data: data,
-                        timestamp: Date.now(),
-                        ttl: ttl
-                    }));
-                } catch (e) {
-                    console.warn('Cache set error:', e);
-                    // If storage is full, clear old cache entries
-                    this.clearOld();
-                }
-            },
-            
-            // Clear old cache entries
-            clearOld() {
-                try {
-                    const keys = Object.keys(localStorage);
-                    const now = Date.now();
-                    keys.forEach(key => {
-                        if (key.startsWith('dashboard_cache_')) {
-                            try {
-                                const cached = JSON.parse(localStorage.getItem(key));
-                                if (now - cached.timestamp > cached.ttl) {
-                                    localStorage.removeItem(key);
-                                }
-                            } catch (e) {
-                                localStorage.removeItem(key);
-                            }
-                        }
-                    });
-                } catch (e) {
-                    console.warn('Cache clear error:', e);
-                }
-            },
-            
-            // Clear all cache
-            clear() {
-                try {
-                    const keys = Object.keys(localStorage);
-                    keys.forEach(key => {
-                        if (key.startsWith('dashboard_cache_')) {
-                            localStorage.removeItem(key);
-                        }
-                    });
-                } catch (e) {
-                    console.warn('Cache clear all error:', e);
-                }
-            }
-        };
-        
         // Track which tabs have been loaded
         const TabLoadTracker = {
             loaded: {
@@ -1878,7 +1760,7 @@
             const url = `/api/market_bias${analysisDate ? '?analysis_date=' + analysisDate : ''}`;
             
             // Load market bias data with caching
-            cachedFetch(url)
+            fetch(url)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -1896,7 +1778,7 @@
         
         // Load futures order flow data
         function loadFuturesOrderFlow() {
-            cachedFetch('/api/futures_order_flow')
+            fetch('/api/futures_order_flow')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -1964,7 +1846,7 @@
             document.getElementById('premarketAnalysisContainer').innerHTML = 
                 '<div style="text-align: center; padding: 20px; color: #666;">Loading pre-market analysis...</div>';
             
-            cachedFetch(url)
+            fetch(url)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
@@ -2379,13 +2261,14 @@
         
         // Update sort indicators in table headers
         function updateSortIndicators() {
-            const headers = ['header_trading_symbol', 'header_invested_amount', 'header_current_amount', 'header_pnl', 'header_today_pnl'];
+            const headers = ['header_trading_symbol', 'header_invested_amount', 'header_current_amount', 'header_pnl', 'header_today_pnl', 'header_prophet_prediction_pct'];
             const labelMap = {
                 'header_trading_symbol': 'Symbol',
                 'header_invested_amount': 'Invested Amount',
                 'header_current_amount': 'Current Amount',
                 'header_pnl': 'Total P&L',
-                'header_today_pnl': 'Today\'s P&L'
+                'header_today_pnl': 'Today\'s P&L',
+                'header_prophet_prediction_pct': 'Ghost Prediction (60D)'
             };
             
             headers.forEach(headerId => {
@@ -2412,7 +2295,7 @@
                 url += `&search=${encodeURIComponent(holdingsSearchTerm)}`;
             }
             // Pass sort parameters to API for server-side sorting
-            cachedFetch(url)
+            fetch(url)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -2523,10 +2406,9 @@
                         paginationDiv.innerHTML += `<span style="padding: 8px 16px; margin: 0 5px; background-color: #999; color: white; border-radius: 5px; cursor: not-allowed;">Next &raquo;</span>`;
                     }
                     
-                    // Load sparklines for the displayed holdings
-                    data.holdings.forEach(holding => {
-                        loadSparkline(holding.trading_symbol);
-                    });
+                    // Load sparklines for the displayed holdings using batch API
+                    const holdingsSymbols = data.holdings.map(h => h.trading_symbol);
+                    loadSparklinesBatch(holdingsSymbols);
                     
                     // Load patterns for holdings
                     loadHoldingsPatterns(data.holdings);
@@ -2548,7 +2430,7 @@
             // Get unique symbols
             const symbols = [...new Set(holdings.map(h => h.trading_symbol))];
             
-            cachedFetch('/api/holdings/patterns')
+            fetch('/api/holdings/patterns')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
@@ -2615,9 +2497,11 @@
         // Load gainers and losers data
         function loadGainersLosers() {
             // Load gainers with caching
-            cachedFetch('/api/gainers')
+            fetch('/api/gainers')
                 .then(response => response.json())
                 .then(data => {
+                    console.log('Gainers API response:', data);
+                    
                     if (data.error) {
                         console.error('Error loading gainers:', data.error);
                         document.getElementById('gainersTableBody').innerHTML = 
@@ -2628,30 +2512,46 @@
                     const tbody = document.getElementById('gainersTableBody');
                     tbody.innerHTML = '';
                     
+                    console.log('Gainers data check:', {
+                        hasGainers: !!data.gainers,
+                        gainersType: typeof data.gainers,
+                        gainersLength: data.gainers ? data.gainers.length : 'N/A',
+                        gainers: data.gainers
+                    });
+                    
                     if (!data.gainers || data.gainers.length === 0) {
+                        console.warn('No gainers data in response:', data);
                         tbody.innerHTML = '<tr><td colspan="6" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">No gainers data available</td></tr>';
                         return;
                     }
                     
                     const symbols = [];
                     data.gainers.forEach((gainer, index) => {
-                        const symbol = gainer.scrip_id || '-';
-                        symbols.push(symbol);
-                        const row = `
-                            <tr style="border-bottom: 1px solid #eee;">
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666; font-size: 12px;">${index + 1}</td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
-                                <td style="padding: 4px; border: 1px solid #ddd; text-align: center;">
-                                    <canvas id="sparkline-gainer-${symbol}" width="100" height="35" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
-                                </td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">₹${gainer.previous_price.toFixed(2)}</td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; font-size: 12px;">₹${gainer.current_price.toFixed(2)}</td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: #28a745; font-size: 12px;">
-                                    +${gainer.gain.toFixed(2)}%
-                                </td>
-                            </tr>
-                        `;
-                        tbody.innerHTML += row;
+                        try {
+                            const symbol = gainer.scrip_id || '-';
+                            symbols.push(symbol);
+                            const previousPrice = gainer.previous_price || 0;
+                            const currentPrice = gainer.current_price || 0;
+                            const gain = gainer.gain || 0;
+                            
+                            const row = `
+                                <tr style="border-bottom: 1px solid #eee;">
+                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666; font-size: 12px;">${index + 1}</td>
+                                    <td style="padding: 5px 8px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
+                                    <td style="padding: 4px; border: 1px solid #ddd; text-align: center;">
+                                        <canvas id="sparkline-gainer-${symbol}" width="100" height="35" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
+                                    </td>
+                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">₹${Number(previousPrice).toFixed(2)}</td>
+                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; font-size: 12px;">₹${Number(currentPrice).toFixed(2)}</td>
+                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: #28a745; font-size: 12px;">
+                                        ${gain >= 0 ? '+' : ''}${Number(gain).toFixed(2)}%
+                                    </td>
+                                </tr>
+                            `;
+                            tbody.innerHTML += row;
+                        } catch (err) {
+                            console.error('Error rendering gainer row:', err, gainer);
+                        }
                     });
                     
                     // Load sparklines for gainers after a short delay to ensure DOM is ready
@@ -2670,9 +2570,11 @@
                 });
             
             // Load losers with caching
-            cachedFetch('/api/losers')
+            fetch('/api/losers')
                 .then(response => response.json())
                 .then(data => {
+                    console.log('Losers API response:', data);
+                    
                     if (data.error) {
                         console.error('Error loading losers:', data.error);
                         document.getElementById('losersTableBody').innerHTML = 
@@ -2683,30 +2585,46 @@
                     const tbody = document.getElementById('losersTableBody');
                     tbody.innerHTML = '';
                     
+                    console.log('Losers data check:', {
+                        hasLosers: !!data.losers,
+                        losersType: typeof data.losers,
+                        losersLength: data.losers ? data.losers.length : 'N/A',
+                        losers: data.losers
+                    });
+                    
                     if (!data.losers || data.losers.length === 0) {
+                        console.warn('No losers data in response:', data);
                         tbody.innerHTML = '<tr><td colspan="6" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">No losers data available</td></tr>';
                         return;
                     }
                     
                     const symbols = [];
                     data.losers.forEach((loser, index) => {
-                        const symbol = loser.scrip_id || '-';
-                        symbols.push(symbol);
-                        const row = `
-                            <tr style="border-bottom: 1px solid #eee;">
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666; font-size: 12px;">${index + 1}</td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
-                                <td style="padding: 4px; border: 1px solid #ddd; text-align: center;">
-                                    <canvas id="sparkline-loser-${symbol}" width="100" height="35" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
-                                </td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">₹${loser.previous_price.toFixed(2)}</td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; font-size: 12px;">₹${loser.current_price.toFixed(2)}</td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: #dc3545; font-size: 12px;">
-                                    ${loser.gain.toFixed(2)}%
-                                </td>
-                            </tr>
-                        `;
-                        tbody.innerHTML += row;
+                        try {
+                            const symbol = loser.scrip_id || '-';
+                            symbols.push(symbol);
+                            const previousPrice = loser.previous_price || 0;
+                            const currentPrice = loser.current_price || 0;
+                            const gain = loser.gain || 0;
+                            
+                            const row = `
+                                <tr style="border-bottom: 1px solid #eee;">
+                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666; font-size: 12px;">${index + 1}</td>
+                                    <td style="padding: 5px 8px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
+                                    <td style="padding: 4px; border: 1px solid #ddd; text-align: center;">
+                                        <canvas id="sparkline-loser-${symbol}" width="100" height="35" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
+                                    </td>
+                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">₹${Number(previousPrice).toFixed(2)}</td>
+                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; font-size: 12px;">₹${Number(currentPrice).toFixed(2)}</td>
+                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: #dc3545; font-size: 12px;">
+                                        ${Number(gain).toFixed(2)}%
+                                    </td>
+                                </tr>
+                            `;
+                            tbody.innerHTML += row;
+                        } catch (err) {
+                            console.error('Error rendering loser row:', err, loser);
+                        }
                     });
                     
                     // Load sparklines for losers after a short delay to ensure DOM is ready
@@ -2905,7 +2823,7 @@
         
         // Load positions data
         function loadPositions() {
-            cachedFetch('/api/positions')
+            fetch('/api/positions')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -2990,7 +2908,7 @@
                 url += `&strike_range_min=${minStrike}&strike_range_max=${maxStrike}`;
             }
             
-            cachedFetch(url)
+            fetch(url)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -3145,7 +3063,7 @@
             const container = document.getElementById('latestOptionsContainer');
             container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading latest options...</div>';
             
-            cachedFetch('/api/options_latest?limit=5')
+            fetch('/api/options_latest?limit=5')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
@@ -3235,7 +3153,7 @@
             const container = document.getElementById('derivativesSuggestionsContainer');
             container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading suggestions...</div>';
             
-            cachedFetch('/api/derivatives_suggestions')
+            fetch('/api/derivatives_suggestions')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
@@ -3349,7 +3267,7 @@
         
         // Load P&L Summary sdfsdf
         function loadPnlSummary() {
-            cachedFetch('/api/today_pnl_summary')
+            fetch('/api/today_pnl_summary')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -3419,7 +3337,7 @@
         // Load Portfolio Chart
         let portfolioChartInstance = null;
         function loadPortfolioChart(days) {
-            cachedFetch(`/api/portfolio_history?days=${days}`)
+            fetch(`/api/portfolio_history?days=${days}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -3519,7 +3437,7 @@
         
         // Load MF holdings data
         function loadMFHoldings() {
-            cachedFetch('/api/mf_holdings')
+            fetch('/api/mf_holdings')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -3538,7 +3456,7 @@
                     }
                     
                     // Fetch benchmark comparison data
-                    cachedFetch('/api/mf_benchmark_comparison')
+                    fetch('/api/mf_benchmark_comparison')
                         .then(response => response.json())
                         .then(benchmarkData => {
                             // Create a map of MF symbol to benchmark metrics
@@ -4763,43 +4681,15 @@
             }
         });
         
-        // Helper function for cached fetch
-        async function cachedFetch(url, options = {}) {
-            // Check cache first (unless it's a POST request or force refresh)
-            if ((!options.method || options.method === 'GET') && !options.forceRefresh) {
-                const cached = DataCache.get(url);
-                if (cached) {
-                    console.log(`Cache hit: ${url}`);
-                    // Return a Response-like object
-                    return {
-                        ok: true,
-                        status: 200,
-                        json: async () => cached,
-                        clone: function() { return this; }
-                    };
-                }
-            }
-            
-            // Fetch from server
-            console.log(`Cache miss: ${url}`);
-            const response = await fetch(url, options);
-            
-            // Cache successful GET responses
-            if ((!options.method || options.method === 'GET') && response.ok) {
-                try {
-                    const clonedResponse = response.clone();
-                    const data = await clonedResponse.json();
-                    DataCache.set(url, data);
-                } catch (e) {
-                    // Not JSON or clone failed, don't cache
-                }
-            }
-            
-            return response;
+        // Fetch wrapper - respects HTTP cache headers from server
+        // The browser's HTTP cache will automatically cache responses based on 
+        // Cache-Control headers sent by the API (see get_cache_headers in KiteAccessToken.py)
+        // Tab-specific loading is handled by TabLoadTracker to prevent unnecessary data fetching
+        async function fetchData(url, options = {}) {
+            // Use default cache mode which respects HTTP cache headers
+            // This allows browser to cache based on Cache-Control headers from server
+            return await fetch(url, { ...options, cache: options.cache || 'default' });
         }
-        
-        // Clear old cache entries on page load
-        DataCache.clearOld();
         
         // Load initial data - ONLY Live Market tab data
         document.addEventListener('DOMContentLoaded', function() {
@@ -4837,10 +4727,13 @@
             if (selectedTab) {
                 selectedTab.classList.add('active');
                 
-                // Only load data if this tab hasn't been loaded before
-                if (!TabLoadTracker.isLoaded(tabName)) {
-                    if (tabName === 'gainers-losers') {
-                        loadGainersLosers();
+                // Load data based on tab name
+                if (tabName === 'gainers-losers') {
+                    // Always load gainers/losers when tab is clicked (refresh every time)
+                    loadGainersLosers();
+                    
+                    // Only load other data if tab hasn't been loaded before
+                    if (!TabLoadTracker.isLoaded(tabName)) {
                         // Load swing trade recommendations automatically when tab is opened
                         loadSwingTrades();
                         // Initialize auto-refresh for swing trades (30-minute interval)
@@ -4855,7 +4748,9 @@
                         // Check if predictions exist, show warning if not
                         checkProphetPredictionsExist();
                         TabLoadTracker.markLoaded(tabName);
-                    } else if (tabName === 'holdings') {
+                    }
+                } else if (tabName === 'holdings') {
+                    if (!TabLoadTracker.isLoaded(tabName)) {
                         {% if show_holdings %}
                         // Load P&L, Portfolio chart, and Portfolio Hedge Analysis when Holdings tab is shown
                         loadPnlSummary();
@@ -4871,10 +4766,14 @@
                         loadSparklines();
                         TabLoadTracker.markLoaded(tabName);
                         {% endif %}
-                    } else if (tabName === 'live-market') {
+                    }
+                } else if (tabName === 'live-market') {
+                    if (!TabLoadTracker.isLoaded(tabName)) {
                         // Live Market is already loaded on initial load
                         TabLoadTracker.markLoaded(tabName);
-                    } else if (tabName === 'utilities') {
+                    }
+                } else if (tabName === 'utilities') {
+                    if (!TabLoadTracker.isLoaded(tabName)) {
                         // Utilities tab doesn't need data loading
                         TabLoadTracker.markLoaded(tabName);
                     }
@@ -4917,13 +4816,150 @@
         let currentStockSymbol = '';
         let candlestickChart = null;
 
+        // Helper function to draw sparkline on canvas
+        function drawSparkline(canvas, prices) {
+            if (!canvas || !prices || prices.length === 0) return;
+            
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            const padding = 5;
+            
+            const minPrice = Math.min(...prices);
+            const maxPrice = Math.max(...prices);
+            const priceRange = maxPrice - minPrice || 1;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Determine color based on trend
+            const firstPrice = prices[0];
+            const lastPrice = prices[prices.length - 1];
+            const color = lastPrice >= firstPrice ? '#28a745' : '#dc3545';
+            
+            // Draw line
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            for (let i = 0; i < prices.length; i++) {
+                const x = padding + (i / (prices.length - 1)) * (width - 2 * padding);
+                const y = height - padding - ((prices[i] - minPrice) / priceRange) * (height - 2 * padding);
+                
+                if (i === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.stroke();
+        }
+        
+        // Batch load sparklines for multiple symbols
+        function loadSparklinesBatch(symbols, canvasIdMap = {}) {
+            if (!symbols || symbols.length === 0) return;
+            
+            // Extract actual symbols from symbolOrId format
+            const actualSymbols = symbols.map(symbolOrId => {
+                if (symbolOrId.startsWith('sparkline-')) {
+                    const withoutPrefix = symbolOrId.replace(/^sparkline-/, '');
+                    const knownMiddlePrefixes = ['swing', 'gainer', 'loser', 'ajax'];
+                    const parts = withoutPrefix.split('-');
+                    if (parts.length >= 2 && knownMiddlePrefixes.includes(parts[0])) {
+                        return parts.slice(1).join('-');
+                    }
+                    return withoutPrefix;
+                } else if (symbolOrId.includes('-')) {
+                    const knownPrefixes = ['gainer', 'loser', 'ajax', 'swing'];
+                    const parts = symbolOrId.split('-');
+                    if (parts.length >= 2 && knownPrefixes.includes(parts[0])) {
+                        return parts.slice(1).join('-');
+                    }
+                }
+                return symbolOrId;
+            });
+            
+            // Remove duplicates
+            const uniqueSymbols = [...new Set(actualSymbols)];
+            
+            // Batch fetch sparklines
+            fetch('/api/sparklines/batch?days=90', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ symbols: uniqueSymbols })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    console.error('Error loading batch sparklines:', data.error);
+                    return;
+                }
+                
+                // Draw sparklines for each symbol
+                uniqueSymbols.forEach(symbol => {
+                    const sparklineData = data.sparklines[symbol];
+                    if (!sparklineData || !sparklineData.prices || sparklineData.prices.length === 0) {
+                        return;
+                    }
+                    
+                    // Try to find canvas with various ID patterns
+                    let canvas = null;
+                    if (canvasIdMap[symbol]) {
+                        canvas = document.getElementById(canvasIdMap[symbol]);
+                    }
+                    if (!canvas) {
+                        canvas = document.getElementById(`sparkline-${symbol}`);
+                    }
+                    if (!canvas) {
+                        canvas = document.getElementById(`sparkline-ajax-${symbol}`);
+                    }
+                    if (!canvas) {
+                        canvas = document.getElementById(`sparkline-swing-${symbol}`);
+                    }
+                    if (!canvas) {
+                        // Try to find by checking original symbolOrId format
+                        const originalSymbolOrId = symbols.find(s => {
+                            const extracted = s.startsWith('sparkline-') 
+                                ? s.replace(/^sparkline-/, '').replace(/^(swing|ajax|gainer|loser)-/, '')
+                                : s.includes('-') 
+                                    ? s.split('-').slice(1).join('-')
+                                    : s;
+                            return extracted === symbol;
+                        });
+                        if (originalSymbolOrId) {
+                            if (originalSymbolOrId.startsWith('sparkline-')) {
+                                canvas = document.getElementById(originalSymbolOrId);
+                            } else {
+                                canvas = document.getElementById(`sparkline-${originalSymbolOrId}`);
+                            }
+                        }
+                    }
+                    
+                    if (canvas) {
+                        drawSparkline(canvas, sparklineData.prices);
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error loading batch sparklines:', error);
+                // Fallback to individual requests
+                symbols.forEach(symbol => loadSparkline(symbol));
+            });
+        }
+        
         function loadSparklines() {
-            {% for holding in holdings_info.holdings %}
-            loadSparkline('{{ holding.trading_symbol }}');
-            {% endfor %}
+            {% if show_holdings and holdings_info.holdings %}
+            const symbols = [
+                {% for holding in holdings_info.holdings %}
+                '{{ holding.trading_symbol }}',
+                {% endfor %}
+            ];
+            loadSparklinesBatch(symbols);
             
             // Load patterns for initial holdings
-            {% if show_holdings and holdings_info.holdings %}
             const initialHoldings = [
                 {% for holding in holdings_info.holdings %}
                 { trading_symbol: '{{ holding.trading_symbol }}' },
@@ -4964,7 +5000,7 @@
                 canvasId = `sparkline-${symbolOrId}`;
             }
             
-            fetch(`/api/sparkline/${symbol}?days=30`)
+            fetch(`/api/sparkline/${symbol}?days=90`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
@@ -4998,43 +5034,8 @@
                         return;
                     }
                     
-                    const ctx = canvas.getContext('2d');
-                    const prices = data.prices;
-                    if (!prices || prices.length === 0) return;
-                    
-                    const width = canvas.width;
-                    const height = canvas.height;
-                    const padding = 5;
-                    
-                    const minPrice = Math.min(...prices);
-                    const maxPrice = Math.max(...prices);
-                    const priceRange = maxPrice - minPrice || 1;
-                    
-                    // Clear canvas
-                    ctx.clearRect(0, 0, width, height);
-                    
-                    // Determine color based on trend
-                    const firstPrice = prices[0];
-                    const lastPrice = prices[prices.length - 1];
-                    const color = lastPrice >= firstPrice ? '#28a745' : '#dc3545';
-                    
-                    // Draw line
-                    ctx.strokeStyle = color;
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    
-                    for (let i = 0; i < prices.length; i++) {
-                        const x = padding + (i / (prices.length - 1)) * (width - 2 * padding);
-                        const y = height - padding - ((prices[i] - minPrice) / priceRange) * (height - 2 * padding);
-                        
-                        if (i === 0) {
-                            ctx.moveTo(x, y);
-                        } else {
-                            ctx.lineTo(x, y);
-                        }
-                    }
-                    
-                    ctx.stroke();
+                    // Use helper function to draw sparkline
+                    drawSparkline(canvas, data.prices);
                 })
                 .catch(error => console.error(`Error loading sparkline for ${symbol}:`, error));
         }
@@ -5584,7 +5585,7 @@
             statusDiv.innerHTML = `<span style="color: #666;">⏳ Loading top gainers for ${predictionDays} days...</span>`;
             tbody.innerHTML = '<tr><td colspan="8" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td></tr>';
             
-            cachedFetch(`/api/prophet_predictions/top_gainers?limit=10&prediction_days=${predictionDays}`)
+            fetch(`/api/prophet_predictions/top_gainers?limit=10&prediction_days=${predictionDays}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
@@ -5683,7 +5684,7 @@
             }
             
             symbolSearchTimeout = setTimeout(() => {
-                cachedFetch(`/api/prophet_predictions/symbol_search?query=${encodeURIComponent(value)}&limit=10`)
+                fetch(`/api/prophet_predictions/symbol_search?query=${encodeURIComponent(value)}&limit=10`)
                     .then(response => response.json())
                     .then(data => {
                         if (data.success && data.suggestions && data.suggestions.length > 0) {
@@ -5753,7 +5754,7 @@
             statusDiv.innerHTML = `<span style="color: #666;">⏳ Loading prediction for ${symbol}...</span>`;
             tbody.innerHTML = '<tr><td colspan="7" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td></tr>';
             
-            cachedFetch(`/api/prophet_predictions/${symbol}?prediction_days=${predictionDays}`)
+            fetch(`/api/prophet_predictions/${symbol}?prediction_days=${predictionDays}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success || !data.prediction) {

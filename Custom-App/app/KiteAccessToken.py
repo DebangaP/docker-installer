@@ -2,9 +2,9 @@ from common.Boilerplate import *
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi import Request, Query, Form, File, UploadFile
+from fastapi import Request, Query, Form, File, UploadFile, Body
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
-from typing import Optional
+from typing import Optional, List
 import os
 from datetime import datetime, timedelta
 import json
@@ -67,8 +67,9 @@ def get_cache_headers(endpoint_path: str) -> dict:
         # Portfolio hedge - 5 minutes
         'portfolio_hedge_analysis': 300,
         
-        # Sparklines and charts - 5 minutes
-        'sparkline': 300,
+        # Sparklines and charts - 15 minutes (900 seconds)
+        'sparkline': 900,
+        'sparklines': 900,
         'candlestick_chart': 300,
         'candlestick': 300,
         
@@ -81,13 +82,21 @@ def get_cache_headers(endpoint_path: str) -> dict:
     # Find matching cache duration
     for key, duration in cache_durations.items():
         if key in endpoint_path:
+            # Calculate expiration time
+            expires_time = datetime.now() + timedelta(seconds=duration)
+            expires_str = expires_time.strftime('%a, %d %b %Y %H:%M:%S GMT')
             return {
-                'Cache-Control': f'public, max-age={duration}, s-maxage={duration}, stale-while-revalidate=60'
+                'Cache-Control': f'public, max-age={duration}, s-maxage={duration}, stale-while-revalidate=60',
+                'Expires': expires_str
             }
     
     # Default: 5 minutes for most endpoints
+    default_duration = 300
+    expires_time = datetime.now() + timedelta(seconds=default_duration)
+    expires_str = expires_time.strftime('%a, %d %b %Y %H:%M:%S GMT')
     return {
-        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60'
+        'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=60',
+        'Expires': expires_str
     }
 
 def cached_json_response(data: dict, endpoint_path: str) -> JSONResponse:
@@ -344,7 +353,7 @@ def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, so
         total_count = cursor.fetchone()['total_count']
 
         # Validate and set sort column
-        valid_sort_columns = ['trading_symbol', 'invested_amount', 'current_amount', 'pnl', 'today_pnl']
+        valid_sort_columns = ['trading_symbol', 'invested_amount', 'current_amount', 'pnl', 'today_pnl', 'prophet_prediction_pct']
         if sort_by not in valid_sort_columns:
             sort_by = 'trading_symbol'
         
@@ -445,20 +454,44 @@ def enrich_holdings_with_today_pnl(holdings_data):
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # Get today's date
-        cursor.execute("SELECT CURRENT_DATE as today_date")
-        today = cursor.fetchone()['today_date']
-        today_str = today.strftime('%Y-%m-%d')
+        # Get latest available date (not necessarily today - could be last trading day)
+        cursor.execute("""
+            SELECT MAX(price_date::date) as latest_date
+            FROM my_schema.rt_intraday_price
+        """)
+        latest_result = cursor.fetchone()
+        latest_date = latest_result['latest_date'] if latest_result and latest_result['latest_date'] else None
+        
+        if not latest_date:
+            logging.warning("No data found in rt_intraday_price, returning holdings without today's P&L")
+            conn.close()
+            # Return holdings with default today_pnl values
+            enriched_holdings = []
+            for holding in holdings_data.get('holdings', []):
+                holding_dict = dict(holding)
+                holding_dict['today_pnl'] = 0.0
+                holding_dict['today_price'] = 0.0
+                holding_dict['prev_price'] = 0.0
+                holding_dict['pct_change'] = 0.0
+                holding_dict['today_change'] = '0 (0%)'
+                enriched_holdings.append(holding_dict)
+            holdings_data['holdings'] = enriched_holdings
+            return holdings_data
+        
+        # Convert latest_date to string
+        latest_date_str = latest_date.strftime('%Y-%m-%d') if hasattr(latest_date, 'strftime') else str(latest_date)
         
         # Get previous trading day
         cursor.execute("""
-            SELECT MAX(price_date) as prev_date
+            SELECT MAX(price_date::date) as prev_date
             FROM my_schema.rt_intraday_price
-            WHERE price_date < %s
-        """, (today_str,))
+            WHERE price_date::date < %s
+        """, (latest_date,))
         
         prev_date_result = cursor.fetchone()
         prev_date = prev_date_result['prev_date'] if prev_date_result and prev_date_result['prev_date'] else None
+        
+        logging.info(f"Using latest date: {latest_date_str}, previous date: {prev_date}")
         
         # Get today's P&L for all holdings - match by instrument_token
         today_pnl_map = {}
@@ -494,18 +527,18 @@ def enrich_holdings_with_today_pnl(holdings_data):
                 today_prices AS (
                     SELECT scrip_id, price_close, price_date
                     FROM my_schema.rt_intraday_price
-                    WHERE price_date = %s
+                    WHERE price_date::date = %s
                 ),
                 latest_prices AS (
                     SELECT scrip_id, price_close, 
                            ROW_NUMBER() OVER (PARTITION BY scrip_id ORDER BY price_date DESC) as rn
                     FROM my_schema.rt_intraday_price
-                    WHERE price_date::date <= CURRENT_DATE
+                    WHERE price_date::date <= %s
                 ),
                 prev_prices AS (
                     SELECT scrip_id, price_close
                     FROM my_schema.rt_intraday_price
-                    WHERE price_date = %s
+                    WHERE price_date::date = %s
                 )
                 SELECT 
                     h.instrument_token,
@@ -535,7 +568,7 @@ def enrich_holdings_with_today_pnl(holdings_data):
                 LEFT JOIN latest_prices latest_p ON h.trading_symbol = latest_p.scrip_id AND latest_p.rn = 1
                 LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
                 
-            """, (today_str, prev_date_str))
+            """, (latest_date, latest_date, prev_date))
             
             for row in cursor.fetchall():
                 instrument_token = row['instrument_token']
@@ -2490,7 +2523,8 @@ async def api_generate_prophet_predictions(
 @app.get("/api/prophet_predictions/top_gainers")
 async def api_prophet_top_gainers(
     limit: int = Query(10, description="Number of top gainers to return"),
-    prediction_days: int = Query(30, description="Number of prediction days to filter by (default: 30)")
+    prediction_days: int = Query(30, description="Number of prediction days to filter by (default: 30)"),
+    force_refresh: bool = Query(False, description="Force refresh (ignore cache)")
 ):
     """API endpoint to get top N potential gainers based on Prophet predictions"""
     try:
@@ -2498,6 +2532,43 @@ async def api_prophet_top_gainers(
         
         predictor = ProphetPricePredictor()
         top_gainers = predictor.get_top_gainers(limit=limit, prediction_days=prediction_days)
+        
+        # Validate that we have actual data
+        if not top_gainers or len(top_gainers) == 0:
+            # Check if predictions exist for this prediction_days
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT COUNT(*) as count
+                FROM my_schema.prophet_predictions
+                WHERE prediction_days = %s
+                AND status = 'ACTIVE'
+            """, (prediction_days,))
+            
+            result = cursor.fetchone()
+            total_predictions = result[0] if result else 0
+            cursor.close()
+            conn.close()
+            
+            if total_predictions == 0:
+                # No predictions exist for this prediction_days
+                return {
+                    "success": False,
+                    "error": f"No predictions found for {prediction_days} days. Please generate predictions first.",
+                    "top_gainers": [],
+                    "count": 0,
+                    "needs_generation": True
+                }
+            else:
+                # Predictions exist but don't meet filter criteria (confidence, etc.)
+                return {
+                    "success": False,
+                    "error": f"No top gainers found for {prediction_days} days matching the criteria (confidence >= 50%, positive gain). Try generating predictions with different parameters.",
+                    "top_gainers": [],
+                    "count": 0,
+                    "needs_generation": False
+                }
         
         return {
             "success": True,
@@ -2807,13 +2878,58 @@ async def api_scanner_with_confirmation(
 
 @app.get("/api/gainers")
 async def api_gainers():
-    """API endpoint to get top 15 gainers from last trading day"""
+    """API endpoint to get top 10 gainers from last trading day"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
+        logging.info("Starting gainers query...")
+        
+        # First check if we have data
         cursor.execute("""
-            select "Curr".scrip_id, 
+            SELECT COUNT(*) as cnt FROM my_schema.rt_intraday_price 
+            WHERE country = 'IN' 
+            AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+        """)
+        total_rows = cursor.fetchone()['cnt']
+        logging.info(f"Total rows in rt_intraday_price: {total_rows}")
+        
+        # Get latest date
+        cursor.execute("""
+            SELECT MAX(price_date::date) as max_date
+            FROM my_schema.rt_intraday_price
+            WHERE country = 'IN'
+            AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+        """)
+        latest_result = cursor.fetchone()
+        latest_date = latest_result['max_date'] if latest_result else None
+        logging.info(f"Latest date: {latest_date}")
+        
+        if not latest_date:
+            logging.warning("No latest date found, returning empty gainers")
+            conn.close()
+            return cached_json_response({"gainers": []}, "/api/gainers")
+        
+        # Get previous date
+        cursor.execute("""
+            SELECT MAX(price_date::date) as prev_date
+            FROM my_schema.rt_intraday_price
+            WHERE country = 'IN'
+            AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+            AND price_date::date < %s
+        """, (latest_date,))
+        prev_result = cursor.fetchone()
+        prev_date = prev_result['prev_date'] if prev_result else None
+        logging.info(f"Previous date: {prev_date}")
+        
+        if not prev_date:
+            logging.warning("No previous date found, returning empty gainers")
+            conn.close()
+            return cached_json_response({"gainers": []}, "/api/gainers")
+        
+        # Simplified query using CTEs for better readability and debugging
+        cursor.execute("""
+                        select "Curr".scrip_id, 
                    100*("Curr".price_close - "Prev".price_close)/"Prev".price_close "Gain",
                    "Curr".price_close as current_price,
                    "Prev".price_close as previous_price
@@ -2843,28 +2959,147 @@ async def api_gainers():
         """)
         
         gainers = cursor.fetchall()
+        logging.info(f"Query returned {len(gainers)} rows from database")
+        
+        # Debug: Check counts at each step to diagnose why we might get 0 results
+        if len(gainers) == 0:
+            logging.warning("Main query returned 0 results, checking data availability...")
+            # Check how many rows match current date
+            cursor.execute("""
+                SELECT COUNT(*) as cnt
+                FROM my_schema.rt_intraday_price
+                WHERE price_date::date = %s
+                AND country = 'IN'
+                AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+                AND price_close IS NOT NULL
+                AND price_close > 0
+            """, (latest_date,))
+            current_date_count = cursor.fetchone()['cnt']
+            logging.info(f"Rows for latest date {latest_date}: {current_date_count}")
+            
+            # Check how many rows match previous date
+            cursor.execute("""
+                SELECT COUNT(*) as cnt
+                FROM my_schema.rt_intraday_price
+                WHERE price_date::date = %s
+                AND country = 'IN'
+                AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+                AND price_close IS NOT NULL
+                AND price_close > 0
+            """, (prev_date,))
+            prev_date_count = cursor.fetchone()['cnt']
+            logging.info(f"Rows for previous date {prev_date}: {prev_date_count}")
+            
+            # Check how many scrip_ids match between dates
+            cursor.execute("""
+                SELECT COUNT(DISTINCT cp.scrip_id) as match_count
+                FROM (
+                    SELECT DISTINCT scrip_id
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date::date = %s
+                    AND country = 'IN'
+                    AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+                    AND price_close IS NOT NULL
+                    AND price_close > 0
+                ) cp
+                INNER JOIN (
+                    SELECT DISTINCT scrip_id
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date::date = %s
+                    AND country = 'IN'
+                    AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+                    AND price_close IS NOT NULL
+                    AND price_close > 0
+                ) pp ON cp.scrip_id = pp.scrip_id
+            """, (latest_date, prev_date))
+            match_count = cursor.fetchone()['match_count']
+            logging.info(f"Matching scrip_ids between dates: {match_count}")
+        
+        logging.info(f"Final: Query returned {len(gainers)} rows from database")
+        
         gainers_list = []
         for row in gainers:
-            gainers_list.append({
-                "scrip_id": row['scrip_id'],
-                "gain": float(row['Gain']) if row['Gain'] else 0.0,
-                "current_price": float(row['current_price']) if row['current_price'] else 0.0,
-                "previous_price": float(row['previous_price']) if row['previous_price'] else 0.0
-            })
+            try:
+                logging.debug(f"Processing gainer row: {row}")
+                # Handle case-sensitive column names from SQL query
+                gain_value = row.get('gain') or row.get('Gain') or 0.0
+                current_price_value = row.get('current_price') or row.get('CURRENT_PRICE') or 0.0
+                previous_price_value = row.get('previous_price') or row.get('PREVIOUS_PRICE') or 0.0
+                
+                gainers_list.append({
+                    "scrip_id": row.get('scrip_id') or row.get('SCRIP_ID') or row.get('scrip_id'),
+                    "gain": float(gain_value) if gain_value is not None else 0.0,
+                    "current_price": float(current_price_value) if current_price_value is not None else 0.0,
+                    "previous_price": float(previous_price_value) if previous_price_value is not None else 0.0
+                })
+            except (ValueError, TypeError, KeyError) as e:
+                logging.warning(f"Error processing gainer row for {row.get('scrip_id') or row.get('SCRIP_ID', 'unknown')}: {e}")
+                logging.warning(f"Row data: {dict(row)}")
+                logging.warning(f"Available keys: {list(row.keys()) if hasattr(row, 'keys') else 'N/A'}")
+                continue
         
         conn.close()
+        logging.info(f"Fetched {len(gainers_list)} gainers, returning response")
+        logging.debug(f"Gainers list: {gainers_list}")
         return cached_json_response({"gainers": gainers_list}, "/api/gainers")
     except Exception as e:
         logging.error(f"Error fetching gainers: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         return cached_json_response({"error": str(e), "gainers": []}, "/api/gainers")
 
 @app.get("/api/losers")
 async def api_losers():
-    """API endpoint to get top 15 losers from last trading day"""
+    """API endpoint to get top 10 losers from last trading day"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
+        logging.info("Starting losers query...")
+        
+        # First check if we have data
+        cursor.execute("""
+            SELECT COUNT(*) as cnt FROM my_schema.rt_intraday_price 
+            WHERE country = 'IN' 
+            AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+        """)
+        total_rows = cursor.fetchone()['cnt']
+        logging.info(f"Total rows in rt_intraday_price: {total_rows}")
+        
+        # Get latest date
+        cursor.execute("""
+            SELECT MAX(price_date::date) as max_date
+            FROM my_schema.rt_intraday_price
+            WHERE country = 'IN'
+            AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+        """)
+        latest_result = cursor.fetchone()
+        latest_date = latest_result['max_date'] if latest_result else None
+        logging.info(f"Latest date: {latest_date}")
+        
+        if not latest_date:
+            logging.warning("No latest date found, returning empty losers")
+            conn.close()
+            return cached_json_response({"losers": []}, "/api/losers")
+        
+        # Get previous date
+        cursor.execute("""
+            SELECT MAX(price_date::date) as prev_date
+            FROM my_schema.rt_intraday_price
+            WHERE country = 'IN'
+            AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+            AND price_date::date < %s
+        """, (latest_date,))
+        prev_result = cursor.fetchone()
+        prev_date = prev_result['prev_date'] if prev_result else None
+        logging.info(f"Previous date: {prev_date}")
+        
+        if not prev_date:
+            logging.warning("No previous date found, returning empty losers")
+            conn.close()
+            return cached_json_response({"losers": []}, "/api/losers")
+        
+        # Simplified query using CTEs for better readability and debugging
         cursor.execute("""
             select "Curr".scrip_id, 
                    100*("Curr".price_close - "Prev".price_close)/"Prev".price_close "Gain",
@@ -2896,19 +3131,87 @@ async def api_losers():
         """)
         
         losers = cursor.fetchall()
+        logging.info(f"Query returned {len(losers)} rows from database")
+        
+        # Debug: Check counts at each step to diagnose why we might get 0 results
+        if len(losers) == 0:
+            logging.warning("Main query returned 0 results, checking data availability...")
+            # Check how many rows match current date
+            cursor.execute("""
+                SELECT COUNT(*) as cnt
+                FROM my_schema.rt_intraday_price
+                WHERE price_date::date = %s
+                AND country = 'IN'
+                AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+                AND price_close IS NOT NULL
+                AND price_close > 0
+            """, (latest_date,))
+            current_date_count = cursor.fetchone()['cnt']
+            logging.info(f"Rows for latest date {latest_date}: {current_date_count}")
+            
+            # Check how many rows match previous date
+            cursor.execute("""
+                SELECT COUNT(*) as cnt
+                FROM my_schema.rt_intraday_price
+                WHERE price_date::date = %s
+                AND country = 'IN'
+                AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+                AND price_close IS NOT NULL
+                AND price_close > 0
+            """, (prev_date,))
+            prev_date_count = cursor.fetchone()['cnt']
+            logging.info(f"Rows for previous date {prev_date}: {prev_date_count}")
+            
+            # Check how many scrip_ids match between dates
+            cursor.execute("""
+                SELECT COUNT(DISTINCT cp.scrip_id) as match_count
+                FROM (
+                    SELECT DISTINCT scrip_id
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date::date = %s
+                    AND country = 'IN'
+                    AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+                    AND price_close IS NOT NULL
+                    AND price_close > 0
+                ) cp
+                INNER JOIN (
+                    SELECT DISTINCT scrip_id
+                    FROM my_schema.rt_intraday_price
+                    WHERE price_date::date = %s
+                    AND country = 'IN'
+                    AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+                    AND price_close IS NOT NULL
+                    AND price_close > 0
+                ) pp ON cp.scrip_id = pp.scrip_id
+            """, (latest_date, prev_date))
+            match_count = cursor.fetchone()['match_count']
+            logging.info(f"Matching scrip_ids between dates: {match_count}")
+        
+        logging.info(f"Final: Query returned {len(losers)} rows from database")
+        
         losers_list = []
         for row in losers:
-            losers_list.append({
-                "scrip_id": row['scrip_id'],
-                "gain": float(row['Gain']) if row['Gain'] else 0.0,
-                "current_price": float(row['current_price']) if row['current_price'] else 0.0,
-                "previous_price": float(row['previous_price']) if row['previous_price'] else 0.0
-            })
+            try:
+                logging.debug(f"Processing loser row: {row}")
+                losers_list.append({
+                    "scrip_id": row['scrip_id'],
+                    "gain": float(row['Gain']) if row['Gain'] is not None else 0.0,
+                    "current_price": float(row['current_price']) if row['current_price'] is not None else 0.0,
+                    "previous_price": float(row['previous_price']) if row['previous_price'] is not None else 0.0
+                })
+            except (ValueError, TypeError) as e:
+                logging.warning(f"Error processing loser row for {row.get('scrip_id', 'unknown')}: {e}")
+                logging.warning(f"Row data: {dict(row)}")
+                continue
         
         conn.close()
+        logging.info(f"Fetched {len(losers_list)} losers, returning response")
+        logging.debug(f"Losers list: {losers_list}")
         return cached_json_response({"losers": losers_list}, "/api/losers")
     except Exception as e:
         logging.error(f"Error fetching losers: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         return cached_json_response({"error": str(e), "losers": []}, "/api/losers")
 
 @app.get("/api/holdings")
@@ -2921,8 +3224,8 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
             cached = cache_get_json(cache_key)
             if cached:
                 return cached
-        # If sorting by today_pnl, we need to get all holdings, enrich them, sort, then paginate
-        if sort_by == 'today_pnl':
+        # If sorting by today_pnl or prophet_prediction_pct, we need to get all holdings, enrich them, sort, then paginate
+        if sort_by == 'today_pnl' or sort_by == 'prophet_prediction_pct':
             # Get all holdings without pagination
             holdings_info = get_holdings_data(page=1, per_page=10000, sort_by='trading_symbol', sort_dir='asc', search=search)
         else:
@@ -2958,6 +3261,7 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
             SELECT MAX(price_date) as prev_date
             FROM my_schema.rt_intraday_price
             WHERE price_date < %s
+            and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
         """, (today_str,))
         
         prev_date_result = cursor.fetchone()
@@ -3075,13 +3379,20 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
         cursor2 = conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
         try:
-            # Get Prophet predictions from latest run_date
+            # Get Prophet predictions - prefer 60-day, fallback to latest available
             cursor2.execute("""
-                SELECT scrip_id, predicted_price_change_pct, prediction_confidence
+                SELECT DISTINCT ON (scrip_id) 
+                    scrip_id, 
+                    predicted_price_change_pct, 
+                    prediction_confidence,
+                    prediction_days
                 FROM my_schema.prophet_predictions
-                WHERE run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE' AND prediction_days = 30)
-                AND prediction_days = 30
-                AND status = 'ACTIVE'
+                WHERE status = 'ACTIVE'
+                ORDER BY scrip_id, 
+                         CASE WHEN prediction_days = 60 THEN 1 
+                              WHEN prediction_days = 30 THEN 2 
+                              ELSE 3 END,
+                         run_date DESC
             """)
             
             predictions_rows = cursor2.fetchall()
@@ -3106,14 +3417,17 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
             # Get Prophet prediction for this holding
             prophet_pred = None
             prophet_conf = None
+            prophet_pred_days = None
             if symbol and symbol.upper() in predictions_map:
                 pred = predictions_map[symbol.upper()]
                 try:
                     prophet_pred = float(pred['predicted_price_change_pct']) if pred.get('predicted_price_change_pct') is not None else None
                     prophet_conf = float(pred['prediction_confidence']) if pred.get('prediction_confidence') is not None else None
+                    prophet_pred_days = int(pred['prediction_days']) if pred.get('prediction_days') is not None else None
                 except (ValueError, TypeError):
                     prophet_pred = None
                     prophet_conf = None
+                    prophet_pred_days = None
             
             holdings_list.append({
                 "trading_symbol": symbol,
@@ -3131,13 +3445,24 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                 "pct_change": today_pnl_info.get('pct_change', 0.0),
                 "today_change": today_pnl_info.get('today_change', '0 (0%)'),
                 "prophet_prediction_pct": prophet_pred,
-                "prophet_confidence": prophet_conf
+                "prophet_confidence": prophet_conf,
+                "prediction_days": prophet_pred_days
             })
         
-        # If sorting by today_pnl, sort the enriched list and then paginate
+        # If sorting by today_pnl or prophet_prediction_pct, sort the enriched list and then paginate
         if sort_by == 'today_pnl':
             sort_reverse = sort_dir.lower() == 'desc'
             holdings_list.sort(key=lambda x: x['today_pnl'], reverse=sort_reverse)
+            
+            # Apply pagination after sorting
+            total_count = len(holdings_list)
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            holdings_list = holdings_list[start_idx:end_idx]
+        elif sort_by == 'prophet_prediction_pct':
+            sort_reverse = sort_dir.lower() == 'desc'
+            # Sort by prophet_prediction_pct, handling None values
+            holdings_list.sort(key=lambda x: x['prophet_prediction_pct'] if x['prophet_prediction_pct'] is not None else (float('-inf') if sort_reverse else float('inf')), reverse=sort_reverse)
             
             # Apply pagination after sorting
             total_count = len(holdings_list)
@@ -3459,24 +3784,41 @@ async def api_today_pnl_summary():
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
-        # Get today's date
-        cursor.execute("SELECT CURRENT_DATE as today_date")
-        today = cursor.fetchone()['today_date']
-        today_str = today.strftime('%Y-%m-%d')
-        
-        # Get previous trading day
+        # Find the latest date that has actual stock data (exclude crypto symbols)
+        # This prevents future-dated crypto data from skewing the results
         cursor.execute("""
-            SELECT MAX(price_date) as prev_date
+            SELECT MAX(price_date::date) as latest_date
             FROM my_schema.rt_intraday_price
-            WHERE price_date < %s
-        """, (today_str,))
+            WHERE country = 'IN'
+            AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+        """)
+        latest_result = cursor.fetchone()
+        latest_date = latest_result['latest_date'] if latest_result and latest_result['latest_date'] else None
+        
+        if not latest_date:
+            logging.warning("No stock data found in rt_intraday_price (excluding crypto), using CURRENT_DATE")
+            cursor.execute("SELECT CURRENT_DATE as today_date")
+            today = cursor.fetchone()['today_date']
+            latest_date = today
+        
+        latest_date_str = latest_date.strftime('%Y-%m-%d') if hasattr(latest_date, 'strftime') else str(latest_date)
+        logging.info(f"Using latest stock data date: {latest_date_str} (excluding crypto symbols)")
+        
+        # Get previous trading day (also excluding crypto)
+        cursor.execute("""
+            SELECT MAX(price_date::date) as prev_date
+            FROM my_schema.rt_intraday_price
+            WHERE price_date::date < %s
+            AND country = 'IN'
+            AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+        """, (latest_date,))
         prev_date_result = cursor.fetchone()
         prev_date = prev_date_result['prev_date'] if prev_date_result and prev_date_result['prev_date'] else None
         
         # Calculate Equity P&L - sum up individual holdings P&L
         equity_pnl = 0.0
         if prev_date:
-            # Convert prev_date to string format  #
+            # Convert prev_date to string format
             prev_date_str = prev_date.strftime('%Y-%m-%d') if hasattr(prev_date, 'strftime') else str(prev_date)
             cursor.execute("""
                 WITH holdings_today AS (
@@ -3487,18 +3829,24 @@ async def api_today_pnl_summary():
                 today_prices AS (
                     SELECT scrip_id, price_close
                     FROM my_schema.rt_intraday_price
-                    WHERE price_date = %s
+                    WHERE price_date::date = %s
+                    AND country = 'IN'
+                    AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
                 ),
                 latest_prices AS (
                     SELECT scrip_id, price_close, 
                            ROW_NUMBER() OVER (PARTITION BY scrip_id ORDER BY price_date DESC) as rn
                     FROM my_schema.rt_intraday_price
-                    WHERE price_date::date <= CURRENT_DATE
+                    WHERE price_date::date <= %s
+                    AND country = 'IN'
+                    AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
                 ),
                 prev_prices AS (
                     SELECT scrip_id, price_close
                     FROM my_schema.rt_intraday_price
-                    WHERE price_date = %s
+                    WHERE price_date::date = %s
+                    AND country = 'IN'
+                    AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
                 )
                 SELECT 
                     h.instrument_token,
@@ -3516,12 +3864,17 @@ async def api_today_pnl_summary():
                 LEFT JOIN today_prices today_p ON h.trading_symbol = today_p.scrip_id
                 LEFT JOIN latest_prices latest_p ON h.trading_symbol = latest_p.scrip_id AND latest_p.rn = 1
                 LEFT JOIN prev_prices prev_p ON h.trading_symbol = prev_p.scrip_id
-            """, (today_str, prev_date_str))
+            """, (latest_date_str, latest_date_str, prev_date_str))
             
             # Sum up all individual holdings P&L
-            for row in cursor.fetchall():
+            rows = cursor.fetchall()
+            logging.info(f"Found {len(rows)} holdings for P&L calculation")
+            for row in rows:
                 holding_pnl = float(row['today_pnl']) if row['today_pnl'] else 0.0
                 equity_pnl += holding_pnl
+                logging.debug(f"P&L for {row.get('trading_symbol', 'unknown')}: {holding_pnl}")
+            
+            logging.info(f"Total equity P&L: {equity_pnl}")
         
         # Calculate MF P&L (today's change)
         cursor.execute("""
@@ -3659,7 +4012,7 @@ async def api_portfolio_history(days: int = Query(30, ge=1, le=365)):
         return cached_json_response({"error": str(e), "portfolio_history": []}, "/api/portfolio_history")
 
 @app.get("/api/sparkline/{trading_symbol}")
-async def api_sparkline(trading_symbol: str, days: int = Query(30, ge=7, le=90)):
+async def api_sparkline(trading_symbol: str, days: int = Query(90, ge=7, le=90)):
     """API endpoint to get sparkline data for a stock"""
     try:
         conn = get_db_connection()
@@ -3695,18 +4048,97 @@ async def api_sparkline(trading_symbol: str, days: int = Query(30, ge=7, le=90))
         
         conn.close()
         
-        return {
+        result = {
             "trading_symbol": trading_symbol,
             "prices": prices,
             "labels": labels,
             "min_price": min(prices) if prices else 0,
             "max_price": max(prices) if prices else 0
         }
+        return cached_json_response(result, f"/api/sparkline/{trading_symbol}")
     except Exception as e:
         logging.error(f"Error fetching sparkline data: {e}")
         import traceback
         logging.error(traceback.format_exc())
-        return {"error": str(e), "prices": [], "labels": []}
+        return cached_json_response({"error": str(e), "prices": [], "labels": []}, f"/api/sparkline/{trading_symbol}")
+
+@app.post("/api/sparklines/batch")
+async def api_sparklines_batch(request: Request, days: int = Query(90, ge=7, le=90)):
+    """API endpoint to get sparkline data for multiple stocks in a single request"""
+    try:
+        body = await request.json()
+        symbols = body.get('symbols', [])
+        
+        if not symbols or len(symbols) == 0:
+            return cached_json_response({"error": "No symbols provided", "sparklines": {}}, "/api/sparklines/batch")
+        
+        # Limit batch size to prevent abuse
+        if len(symbols) > 50:
+            symbols = symbols[:50]
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get recent price history for all symbols in one query
+        # Use array parameter for PostgreSQL IN clause
+        placeholders = ','.join(['%s'] * len(symbols))
+        cursor.execute(f"""
+            SELECT 
+                scrip_id,
+                price_date::date,
+                price_close as price
+            FROM my_schema.rt_intraday_price
+            WHERE scrip_id IN ({placeholders})
+            AND price_date::date >= CURRENT_DATE - make_interval(days => %s)
+            ORDER BY scrip_id, price_date ASC
+        """, symbols + [days])
+        
+        sparkline_data = cursor.fetchall()
+        conn.close()
+        
+        # Group data by symbol
+        sparklines_dict = {}
+        for symbol in symbols:
+            sparklines_dict[symbol] = {
+                "trading_symbol": symbol,
+                "prices": [],
+                "labels": [],
+                "min_price": 0,
+                "max_price": 0
+            }
+        
+        # Process fetched data
+        for row in sparkline_data:
+            symbol = row['scrip_id']
+            if symbol in sparklines_dict:
+                price = float(row['price']) if row['price'] else 0.0
+                sparklines_dict[symbol]['prices'].append(price)
+                
+                # Handle both string and date objects for price_date
+                price_date = row['price_date']
+                if price_date:
+                    if hasattr(price_date, 'strftime'):
+                        sparklines_dict[symbol]['labels'].append(price_date.strftime('%Y-%m-%d'))
+                    else:
+                        sparklines_dict[symbol]['labels'].append(str(price_date))
+                else:
+                    sparklines_dict[symbol]['labels'].append('')
+        
+        # Calculate min/max for each symbol
+        for symbol, data in sparklines_dict.items():
+            if data['prices']:
+                data['min_price'] = min(data['prices'])
+                data['max_price'] = max(data['prices'])
+        
+        result = {
+            "sparklines": sparklines_dict
+        }
+        return cached_json_response(result, "/api/sparklines/batch")
+    except Exception as e:
+        logging.error(f"Error fetching batch sparkline data: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return cached_json_response({"error": str(e), "sparklines": {}}, "/api/sparklines/batch")
 
 @app.get("/api/candlestick/{trading_symbol}")
 async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90)):

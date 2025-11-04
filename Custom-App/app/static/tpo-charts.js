@@ -143,12 +143,8 @@ class TPOChartRenderer {
             }
 
             // Update margin data in status bar
-            const cashElement = document.getElementById('marginCash');
             const balanceElement = document.getElementById('marginBalance');
             
-            if (cashElement) {
-                cashElement.textContent = `Cash: ₹${data.available_cash.toLocaleString()}`;
-            }
             if (balanceElement) {
                 balanceElement.textContent = `Balance: ₹${data.live_balance.toLocaleString()}`;
             }

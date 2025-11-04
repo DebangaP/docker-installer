@@ -1,3 +1,7 @@
+import sys
+import os
+# Add parent directory to path to find common module
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.Boilerplate import *
 from psycopg2.extras import execute_batch
 from datetime import datetime, timedelta

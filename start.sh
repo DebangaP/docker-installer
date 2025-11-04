@@ -17,11 +17,18 @@ echo "Waiting for 2 minutes for dependencies (like Postgres) to be ready..."
 # Start all scripts in the background BEFORE starting Uvicorn
 echo "Starting background Python scripts..."
 # Set PYTHONPATH to include /app so imports work correctly
-export PYTHONPATH=/app:$PYTHONPATH
-python -m kite.KiteFetchData &
-python -m kite.KiteFetchFuture &
-python -m kite.KiteWS &
-#python -m kite.InsertOHLC &
+# This must be set and exported before running any Python commands
+export PYTHONPATH=/app
+
+# Verify PYTHONPATH is set
+echo "PYTHONPATH is set to: $PYTHONPATH"
+
+# Start background Python scripts
+# Using explicit PYTHONPATH and ensuring we're in /app directory
+(cd /app && PYTHONPATH=/app python -m kite.KiteFetchData) &
+(cd /app && PYTHONPATH=/app python -m kite.KiteFetchFuture) &
+(cd /app && PYTHONPATH=/app python -m kite.KiteWS) &
+#(cd /app && PYTHONPATH=/app python -m kite.InsertOHLC) &
 
 # Start Uvicorn server as the main foreground process.
 # This will keep the container running.
