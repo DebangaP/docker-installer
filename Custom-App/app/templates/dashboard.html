@@ -6218,20 +6218,73 @@
                                     text: `${currentStockSymbol} - Last ${days} Days`
                                 },
                                 tooltip: {
+                                    enabled: true,
+                                    mode: 'index',
+                                    intersect: false,
                                     callbacks: {
+                                        title: function(context) {
+                                            // Show date in tooltip title
+                                            if (context.length > 0 && context[0].raw) {
+                                                const raw = context[0].raw;
+                                                if (raw.x) {
+                                                    const date = new Date(raw.x);
+                                                    return date.toLocaleDateString('en-IN', { 
+                                                        year: 'numeric', 
+                                                        month: 'short', 
+                                                        day: 'numeric' 
+                                                    });
+                                                }
+                                            }
+                                            return '';
+                                        },
                                         label: function(context) {
-                                            let label = context.dataset.label || '';
-                                            if (label) {
-                                                label += ': ';
-                                            }
-                                            if (context.parsed.y !== null) {
-                                                label += context.parsed.y.toFixed(2);
-                                            }
+                                            const dataset = context.dataset;
+                                            const raw = context.raw;
+                                            
                                             // For candlestick data, show OHLC values
-                                            if (context.raw && typeof context.raw === 'object' && 'o' in context.raw) {
-                                                label = `O: ${context.raw.o.toFixed(2)} H: ${context.raw.h.toFixed(2)} L: ${context.raw.l.toFixed(2)} C: ${context.raw.c.toFixed(2)}`;
+                                            if (raw && typeof raw === 'object' && 'o' in raw) {
+                                                const safeValue = (val) => {
+                                                    if (val == null || isNaN(val)) return 'N/A';
+                                                    try {
+                                                        return parseFloat(val).toFixed(2);
+                                                    } catch (e) {
+                                                        return 'N/A';
+                                                    }
+                                                };
+                                                return [
+                                                    `Open: ₹${safeValue(raw.o)}`,
+                                                    `High: ₹${safeValue(raw.h)}`,
+                                                    `Low: ₹${safeValue(raw.l)}`,
+                                                    `Close: ₹${safeValue(raw.c)}`
+                                                ];
                                             }
-                                            return label;
+                                            
+                                            // For line chart datasets (SMA, Supertrend)
+                                            if (raw && typeof raw === 'object' && 'y' in raw) {
+                                                const y = raw.y;
+                                                if (y != null && !isNaN(y)) {
+                                                    try {
+                                                        const yValue = parseFloat(y).toFixed(2);
+                                                        return `${dataset.label || 'Value'}: ₹${yValue}`;
+                                                    } catch (e) {
+                                                        return `${dataset.label || 'Value'}: N/A`;
+                                                    }
+                                                }
+                                            }
+                                            
+                                            // Fallback - try parsed values
+                                            const label = dataset.label || '';
+                                            if (context.parsed && context.parsed.y != null && !isNaN(context.parsed.y)) {
+                                                try {
+                                                    const yValue = parseFloat(context.parsed.y).toFixed(2);
+                                                    return `${label}: ₹${yValue}`;
+                                                } catch (e) {
+                                                    return `${label}: N/A`;
+                                                }
+                                            }
+                                            
+                                            // Return empty string if no valid data
+                                            return label || '';
                                         }
                                     }
                                 }

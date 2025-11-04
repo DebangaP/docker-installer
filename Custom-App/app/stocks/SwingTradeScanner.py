@@ -948,6 +948,202 @@ class SwingTradeScanner:
         
         return patterns
     
+    def _detect_bear_trap(self, price_data: pd.DataFrame, indicators: Dict, current_price: float) -> List[Dict]:
+        """
+        Detect Bear Trap pattern (Bullish reversal)
+        
+        Bear Trap: Price breaks below support, suggesting a breakdown, but then quickly reverses
+        upward, trapping bearish traders who sold short.
+        
+        Characteristics:
+        - Price breaks below a support level (recent low)
+        - Breakdown might have increased volume (bearish sentiment)
+        - Price quickly reverses and moves back above support within 3-5 days
+        - Reversal confirmed by price closing above support
+        """
+        patterns = []
+        if len(price_data) < 15:
+            return patterns
+        
+        try:
+            support_levels = indicators.get('support_levels', [])
+            if not support_levels:
+                return patterns
+            
+            # Get recent price data (last 10 days)
+            recent_data = price_data.tail(10)
+            recent_lows = recent_data['low'].values
+            recent_closes = recent_data['close'].values
+            recent_highs = recent_data['high'].values
+            recent_volumes = recent_data['volume'].values if 'volume' in recent_data.columns else None
+            
+            # Find the nearest support level below current price
+            nearest_support = max([s['price'] for s in support_levels if s['price'] < current_price], default=None)
+            if not nearest_support:
+                return patterns
+            
+            # Check if price broke below support recently (within last 5-7 days)
+            # and then recovered above it
+            breakdown_days = []
+            recovery_days = []
+            
+            for i in range(len(recent_lows) - 1, -1, -1):  # Check from most recent backwards
+                # Check for breakdown (price low below support)
+                if recent_lows[i] < nearest_support * 0.98:  # Broke below support (within 2%)
+                    breakdown_days.append(i)
+                
+                # Check for recovery (price close above support)
+                if recent_closes[i] > nearest_support * 1.02:  # Recovered above support (within 2%)
+                    recovery_days.append(i)
+            
+            # Bear trap detected if:
+            # 1. Price broke below support (breakdown)
+            # 2. Price recovered above support (reversal)
+            # 3. Recovery happened within 3-5 days after breakdown
+            # Note: In tail(10), index 0 is oldest, index 9 is newest
+            if breakdown_days and recovery_days:
+                # Get the most recent breakdown (most recent = largest index)
+                latest_breakdown_idx = max(breakdown_days)
+                # Get recoveries that happened AFTER the breakdown (larger indices)
+                recoveries_after_breakdown = [r for r in recovery_days if r > latest_breakdown_idx]
+                
+                if recoveries_after_breakdown:
+                    # Get the first recovery after breakdown (smallest index after breakdown)
+                    first_recovery_idx = min(recoveries_after_breakdown)
+                    days_to_recovery = first_recovery_idx - latest_breakdown_idx
+                    
+                    # Bear trap confirmed if recovery happened within 5 days after breakdown
+                    if days_to_recovery <= 5 and days_to_recovery >= 1:
+                        # Check if current price is above support (confirmation)
+                        if current_price > nearest_support * 1.01:
+                            # Calculate target based on next resistance
+                            resistance_levels = indicators.get('resistance_levels', [])
+                            if resistance_levels:
+                                next_resistance = min([r['price'] for r in resistance_levels if r['price'] > current_price], default=current_price * 1.12)
+                            else:
+                                next_resistance = current_price * 1.12
+                            
+                            potential_gain = (next_resistance - current_price) / current_price * 100
+                            
+                            if self.min_gain <= potential_gain <= self.max_gain:
+                                rsi = indicators.get('current_rsi')
+                                volume_trend = indicators.get('volume_trend', 'stable')
+                                
+                                patterns.append({
+                                    'pattern_type': 'Bear Trap',
+                                    'direction': 'BUY',
+                                    'entry_price': current_price,
+                                    'target_price': next_resistance,
+                                    'stop_loss': nearest_support * 0.97,
+                                    'potential_gain_pct': potential_gain,
+                                    'rationale': f'Bear Trap detected: Price broke below support ({nearest_support:.2f}) but reversed within {days_to_recovery} day(s), suggesting bullish reversal. Target: {next_resistance:.2f}'
+                                })
+        except Exception as e:
+            logging.debug(f"Error detecting Bear Trap: {e}")
+        
+        return patterns
+    
+    def _detect_dead_cat_bounce(self, price_data: pd.DataFrame, indicators: Dict, current_price: float) -> List[Dict]:
+        """
+        Detect Dead Cat Bounce pattern (Bearish continuation)
+        
+        Dead Cat Bounce: Price has fallen significantly, then bounces up temporarily,
+        but then continues to fall, making a new lower low.
+        
+        Characteristics:
+        - Price has fallen significantly (> 5% over last 10-15 days)
+        - Price then bounces up temporarily (small recovery, 2-5%)
+        - Bounce forms a lower high (not as high as previous peak)
+        - Price then continues to fall, making a new lower low
+        - Volume on bounce should be lower than volume on decline
+        """
+        patterns = []
+        if len(price_data) < 20:
+            return patterns
+        
+        try:
+            # Get price data for analysis (last 20 days)
+            recent_data = price_data.tail(20)
+            recent_closes = recent_data['close'].values
+            recent_highs = recent_data['high'].values
+            recent_lows = recent_data['low'].values
+            recent_volumes = recent_data['volume'].values if 'volume' in recent_data.columns else None
+            
+            # Find the peak before the decline (15-20 days ago)
+            lookback_period = len(recent_data) - 10  # 10 days ago
+            if lookback_period < 5:
+                lookback_period = 5
+            
+            peak_price = recent_highs[:lookback_period].max()
+            peak_idx = np.argmax(recent_highs[:lookback_period])
+            
+            # Find the low after the decline (recent low)
+            recent_low = recent_lows[-10:].min()
+            recent_low_idx = len(recent_data) - 10 + np.argmin(recent_lows[-10:])
+            
+            # Calculate decline percentage
+            decline_pct = ((peak_price - recent_low) / peak_price) * 100
+            
+            # Dead Cat Bounce requires significant decline (> 5%)
+            if decline_pct < 5.0:
+                return patterns
+            
+            # Check for bounce after the low
+            # Look for recovery after the recent low
+            bounce_high = recent_highs[recent_low_idx:].max()
+            bounce_high_idx = recent_low_idx + np.argmax(recent_highs[recent_low_idx:])
+            
+            # Calculate bounce percentage
+            bounce_pct = ((bounce_high - recent_low) / recent_low) * 100
+            
+            # Dead Cat Bounce characteristics:
+            # 1. Significant decline (> 5%)
+            # 2. Small bounce (2-8% recovery)
+            # 3. Bounce forms a lower high (bounce high < peak price)
+            # 4. Current price is falling again after bounce
+            if (5.0 <= bounce_pct <= 8.0 and  # Small bounce
+                bounce_high < peak_price * 0.95 and  # Lower high (at least 5% below peak)
+                current_price < bounce_high * 0.98):  # Price falling after bounce (within 2%)
+                
+                # Check volume confirmation if available
+                volume_confirmation = True
+                if recent_volumes is not None and len(recent_volumes) > 0:
+                    # Volume on decline should be higher than volume on bounce
+                    decline_volume = recent_volumes[peak_idx:recent_low_idx].mean() if recent_low_idx > peak_idx else 0
+                    bounce_volume = recent_volumes[recent_low_idx:bounce_high_idx+1].mean() if bounce_high_idx >= recent_low_idx else 0
+                    
+                    if bounce_volume > 0:
+                        volume_ratio = decline_volume / bounce_volume if bounce_volume > 0 else 1.0
+                        # Volume confirmation: decline volume should be higher (or at least not significantly lower)
+                        volume_confirmation = volume_ratio >= 0.7
+                
+                if volume_confirmation:
+                    # Calculate target (next support or further decline)
+                    support_levels = indicators.get('support_levels', [])
+                    if support_levels:
+                        next_support = max([s['price'] for s in support_levels if s['price'] < current_price], default=current_price * 0.88)
+                    else:
+                        next_support = current_price * 0.88
+                    
+                    potential_gain = abs((next_support - current_price) / current_price * 100)
+                    
+                    if self.min_gain <= potential_gain <= self.max_gain:
+                        rsi = indicators.get('current_rsi')
+                        
+                        patterns.append({
+                            'pattern_type': 'Dead Cat Bounce',
+                            'direction': 'SELL',
+                            'entry_price': current_price,
+                            'target_price': next_support,
+                            'stop_loss': bounce_high * 1.02,
+                            'potential_gain_pct': potential_gain,
+                            'rationale': f'Dead Cat Bounce detected: Price fell {decline_pct:.1f}%, bounced {bounce_pct:.1f}% but forming lower high. Expecting continuation of decline. Target: {next_support:.2f}'
+                        })
+        except Exception as e:
+            logging.debug(f"Error detecting Dead Cat Bounce: {e}")
+        
+        return patterns
+    
     def calculate_confidence(self, pattern: Dict, indicators: Dict, price_data: pd.DataFrame) -> float:
         """
         Calculate confidence score for a pattern (0-100)
@@ -968,7 +1164,9 @@ class SwingTradeScanner:
             'Pullback to Support': 20,
             'Breakout from Consolidation': 25,
             'Oversold Bounce': 20,
-            'MACD Bullish Crossover': 20
+            'MACD Bullish Crossover': 20,
+            'Bear Trap': 25,  # High confidence for bear trap (strong bullish reversal)
+            'Dead Cat Bounce': 25  # High confidence for dead cat bounce (strong bearish continuation)
         }
         confidence += pattern_types.get(pattern['pattern_type'], 15)
         
