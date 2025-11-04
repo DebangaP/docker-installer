@@ -16,9 +16,14 @@ from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional, Tuple
 import logging
 import json
+import os
 import psycopg2
 import psycopg2.extras
+from dotenv import load_dotenv
 from common.Boilerplate import get_db_connection
+
+# Load environment variables
+load_dotenv()
 
 # Try to import Prophet and cmdstanpy
 try:
@@ -99,6 +104,9 @@ class ProphetPricePredictor:
         """
         self.prediction_days = prediction_days
         self.min_data_points = 60  # Minimum days of data required for reliable forecasting
+        # Check if cross-validation is enabled via environment variable
+        self.enable_cross_validation = os.getenv("PROPHET_ENABLE_CROSS_VALIDATION", "false").lower() == "true"
+        logger.info(f"ProphetPricePredictor initialized: cross_validation={self.enable_cross_validation}, prediction_days={self.prediction_days}")
     
     def get_stocks_list(self) -> List[str]:
         """
@@ -130,7 +138,7 @@ class ProphetPricePredictor:
             logger.error(f"Error getting stocks list: {e}")
             return []
     
-    def get_price_data(self, scrip_id: str, days: int = 180) -> Optional[pd.DataFrame]:
+    def get_price_data(self, scrip_id: str, days: int = 140) -> Optional[pd.DataFrame]:
         """
         Get OHLC price data for a stock from rt_intraday_price
         
@@ -223,6 +231,168 @@ class ProphetPricePredictor:
             logger.error(f"Error getting price data for {scrip_id}: {e}")
             return None
     
+    def calculate_mape(self, actual: np.ndarray, predicted: np.ndarray) -> float:
+        """
+        Calculate Mean Absolute Percentage Error (MAPE)
+        
+        Args:
+            actual: Array of actual values
+            predicted: Array of predicted values
+            
+        Returns:
+            MAPE value (percentage)
+        """
+        try:
+            # Filter out zeros to avoid division by zero
+            mask = actual != 0
+            if not mask.any():
+                return float('inf')
+            
+            actual_filtered = actual[mask]
+            predicted_filtered = predicted[mask]
+            
+            mape = np.mean(np.abs((actual_filtered - predicted_filtered) / actual_filtered)) * 100
+            return float(mape)
+        except Exception as e:
+            logger.error(f"Error calculating MAPE: {e}")
+            return float('inf')
+    
+    def calculate_rmse(self, actual: np.ndarray, predicted: np.ndarray) -> float:
+        """
+        Calculate Root Mean Squared Error (RMSE)
+        
+        Args:
+            actual: Array of actual values
+            predicted: Array of predicted values
+            
+        Returns:
+            RMSE value
+        """
+        try:
+            mse = np.mean((actual - predicted) ** 2)
+            rmse = np.sqrt(mse)
+            return float(rmse)
+        except Exception as e:
+            logger.error(f"Error calculating RMSE: {e}")
+            return float('inf')
+    
+    def perform_cross_validation(self, model: Prophet, df: pd.DataFrame, 
+                                initial: str = '365 days', period: str = '90 days', 
+                                horizon: str = '30 days') -> Dict[str, float]:
+        """
+        Perform cross-validation on Prophet model
+        
+        Args:
+            model: Fitted Prophet model
+            df: Historical data DataFrame
+            initial: Initial training period (default: '365 days')
+            period: Period between cutoff dates (default: '90 days')
+            horizon: Forecast horizon (default: '30 days')
+            
+        Returns:
+            Dictionary with MAPE and RMSE metrics
+        """
+        try:
+            from prophet.diagnostics import cross_validation, performance_metrics
+            
+            # Adjust parameters based on available data
+            data_length = len(df)
+            
+            # Calculate minimum required days for cross-validation
+            # initial + period + horizon
+            initial_days = int(initial.split()[0]) if 'days' in initial else 365
+            horizon_days = int(horizon.split()[0]) if 'days' in horizon else 30
+            
+            # Adjust initial period if data is shorter
+            if data_length < initial_days + horizon_days + 30:
+                # Use at least 60% of data for initial training
+                adjusted_initial = max(90, int(data_length * 0.6))
+                initial = f'{adjusted_initial} days'
+                logger.debug(f"Adjusted initial period to {initial} due to limited data (total: {data_length} days)")
+            
+            # Perform cross-validation
+            df_cv = cross_validation(model, initial=initial, period=period, horizon=horizon)
+            
+            if len(df_cv) == 0:
+                logger.warning("Cross-validation returned no results")
+                return {
+                    'mape': float('inf'),
+                    'rmse': float('inf'),
+                    'cv_results_count': 0
+                }
+            
+            # Calculate performance metrics
+            df_metrics = performance_metrics(df_cv)
+            
+            # Extract MAPE and RMSE
+            mape = float(df_metrics['mape'].mean()) if 'mape' in df_metrics.columns else float('inf')
+            rmse = float(df_metrics['rmse'].mean()) if 'rmse' in df_metrics.columns else float('inf')
+            
+            return {
+                'mape': mape,
+                'rmse': rmse,
+                'cv_results_count': len(df_cv)
+            }
+        except Exception as e:
+            logger.warning(f"Cross-validation failed: {e}. Returning default metrics.")
+            import traceback
+            logger.debug(traceback.format_exc())
+            return {
+                'mape': float('inf'),
+                'rmse': float('inf'),
+                'cv_results_count': 0
+            }
+    
+    def evaluate_parameters(self, df: pd.DataFrame, param_grid: List[Dict]) -> Tuple[Dict, Dict]:
+        """
+        Evaluate different parameter settings using cross-validation
+        
+        Args:
+            df: Historical data DataFrame
+            param_grid: List of parameter dictionaries to test
+            
+        Returns:
+            Tuple of (best_params, best_metrics)
+        """
+        best_params = None
+        best_metrics = {'mape': float('inf'), 'rmse': float('inf')}
+        
+        logger.info(f"Evaluating {len(param_grid)} parameter configurations...")
+        
+        for params in param_grid:
+            try:
+                # Create model with current parameters
+                model = Prophet(
+                    daily_seasonality=params.get('daily_seasonality', False),
+                    weekly_seasonality=params.get('weekly_seasonality', True),
+                    yearly_seasonality=params.get('yearly_seasonality', False),
+                    changepoint_prior_scale=params.get('changepoint_prior_scale', 0.05),
+                    changepoint_range=params.get('changepoint_range', 0.95),
+                    seasonality_prior_scale=params.get('seasonality_prior_scale', 10.0),
+                    interval_width=params.get('interval_width', 0.80)
+                )
+                
+                # Fit model
+                model.fit(df)
+                
+                # Perform cross-validation
+                cv_metrics = self.perform_cross_validation(model, df)
+                
+                # Check if this is the best configuration
+                # Use MAPE as primary metric, RMSE as secondary
+                if cv_metrics['mape'] < best_metrics['mape'] or \
+                   (cv_metrics['mape'] == best_metrics['mape'] and cv_metrics['rmse'] < best_metrics['rmse']):
+                    best_params = params.copy()
+                    best_metrics = cv_metrics.copy()
+                    logger.debug(f"New best parameters: MAPE={cv_metrics['mape']:.2f}%, RMSE={cv_metrics['rmse']:.2f}")
+                
+            except Exception as e:
+                logger.warning(f"Error evaluating parameters {params}: {e}")
+                continue
+        
+        logger.info(f"Best parameters: {best_params}, MAPE: {best_metrics['mape']:.2f}%, RMSE: {best_metrics['rmse']:.2f}")
+        return best_params, best_metrics
+    
     def predict_price(self, scrip_id: str, current_price: Optional[float] = None, prediction_days: Optional[int] = None) -> Optional[Dict]:
         """
         Generate price prediction for a stock using Prophet
@@ -269,15 +439,90 @@ class ProphetPricePredictor:
                     logger.error(f"Prophet is not available. Make sure 'prophet' and 'cmdstanpy' are installed.")
                     return None
                 
+                # Define default Prophet model parameters
+                default_model_params = {
+                    'changepoint_prior_scale': 0.05,  # More conservative changepoints for stock data
+                    'changepoint_range': 0.95,  # Allow changepoints in first 95% of data (default is 0.8)
+                    'seasonality_prior_scale': 10.0,
+                    'interval_width': 0.80  # 80% confidence interval
+                }
+                
+                # Initialize metrics for cross-validation
+                cv_metrics = None
+                
+                # Perform cross-validation if enabled
+                # Need at least 180 days of data for meaningful cross-validation
+                data_days = len(prophet_df)
+                if self.enable_cross_validation:
+                    if data_days >= 140:
+                        logger.info(f"Cross-validation enabled for {scrip_id} (data_days={data_days}). Evaluating parameter settings...")
+                    else:
+                        logger.debug(f"Cross-validation enabled but insufficient data for {scrip_id}: {data_days} days < 180 days required")
+                else:
+                    logger.debug(f"Cross-validation disabled for {scrip_id} (data_days={data_days})")
+                
+                if self.enable_cross_validation and data_days >= 140:
+                    
+                    # Define parameter grid to test
+                    param_grid = [
+                        default_model_params,  # Default parameters
+                        {
+                            'changepoint_prior_scale': 0.01,
+                            'changepoint_range': 0.95,
+                            'seasonality_prior_scale': 10.0,
+                            'interval_width': 0.80
+                        },
+                        {
+                            'changepoint_prior_scale': 0.10,
+                            'changepoint_range': 0.95,
+                            'seasonality_prior_scale': 10.0,
+                            'interval_width': 0.80
+                        },
+                        {
+                            'changepoint_prior_scale': 0.05,
+                            'changepoint_range': 0.90,
+                            'seasonality_prior_scale': 10.0,
+                            'interval_width': 0.80
+                        },
+                        {
+                            'changepoint_prior_scale': 0.05,
+                            'changepoint_range': 0.95,
+                            'seasonality_prior_scale': 5.0,
+                            'interval_width': 0.80
+                        },
+                        {
+                            'changepoint_prior_scale': 0.05,
+                            'changepoint_range': 0.95,
+                            'seasonality_prior_scale': 15.0,
+                            'interval_width': 0.80
+                        }
+                    ]
+                    
+                    # Evaluate parameters and get best configuration
+                    best_params, best_metrics = self.evaluate_parameters(prophet_df, param_grid)
+                    
+                    if best_params:
+                        model_params = best_params
+                        cv_metrics = best_metrics
+                        logger.info(f"Best parameters for {scrip_id}: MAPE={best_metrics.get('mape', 'N/A')}, RMSE={best_metrics.get('rmse', 'N/A')}")
+                        logger.debug(f"cv_metrics set for {scrip_id}: {cv_metrics}")
+                    else:
+                        model_params = default_model_params
+                        logger.warning(f"Cross-validation failed for {scrip_id} (best_params=None). Using default parameters. best_metrics={best_metrics}")
+                else:
+                    model_params = default_model_params
+                    if self.enable_cross_validation:
+                        logger.debug(f"Not enough data for cross-validation for {scrip_id}. Using default parameters.")
+                
                 # Ensure Prophet is properly initialized with cmdstanpy backend
                 model = Prophet(
                     daily_seasonality=False,
                     weekly_seasonality=True,
                     yearly_seasonality=False,
-                    changepoint_prior_scale=0.05,  # More conservative changepoints for stock data
-                    changepoint_range=0.95,  # Allow changepoints in first 95% of data (default is 0.8)
-                    seasonality_prior_scale=10.0,
-                    interval_width=0.80  # 80% confidence interval
+                    changepoint_prior_scale=model_params['changepoint_prior_scale'],
+                    changepoint_range=model_params['changepoint_range'],
+                    seasonality_prior_scale=model_params['seasonality_prior_scale'],
+                    interval_width=model_params['interval_width']
                 )
                 
                 # Fit the model (silently)
@@ -346,7 +591,7 @@ class ProphetPricePredictor:
                 })
             
             # Ensure all values are native Python types
-            return {
+            result = {
                 'scrip_id': scrip_id,
                 'current_price': convert_numpy_to_native(current_price),
                 'predicted_price': convert_numpy_to_native(predicted_price),
@@ -357,8 +602,44 @@ class ProphetPricePredictor:
                 'lower_bound': convert_numpy_to_native(lower_bound),
                 'upper_bound': convert_numpy_to_native(upper_bound),
                 'daily_predictions': convert_numpy_to_native(daily_predictions),
-                'data_points_used': len(prophet_df)
+                'data_points_used': len(prophet_df),
+                'model_params': model_params  # Include model parameters
             }
+            
+            # Add cross-validation metrics if available
+            if cv_metrics:
+                logger.debug(f"Processing cv_metrics for {scrip_id}: {cv_metrics}")
+                mape_value = cv_metrics.get('mape')
+                rmse_value = cv_metrics.get('rmse')
+                logger.debug(f"Raw values for {scrip_id}: mape_value={mape_value} (type={type(mape_value)}), rmse_value={rmse_value} (type={type(rmse_value)})")
+                
+                # Convert infinity to None for storage
+                if mape_value is not None and mape_value != float('inf') and mape_value != float('-inf'):
+                    mape_value = float(mape_value)
+                else:
+                    mape_value = None
+                    
+                if rmse_value is not None and rmse_value != float('inf') and rmse_value != float('-inf'):
+                    rmse_value = float(rmse_value)
+                else:
+                    rmse_value = None
+                
+                logger.debug(f"After conversion for {scrip_id}: mape_value={mape_value}, rmse_value={rmse_value}")
+                
+                # Only save cv_metrics if both values are valid (not None)
+                if mape_value is not None and rmse_value is not None:
+                    result['cv_metrics'] = {
+                        'mape': convert_numpy_to_native(mape_value),
+                        'rmse': convert_numpy_to_native(rmse_value),
+                        'cv_results_count': convert_numpy_to_native(cv_metrics.get('cv_results_count', 0))
+                    }
+                    logger.info(f"Added cv_metrics to result for {scrip_id}: MAPE={mape_value}, RMSE={rmse_value}")
+                else:
+                    logger.warning(f"Skipping cv_metrics for {scrip_id}: MAPE={mape_value}, RMSE={rmse_value} (invalid values)")
+            else:
+                logger.debug(f"No cv_metrics for {scrip_id}")
+            
+            return result
             
         except Exception as e:
             logger.error(f"Error predicting price for {scrip_id}: {e}")
@@ -386,8 +667,12 @@ class ProphetPricePredictor:
         errors = []
         skipped = []
         total = len(stocks)
+        cv_enabled_count = 0
+        cv_ran_count = 0
+        cv_failed_count = 0
+        insufficient_data_count = 0
         
-        logger.info(f"Starting Prophet predictions for {total} stocks...")
+        logger.info(f"Starting Prophet predictions for {total} stocks (cross_validation={self.enable_cross_validation})...")
         
         for idx, stock in enumerate(stocks, 1):
             # Log progress every 10 stocks or at milestones (10%, 25%, 50%, 75%, 100%)
@@ -398,6 +683,9 @@ class ProphetPricePredictor:
                 prediction = self.predict_price(stock, prediction_days=prediction_days)
                 if prediction:
                     predictions.append(prediction)
+                    # Track cv_metrics in predictions
+                    if prediction.get('cv_metrics'):
+                        cv_ran_count += 1
                 else:
                     skipped.append(stock)
             except Exception as e:
@@ -407,6 +695,8 @@ class ProphetPricePredictor:
         
         # Summary log
         logger.info(f"✓ Prophet predictions completed: {len(predictions)} successful, {len(skipped)} skipped, {len(errors)} errors out of {total} stocks")
+        if self.enable_cross_validation:
+            logger.info(f"  Cross-validation: {cv_ran_count} predictions have cv_metrics out of {len(predictions)} successful predictions")
         if errors:
             logger.warning(f"Stocks with errors: {', '.join([s[0] for s in errors[:10]])}{' ...' if len(errors) > 10 else ''}")
         
@@ -496,8 +786,33 @@ class ProphetPricePredictor:
                         'upper_bound': pred.get('upper_bound'),
                         'data_points_used': pred.get('data_points_used', 0),
                         'daily_predictions': pred.get('daily_predictions', []),
-                        'prediction_days': pred.get('prediction_days', prediction_days)
+                        'prediction_days': pred.get('prediction_days', prediction_days),
+                        'model_params': pred.get('model_params', {
+                            'changepoint_prior_scale': 0.05,
+                            'changepoint_range': 0.95,
+                            'seasonality_prior_scale': 10.0,
+                            'interval_width': 0.80
+                        })
                     }
+                    
+                    # Only include cv_metrics if it exists and has valid values
+                    cv_metrics_from_pred = pred.get('cv_metrics')
+                    if cv_metrics_from_pred:
+                        cv_metrics_count += 1
+                        if isinstance(cv_metrics_from_pred, dict):
+                            mape = cv_metrics_from_pred.get('mape')
+                            rmse = cv_metrics_from_pred.get('rmse')
+                            # Only include if both are valid (not None, not infinity)
+                            if mape is not None and rmse is not None and mape != float('inf') and rmse != float('inf'):
+                                prediction_details['cv_metrics'] = cv_metrics_from_pred
+                                cv_metrics_valid_count += 1
+                                logger.debug(f"Including cv_metrics for {scrip_id}: MAPE={mape}, RMSE={rmse}")
+                            else:
+                                cv_metrics_invalid_count += 1
+                                logger.debug(f"Skipping cv_metrics for {scrip_id}: MAPE={mape}, RMSE={rmse} (invalid values)")
+                        else:
+                            cv_metrics_invalid_count += 1
+                            logger.debug(f"cv_metrics for {scrip_id} is not a dict: {type(cv_metrics_from_pred)}")
                     
                     rows.append((
                         scrip_id,
@@ -582,6 +897,9 @@ class ProphetPricePredictor:
                     logger.info(f"Successfully saved {total_inserted} predictions in {successful_batches} batch(es) out of {total_batches} total batches")
                 if failed_batches > 0:
                     logger.warning(f"Failed to save {total_rows - total_inserted} predictions in {failed_batches} failed batch(es)")
+                
+                # Log cv_metrics summary
+                logger.info(f"cv_metrics summary: {cv_metrics_count} predictions had cv_metrics, {cv_metrics_valid_count} valid, {cv_metrics_invalid_count} invalid out of {len(predictions)} total predictions")
                 
                 # Return True if at least some data was saved
                 if total_inserted > 0:
@@ -777,11 +1095,112 @@ class ProphetPricePredictor:
                         nifty_prediction = dict(nifty_result)
                         break
             
+            # Parse prediction_details JSON and extract cv_metrics for each gainer
+            for gainer in top_gainers:
+                prediction_details = gainer.get('prediction_details')
+                if prediction_details:
+                    try:
+                        # PostgreSQL JSONB might return as dict or string depending on psycopg2 version
+                        if isinstance(prediction_details, str):
+                            details = json.loads(prediction_details)
+                        elif isinstance(prediction_details, dict):
+                            details = prediction_details
+                        else:
+                            # Try to convert to string first
+                            details = json.loads(str(prediction_details))
+                        
+                        # Log what's in prediction_details for debugging
+                        logger.debug(f"prediction_details for {gainer.get('scrip_id')}: keys={list(details.keys()) if isinstance(details, dict) else 'not a dict'}")
+                        
+                        cv_metrics = details.get('cv_metrics')
+                        logger.debug(f"cv_metrics for {gainer.get('scrip_id')}: {cv_metrics}, type={type(cv_metrics)}")
+                        
+                        if cv_metrics and isinstance(cv_metrics, dict):
+                            # Handle None, infinity, or invalid values
+                            mape_value = cv_metrics.get('mape')
+                            rmse_value = cv_metrics.get('rmse')
+                            
+                            logger.debug(f"Raw cv_metrics values for {gainer.get('scrip_id')}: mape={mape_value}, rmse={rmse_value}")
+                            
+                            # Convert infinity strings or infinity values to None
+                            if mape_value is None or mape_value == float('inf') or mape_value == float('-inf') or (isinstance(mape_value, str) and mape_value.lower() in ['inf', 'infinity', 'nan']):
+                                gainer['cv_mape'] = None
+                            else:
+                                try:
+                                    gainer['cv_mape'] = float(mape_value) if mape_value is not None else None
+                                except (ValueError, TypeError):
+                                    gainer['cv_mape'] = None
+                            
+                            if rmse_value is None or rmse_value == float('inf') or rmse_value == float('-inf') or (isinstance(rmse_value, str) and rmse_value.lower() in ['inf', 'infinity', 'nan']):
+                                gainer['cv_rmse'] = None
+                            else:
+                                try:
+                                    gainer['cv_rmse'] = float(rmse_value) if rmse_value is not None else None
+                                except (ValueError, TypeError):
+                                    gainer['cv_rmse'] = None
+                            
+                            logger.debug(f"Extracted cv_metrics for {gainer.get('scrip_id')}: MAPE={gainer['cv_mape']}, RMSE={gainer['cv_rmse']}")
+                        else:
+                            gainer['cv_mape'] = None
+                            gainer['cv_rmse'] = None
+                            logger.info(f"No cv_metrics found in prediction_details for {gainer.get('scrip_id')}. cv_metrics={cv_metrics}. This may mean predictions were generated before cross-validation was enabled. Regenerate predictions with PROPHET_ENABLE_CROSS_VALIDATION=true")
+                    except (json.JSONDecodeError, Exception) as e:
+                        logger.warning(f"Error parsing prediction_details for {gainer.get('scrip_id')}: {e}, type={type(prediction_details)}")
+                        gainer['cv_mape'] = None
+                        gainer['cv_rmse'] = None
+                else:
+                    gainer['cv_mape'] = None
+                    gainer['cv_rmse'] = None
+                    logger.debug(f"No prediction_details found for {gainer.get('scrip_id')}")
+            
             cursor.close()
             conn.close()
             
             # If we found Nifty50 and it's not in the list, ensure it's included
             if nifty_prediction and not nifty_included:
+                # Parse prediction_details for Nifty50
+                prediction_details = nifty_prediction.get('prediction_details')
+                if prediction_details:
+                    try:
+                        # PostgreSQL JSONB might return as dict or string depending on psycopg2 version
+                        if isinstance(prediction_details, str):
+                            details = json.loads(prediction_details)
+                        elif isinstance(prediction_details, dict):
+                            details = prediction_details
+                        else:
+                            # Try to convert to string first
+                            details = json.loads(str(prediction_details))
+                        
+                        cv_metrics = details.get('cv_metrics')
+                        if cv_metrics and isinstance(cv_metrics, dict):
+                            # Handle None, infinity, or invalid values
+                            mape_value = cv_metrics.get('mape')
+                            rmse_value = cv_metrics.get('rmse')
+                            
+                            # Convert infinity strings or infinity values to None
+                            if mape_value is None or mape_value == float('inf') or mape_value == float('-inf') or (isinstance(mape_value, str) and mape_value.lower() in ['inf', 'infinity', 'nan']):
+                                nifty_prediction['cv_mape'] = None
+                            else:
+                                try:
+                                    nifty_prediction['cv_mape'] = float(mape_value) if mape_value is not None else None
+                                except (ValueError, TypeError):
+                                    nifty_prediction['cv_mape'] = None
+                            
+                            if rmse_value is None or rmse_value == float('inf') or rmse_value == float('-inf') or (isinstance(rmse_value, str) and rmse_value.lower() in ['inf', 'infinity', 'nan']):
+                                nifty_prediction['cv_rmse'] = None
+                            else:
+                                try:
+                                    nifty_prediction['cv_rmse'] = float(rmse_value) if rmse_value is not None else None
+                                except (ValueError, TypeError):
+                                    nifty_prediction['cv_rmse'] = None
+                    except (json.JSONDecodeError, Exception) as e:
+                        logger.warning(f"Error parsing prediction_details for Nifty50: {e}, type={type(prediction_details)}")
+                        nifty_prediction['cv_mape'] = None
+                        nifty_prediction['cv_rmse'] = None
+                else:
+                    nifty_prediction['cv_mape'] = None
+                    nifty_prediction['cv_rmse'] = None
+                
                 # Remove the lowest gainer if we have exactly 'limit' items
                 if len(top_gainers) >= limit:
                     # Sort to ensure we remove the lowest

@@ -4,26 +4,35 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.Boilerplate import *
 from psycopg2.extras import execute_batch
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import time
+import pytz
 
 def insert_options_tick_data(conn, tick_data, instrument_info):
     """Insert options tick data into database"""
     try:
         with conn.cursor() as cursor:
             # Insert core tick data
+            # Explicitly set run_date to IST date to avoid timezone mismatch
+            # PostgreSQL's CURRENT_DATE uses database timezone, which might be UTC
+            # We want to use IST date (Asia/Kolkata) for run_date
+            ist = pytz.timezone('Asia/Kolkata')
+            ist_now = datetime.now(ist)
+            ist_date = ist_now.date()
+            
             tick_sql = """
                 INSERT INTO my_schema.options_ticks 
-                (instrument_token, timestamp, last_trade_time, last_price, last_quantity, buy_quantity, sell_quantity, volume,
+                (instrument_token, timestamp, run_date, last_trade_time, last_price, last_quantity, buy_quantity, sell_quantity, volume,
                  average_price, oi, oi_day_high, oi_day_low, net_change, lower_circuit_limit, upper_circuit_limit,
                  strike_price, option_type, expiry, tradingsymbol)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """
 
             tick_values = (
                 tick_data['instrument_token'],
                 tick_data.get('timestamp') or datetime.now(),
+                ist_date,  # Explicitly set run_date to today's date in IST timezone
                 tick_data.get('last_trade_time'),
                 tick_data.get('last_price'),
                 tick_data.get('last_quantity'),
@@ -94,6 +103,12 @@ def insert_options_tick_data(conn, tick_data, instrument_info):
 
 def fetch_and_save_options():
     """Fetch and save all NIFTY options data from Kite API"""
+    # Set up logging to see if cron is running
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logging.info("="*50)
+    logging.info("KiteFetchOptions started")
+    logging.info(f"Current Python date: {date.today()}")
+    logging.info(f"Current Python datetime: {datetime.now()}")
     try:
         # Ensure database connection is initialized
         global conn
@@ -232,6 +247,8 @@ def fetch_and_save_options():
                 continue
         
         logging.info(f"Successfully fetched options data: {fetched_count} successful, {failed_count} failed out of {total_symbols} total")
+        logging.info(f"KiteFetchOptions completed successfully at {datetime.now()}")
+        logging.info("="*50)
         
         return {
             "success": True,
@@ -244,6 +261,7 @@ def fetch_and_save_options():
         logging.error(f"Error in fetch_and_save_options: {e}")
         import traceback
         logging.error(traceback.format_exc())
+        logging.error("="*50)
         return {"success": False, "error": str(e), "fetched_count": 0, "total_symbols": 0}
     finally:
         # Close database connection

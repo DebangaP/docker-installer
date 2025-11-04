@@ -669,21 +669,6 @@
             </div>
         </div>
 
-        <!-- Latest 5 Options Table -->
-        <div class="card" style="margin-bottom: 20px;">
-            <div class="card-header" style="padding: 15px 25px; background-color: #17a2b8; color: white;">
-                <h3 class="card-title" style="font-size: 16px; color: white;">📋 Latest 5 Options</h3>
-                <button onclick="loadLatestOptions()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #17a2b8; border: none; margin-left: 10px;">
-                    🔄 Refresh
-                </button>
-            </div>
-            <div id="latestOptionsContainer" style="padding: 15px;">
-                <div style="text-align: center; padding: 20px; color: #666;">
-                    Click "Refresh" to load latest options
-                </div>
-            </div>
-        </div>
-
         <!-- TPO-Based Derivatives Suggestions Section -->
         <div class="card" style="margin-bottom: 20px;">
             <div class="card-header" style="padding: 15px 25px;">
@@ -889,13 +874,15 @@
                                     <th onclick="sortSwingTrades('ghost')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px; cursor: pointer; user-select: none; color: #87CEEB;" title="Click to sort by Ghost Prediction">
                                         Ghost Prediction (60D) <span id="sort-ghost-icon"></span>
                                     </th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Mean Absolute Percentage Error">MAPE (%)</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Root Mean Squared Error">RMSE</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Days</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Rationale</th>
                                 </tr>
                             </thead>
                             <tbody id="swingTradesTableBody">
                                 <tr>
-                                    <td colspan="12" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Click Refresh to load swing trade recommendations</td>
+                                    <td colspan="14" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Click Refresh to load swing trade recommendations</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -940,6 +927,8 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Ghost Confidence</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Days in Leaderboard</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;" title="Mean Absolute Percentage Error">MAPE (%)</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;" title="Root Mean Squared Error">RMSE</th>
                                 </tr>
                             </thead>
                             <tbody id="topGainersTableBody">
@@ -1332,6 +1321,8 @@
                             <th onclick="sortHoldings('today_pnl')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_today_pnl">Today's P&L ↕</th>
                             <th onclick="sortHoldings('prophet_prediction_pct')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_prophet_prediction_pct">Ghost Prediction (60D) ↕</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Confidence</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Mean Absolute Percentage Error">MAPE (%)</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Root Mean Squared Error">RMSE</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Actions</th>
                         </tr>
                     </thead>
@@ -1426,6 +1417,36 @@
                                         {% else %}
                                             <span style="color: #dc3545; font-weight: bold;">{{ "%.0f"|format(conf) }}%</span>
                                         {% endif %}
+                                    {% else %}
+                                        <span style="color: #999; font-size: 12px;">N/A</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span style="color: #999; font-size: 12px;">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">
+                                {% if holding.prophet_cv_mape is not none and holding.prophet_cv_mape is defined %}
+                                    {% set mape = holding.prophet_cv_mape %}
+                                    {% if mape is not none and mape != float('inf') %}
+                                        {% if mape < 50 %}
+                                            <span style="color: #28a745;">{{ "%.2f"|format(mape) }}%</span>
+                                        {% elif mape < 100 %}
+                                            <span style="color: #ffc107;">{{ "%.2f"|format(mape) }}%</span>
+                                        {% else %}
+                                            <span style="color: #999;">{{ "%.2f"|format(mape) }}%</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span style="color: #999; font-size: 12px;">N/A</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span style="color: #999; font-size: 12px;">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">
+                                {% if holding.prophet_cv_rmse is not none and holding.prophet_cv_rmse is defined %}
+                                    {% set rmse = holding.prophet_cv_rmse %}
+                                    {% if rmse is not none and rmse != float('inf') %}
+                                        <span style="color: #666;">{{ "%.2f"|format(rmse) }}</span>
                                     {% else %}
                                         <span style="color: #999; font-size: 12px;">N/A</span>
                                     {% endif %}
@@ -2365,6 +2386,21 @@
                                         }
                                     ` : `<span style="color: #999; font-size: 12px;">N/A</span>`}
                                 </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">
+                                    ${holding.prophet_cv_mape !== null && holding.prophet_cv_mape !== undefined && !isNaN(holding.prophet_cv_mape) && holding.prophet_cv_mape !== Infinity ? `
+                                        ${holding.prophet_cv_mape < 50 ? 
+                                            `<span style="color: #28a745;">${holding.prophet_cv_mape.toFixed(2)}%</span>` : 
+                                            holding.prophet_cv_mape < 100 ? 
+                                            `<span style="color: #ffc107;">${holding.prophet_cv_mape.toFixed(2)}%</span>` : 
+                                            `<span style="color: #999;">${holding.prophet_cv_mape.toFixed(2)}%</span>`
+                                        }
+                                    ` : '<span style="color: #999; font-size: 12px;">N/A</span>'}
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">
+                                    ${holding.prophet_cv_rmse !== null && holding.prophet_cv_rmse !== undefined && !isNaN(holding.prophet_cv_rmse) && holding.prophet_cv_rmse !== Infinity ? `
+                                        <span style="color: #666;">${holding.prophet_cv_rmse.toFixed(2)}</span>
+                                    ` : '<span style="color: #999; font-size: 12px;">N/A</span>'}
+                                </td>
                                 <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">
                                     <div style="display: flex; gap: 4px; justify-content: center; flex-wrap: wrap;">
                                         <button class="btn btn-success" style="padding: 4px 8px; font-size: 13px;" onclick="buyMore('${holding.instrument_token}', '${holding.trading_symbol}')">
@@ -3136,97 +3172,6 @@
             `;
             
             container.innerHTML = html;
-        }
-        
-        // Load Latest 5 Options
-        function loadLatestOptions() {
-            const container = document.getElementById('latestOptionsContainer');
-            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading latest options...</div>';
-            
-            fetch('/api/options_latest?limit=5')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error || !data.success) {
-                        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load latest options'}</div>`;
-                        return;
-                    }
-                    
-                    if (!data.options || data.options.length === 0) {
-                        container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">No options data available for today</div>';
-                        return;
-                    }
-                    
-                    // Filter out options that don't have OI, Buy Qty, or Sell Qty
-                    const filteredOptions = data.options.filter(option => {
-                        const hasOI = option.oi && option.oi > 0;
-                        const hasBuyQty = option.buy_quantity && option.buy_quantity > 0;
-                        const hasSellQty = option.sell_quantity && option.sell_quantity > 0;
-                        return hasOI || hasBuyQty || hasSellQty;
-                    });
-                    
-                    if (filteredOptions.length === 0) {
-                        container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">No options with OI, Buy Qty, or Sell Qty available</div>';
-                        return;
-                    }
-                    
-                    let html = `
-                        <div style="overflow-x: auto;">
-                            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                                <thead>
-                                    <tr style="background-color: #17a2b8; color: white;">
-                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: left; font-size: 12px;">Symbol</th>
-                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">Type</th>
-                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">Strike</th>
-                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">Price</th>
-                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">Volume</th>
-                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">OI</th>
-                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">Buy Qty</th>
-                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">Sell Qty</th>
-                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">Expiry</th>
-                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">Timestamp</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                    `;
-                    
-                    filteredOptions.forEach((option, index) => {
-                        html += `
-                            <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : '#f8f9fa'};">
-                                <td style="padding: 8px; border: 1px solid #ddd; font-weight: 600; font-size: 12px;">${option.tradingsymbol || 'N/A'}</td>
-                                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
-                                    <span style="padding: 3px 8px; border-radius: 4px; background-color: ${option.option_type === 'CE' ? '#d4edda' : '#f8d7da'}; color: ${option.option_type === 'CE' ? '#155724' : '#721c24'}; font-weight: 600; font-size: 11px;">
-                                        ${option.option_type || 'N/A'}
-                                    </span>
-                                </td>
-                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">₹${option.strike_price ? option.strike_price.toFixed(2) : 'N/A'}</td>
-                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">₹${option.last_price ? option.last_price.toFixed(2) : 'N/A'}</td>
-                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">${option.volume ? option.volume.toLocaleString() : 'N/A'}</td>
-                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">${option.oi ? option.oi.toLocaleString() : 'N/A'}</td>
-                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; color: #28a745;">${option.buy_quantity ? option.buy_quantity.toLocaleString() : 'N/A'}</td>
-                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; color: #dc3545;">${option.sell_quantity ? option.sell_quantity.toLocaleString() : 'N/A'}</td>
-                                <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 11px;">${option.expiry || 'N/A'}</td>
-                                <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 11px;">${option.timestamp || 'N/A'}</td>
-                            </tr>
-                        `;
-                    });
-                    
-                    html += `
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
-                    
-                    container.innerHTML = html;
-                })
-                .catch(error => {
-                    console.error('Error fetching latest options:', error);
-                    container.innerHTML = `
-                        <div style="text-align: center; padding: 20px; color: #dc3545;">
-                            <strong>Error loading latest options</strong><br>
-                            <small>${error.message || 'Unknown error'}</small>
-                        </div>
-                    `;
-                });
         }
         
         function loadDerivativesSuggestions() {
@@ -4779,7 +4724,6 @@
             loadPositions();
             loadPremarketAnalysis(); // Load pre-market analysis on page load
             loadOptionsScanner(); // Load options scanner on page load
-            loadLatestOptions(); // Load latest 5 options on page load
             
             // Mark Live Market tab as loaded
             TabLoadTracker.markLoaded('live-market');
@@ -5302,7 +5246,7 @@
             tbody.innerHTML = '';
             
             if (filteredSwingTrades.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">No recommendations found matching the filters</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="14" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">No recommendations found matching the filters</td></tr>';
                 updateSwingTradePagination(0);
                 return;
             }
@@ -5433,6 +5377,23 @@
                 const confidenceColor = maxConfidence >= 80 ? '#28a745' : maxConfidence >= 70 ? '#ffc107' : '#dc3545';
                 const prophetColor = prophetPred !== null && prophetPred >= 0 ? '#28a745' : prophetPred !== null ? '#dc3545' : '#999';
                 
+                // Extract MAPE and RMSE from prophet predictions
+                const prophetCvMape = trades[0].prophet_cv_mape !== undefined ? trades[0].prophet_cv_mape : null;
+                const prophetCvRmse = trades[0].prophet_cv_rmse !== undefined ? trades[0].prophet_cv_rmse : null;
+                
+                // Debug logging for first trade
+                if (symbols.length === 0) {
+                    console.log('Sample swing trade data:', trades[0]);
+                    console.log('prophet_cv_mape:', prophetCvMape, 'type:', typeof prophetCvMape);
+                    console.log('prophet_cv_rmse:', prophetCvRmse, 'type:', typeof prophetCvRmse);
+                }
+                
+                // Format MAPE and RMSE
+                const mapeDisplay = (prophetCvMape !== null && prophetCvMape !== undefined && !isNaN(prophetCvMape) && prophetCvMape !== Infinity) 
+                    ? prophetCvMape.toFixed(2) + '%' : 'N/A';
+                const rmseDisplay = (prophetCvRmse !== null && prophetCvRmse !== undefined && !isNaN(prophetCvRmse) && prophetCvRmse !== Infinity) 
+                    ? prophetCvRmse.toFixed(2) : 'N/A';
+                
                 const row = `
                     <tr style="border-bottom: 1px solid #eee;">
                         <td style="padding: 12px; border: 1px solid #ddd; font-weight: bold; font-size: 14px;">${symbol}</td>
@@ -5456,6 +5417,12 @@
                                 <div style="font-size: 11px; color: #87CEEB;">Conf: ${prophetConf !== null && !isNaN(prophetConf) ? prophetConf.toFixed(0) : 'N/A'}%</div>
                                 <div style="font-size: 11px; color: #87CEEB;">${predictionDays === 30 ? '30D' : predictionDays ? predictionDays + 'D' : 'N/A'}</div>
                             ` : '<span style="color: #999; font-size: 12px;">N/A</span>'}
+                        </td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px; color: ${prophetCvMape !== null && prophetCvMape !== undefined && !isNaN(prophetCvMape) && prophetCvMape !== Infinity && prophetCvMape < 50 ? '#28a745' : prophetCvMape !== null && prophetCvMape !== undefined && !isNaN(prophetCvMape) && prophetCvMape !== Infinity && prophetCvMape < 100 ? '#ffc107' : '#999'};">
+                            ${mapeDisplay}
+                        </td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px; color: ${prophetCvRmse !== null && prophetCvRmse !== undefined && !isNaN(prophetCvRmse) && prophetCvRmse !== Infinity ? '#666' : '#999'};">
+                            ${rmseDisplay}
                         </td>
                         <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">${avgHoldingPeriod || '-'}</td>
                         <td style="padding: 12px; border: 1px solid #ddd; font-size: 12px; max-width: 350px; word-wrap: break-word; white-space: normal; line-height: 1.4;" title="${rationale}">${rationale}</td>
@@ -5684,7 +5651,7 @@
                 .then(data => {
                     if (data.error || !data.success) {
                         statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${data.error || 'Failed to load top gainers'}</span>`;
-                        tbody.innerHTML = '<tr><td colspan="9" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading top gainers</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="11" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading top gainers</td></tr>';
                         return;
                     }
                     
@@ -5698,7 +5665,7 @@
                     
                     if (topGainers.length === 0) {
                         statusDiv.innerHTML = '<span style="color: #ffc107;">⚠️ No predictions available. Click "Generate Predictions" button to create predictions.</span>';
-                        tbody.innerHTML = `<tr><td colspan="9" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">
+                        tbody.innerHTML = `<tr><td colspan="11" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">
                             No top gainers found. <button onclick="generateProphetPredictionsWithDays()" style="padding: 6px 12px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 8px; font-size: 11px;">⚡ Generate Predictions Now</button>
                         </td></tr>`;
                         return;
@@ -5715,11 +5682,26 @@
                         const confidence = gainer.prediction_confidence || 0;
                         const predictionDays = gainer.prediction_days || 30;
                         const daysInLeaderboard = gainer.days_in_leaderboard || 0;
+                        const cvMape = gainer.cv_mape;
+                        const cvRmse = gainer.cv_rmse;
+                        
+                        // Debug logging
+                        if (index === 0) {
+                            console.log('Sample gainer data:', gainer);
+                            console.log('cv_mape:', cvMape, 'type:', typeof cvMape);
+                            console.log('cv_rmse:', cvRmse, 'type:', typeof cvRmse);
+                        }
                         
                         symbols.push(symbol);
                         
                         const gainColor = predictedChangePct >= 15 ? '#28a745' : predictedChangePct >= 10 ? '#ffc107' : '#17a2b8';
                         const confidenceColor = confidence >= 70 ? '#28a745' : confidence >= 50 ? '#ffc107' : '#dc3545';
+                        
+                        // Format MAPE and RMSE
+                        const mapeDisplay = (cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity) 
+                            ? cvMape.toFixed(2) + '%' : 'N/A';
+                        const rmseDisplay = (cvRmse !== null && cvRmse !== undefined && !isNaN(cvRmse) && cvRmse !== Infinity) 
+                            ? cvRmse.toFixed(2) : 'N/A';
                         
                         const row = `
                             <tr style="border-bottom: 1px solid #eee;">
@@ -5742,6 +5724,12 @@
                                 <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
                                     ${predictionDays} days
                                 </td>
+                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; color: ${cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity && cvMape < 50 ? '#28a745' : cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity && cvMape < 100 ? '#ffc107' : '#999'};">
+                                    ${mapeDisplay}
+                                </td>
+                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; color: ${cvRmse !== null && cvRmse !== undefined && !isNaN(cvRmse) && cvRmse !== Infinity ? '#666' : '#999'};">
+                                    ${rmseDisplay}
+                                </td>
                             </tr>
                         `;
                         tbody.innerHTML += row;
@@ -5761,7 +5749,7 @@
                 .catch(error => {
                     console.error('Error loading top gainers:', error);
                     statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message || 'Failed to load top gainers'}</span>`;
-                    tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading top gainers</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading top gainers</td></tr>';
                 });
         }
         

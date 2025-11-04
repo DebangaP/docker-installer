@@ -1345,7 +1345,7 @@ async def api_footprint_analysis(
     start_time: str = Query("09:15:00", description="Start time in HH:MM:SS format"),
     end_time: str = Query("15:30:00", description="End time in HH:MM:SS format"),
     analysis_date: str = Query(None, description="Analysis date in YYYY-MM-DD format (default: today)"),
-    instrument_token: int = Query(256265, description="Instrument token (default: 256265 for Nifty 50)")
+    instrument_token: int = Query(12683010, description="Instrument token (default: 12683010 for Nifty 50 Futures)")
 ):
     """API endpoint for footprint chart analysis"""
     try:
@@ -1384,7 +1384,7 @@ async def api_orderflow_analysis(
     start_time: str = Query("09:15:00", description="Start time in HH:MM:SS format"),
     end_time: str = Query("15:30:00", description="End time in HH:MM:SS format"),
     analysis_date: str = Query(None, description="Analysis date in YYYY-MM-DD format (default: today)"),
-    instrument_token: int = Query(256265, description="Instrument token (default: 256265 for Nifty 50)")
+    instrument_token: int = Query(12683010, description="Instrument token (default: 12683010 for Nifty 50 Futures)")
 ):
     """API endpoint for order flow analysis"""
     try:
@@ -1423,7 +1423,7 @@ async def api_micro_levels(
     start_time: str = Query("09:15:00", description="Start time in HH:MM:SS format"),
     end_time: str = Query("15:30:00", description="End time in HH:MM:SS format"),
     analysis_date: str = Query(None, description="Analysis date in YYYY-MM-DD format (default: today)"),
-    instrument_token: int = Query(256265, description="Instrument token (default: 256265 for Nifty 50)")
+    instrument_token: int = Query(12683010, description="Instrument token (default: 12683010 for Nifty 50 Futures)")
 ):
     """API endpoint for micro level detection"""
     try:
@@ -2224,7 +2224,7 @@ async def api_swing_trades(
         try:
             # First, try to get 30-day predictions (most common)
             cursor.execute("""
-                SELECT scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days, run_date
+                SELECT scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days, run_date, prediction_details
                 FROM my_schema.prophet_predictions
                 WHERE run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE' AND prediction_days = 30)
                 AND prediction_days = 30
@@ -2237,7 +2237,7 @@ async def api_swing_trades(
             if not predictions_rows:
                 logging.warning("No 30-day Prophet predictions found, trying to get latest predictions for any prediction_days")
                 cursor.execute("""
-                    SELECT scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days, run_date
+                    SELECT scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days, run_date, prediction_details
                     FROM my_schema.prophet_predictions pp1
                     WHERE status = 'ACTIVE'
                     AND run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE')
@@ -2338,6 +2338,56 @@ async def api_swing_trades(
                         else:
                             rec['prediction_days'] = None
                         
+                        # Extract cv_metrics from prediction_details
+                        prediction_details = pred.get('prediction_details')
+                        if prediction_details:
+                            try:
+                                # PostgreSQL JSONB might return as dict or string depending on psycopg2 version
+                                if isinstance(prediction_details, str):
+                                    details = json.loads(prediction_details)
+                                elif isinstance(prediction_details, dict):
+                                    details = prediction_details
+                                else:
+                                    # Try to convert to string first
+                                    details = json.loads(str(prediction_details))
+                                
+                                cv_metrics = details.get('cv_metrics')
+                                if cv_metrics and isinstance(cv_metrics, dict):
+                                    # Handle None, infinity, or invalid values
+                                    mape_value = cv_metrics.get('mape')
+                                    rmse_value = cv_metrics.get('rmse')
+                                    
+                                    # Convert infinity strings or infinity values to None
+                                    if mape_value is None or mape_value == float('inf') or mape_value == float('-inf') or (isinstance(mape_value, str) and mape_value.lower() in ['inf', 'infinity', 'nan']):
+                                        rec['prophet_cv_mape'] = None
+                                    else:
+                                        try:
+                                            rec['prophet_cv_mape'] = float(mape_value) if mape_value is not None else None
+                                        except (ValueError, TypeError):
+                                            rec['prophet_cv_mape'] = None
+                                    
+                                    if rmse_value is None or rmse_value == float('inf') or rmse_value == float('-inf') or (isinstance(rmse_value, str) and rmse_value.lower() in ['inf', 'infinity', 'nan']):
+                                        rec['prophet_cv_rmse'] = None
+                                    else:
+                                        try:
+                                            rec['prophet_cv_rmse'] = float(rmse_value) if rmse_value is not None else None
+                                        except (ValueError, TypeError):
+                                            rec['prophet_cv_rmse'] = None
+                                    
+                                    logging.debug(f"Extracted cv_metrics for {scrip_id}: MAPE={rec['prophet_cv_mape']}, RMSE={rec['prophet_cv_rmse']}")
+                                else:
+                                    rec['prophet_cv_mape'] = None
+                                    rec['prophet_cv_rmse'] = None
+                                    logging.debug(f"No cv_metrics found in prediction_details for {scrip_id}, cv_metrics={cv_metrics}")
+                            except (json.JSONDecodeError, Exception) as e:
+                                logging.warning(f"Error parsing prediction_details for {scrip_id}: {e}, type={type(prediction_details)}")
+                                rec['prophet_cv_mape'] = None
+                                rec['prophet_cv_rmse'] = None
+                        else:
+                            rec['prophet_cv_mape'] = None
+                            rec['prophet_cv_rmse'] = None
+                            logging.debug(f"No prediction_details found for {scrip_id}")
+                        
                         if rec['prophet_prediction_pct'] is not None:
                             matched_count += 1
                             matched_scrip_ids.append(scrip_id)
@@ -2346,12 +2396,16 @@ async def api_swing_trades(
                         rec['prophet_prediction_pct'] = None
                         rec['prophet_confidence'] = None
                         rec['prediction_days'] = None
+                        rec['prophet_cv_mape'] = None
+                        rec['prophet_cv_rmse'] = None
                         unmatched_scrip_ids.add(scrip_id)
                         logging.debug(f"No Prophet prediction found for {scrip_id} (looking for: {scrip_id_upper})")
                 else:
                     rec['prophet_prediction_pct'] = None
                     rec['prophet_confidence'] = None
                     rec['prediction_days'] = None
+                    rec['prophet_cv_mape'] = None
+                    rec['prophet_cv_rmse'] = None
             
             if matched_count > 0:
                 logging.info(f"✓ Matched {matched_count} recommendations with Prophet predictions")
@@ -2376,6 +2430,8 @@ async def api_swing_trades(
                 rec['prophet_prediction_pct'] = None
                 rec['prophet_confidence'] = None
                 rec['prediction_days'] = None
+                rec['prophet_cv_mape'] = None
+                rec['prophet_cv_rmse'] = None
         finally:
             cursor.close()
             conn.close()
@@ -3580,7 +3636,8 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                     scrip_id, 
                     predicted_price_change_pct, 
                     prediction_confidence,
-                    prediction_days
+                    prediction_days,
+                    prediction_details
                 FROM my_schema.prophet_predictions
                 WHERE status = 'ACTIVE'
                 ORDER BY scrip_id, 
@@ -3613,16 +3670,64 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
             prophet_pred = None
             prophet_conf = None
             prophet_pred_days = None
+            prophet_cv_mape = None
+            prophet_cv_rmse = None
             if symbol and symbol.upper() in predictions_map:
                 pred = predictions_map[symbol.upper()]
                 try:
                     prophet_pred = float(pred['predicted_price_change_pct']) if pred.get('predicted_price_change_pct') is not None else None
                     prophet_conf = float(pred['prediction_confidence']) if pred.get('prediction_confidence') is not None else None
                     prophet_pred_days = int(pred['prediction_days']) if pred.get('prediction_days') is not None else None
+                    
+                    # Extract cv_metrics from prediction_details
+                    prediction_details = pred.get('prediction_details')
+                    if prediction_details:
+                        try:
+                            # PostgreSQL JSONB might return as dict or string depending on psycopg2 version
+                            if isinstance(prediction_details, str):
+                                details = json.loads(prediction_details)
+                            elif isinstance(prediction_details, dict):
+                                details = prediction_details
+                            else:
+                                # Try to convert to string first
+                                details = json.loads(str(prediction_details))
+                            
+                            cv_metrics = details.get('cv_metrics')
+                            if cv_metrics and isinstance(cv_metrics, dict):
+                                # Handle None, infinity, or invalid values
+                                mape_value = cv_metrics.get('mape')
+                                rmse_value = cv_metrics.get('rmse')
+                                
+                                # Convert infinity strings or infinity values to None
+                                if mape_value is None or mape_value == float('inf') or mape_value == float('-inf') or (isinstance(mape_value, str) and mape_value.lower() in ['inf', 'infinity', 'nan']):
+                                    prophet_cv_mape = None
+                                else:
+                                    try:
+                                        prophet_cv_mape = float(mape_value) if mape_value is not None else None
+                                    except (ValueError, TypeError):
+                                        prophet_cv_mape = None
+                                
+                                if rmse_value is None or rmse_value == float('inf') or rmse_value == float('-inf') or (isinstance(rmse_value, str) and rmse_value.lower() in ['inf', 'infinity', 'nan']):
+                                    prophet_cv_rmse = None
+                                else:
+                                    try:
+                                        prophet_cv_rmse = float(rmse_value) if rmse_value is not None else None
+                                    except (ValueError, TypeError):
+                                        prophet_cv_rmse = None
+                                
+                                logging.debug(f"Extracted cv_metrics for {symbol}: MAPE={prophet_cv_mape}, RMSE={prophet_cv_rmse}")
+                            else:
+                                prophet_cv_mape = None
+                                prophet_cv_rmse = None
+                                logging.debug(f"No cv_metrics found in prediction_details for {symbol}, cv_metrics={cv_metrics}")
+                        except (json.JSONDecodeError, Exception) as e:
+                            logging.warning(f"Error parsing prediction_details for {symbol}: {e}, type={type(prediction_details)}")
                 except (ValueError, TypeError):
                     prophet_pred = None
                     prophet_conf = None
                     prophet_pred_days = None
+                    prophet_cv_mape = None
+                    prophet_cv_rmse = None
             
             holdings_list.append({
                 "trading_symbol": symbol,
@@ -3641,7 +3746,9 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                 "today_change": today_pnl_info.get('today_change', '0 (0%)'),
                 "prophet_prediction_pct": prophet_pred,
                 "prophet_confidence": prophet_conf,
-                "prediction_days": prophet_pred_days
+                "prediction_days": prophet_pred_days,
+                "prophet_cv_mape": prophet_cv_mape,
+                "prophet_cv_rmse": prophet_cv_rmse
             })
         
         # If sorting by today_pnl or prophet_prediction_pct, sort the enriched list and then paginate

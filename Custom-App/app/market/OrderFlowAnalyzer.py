@@ -16,12 +16,12 @@ class OrderFlowAnalyzer:
     Analyze order flow patterns to detect trapped traders and exhaustion signals
     """
     
-    def __init__(self, instrument_token: int = 256265):
+    def __init__(self, instrument_token: int = 12683010):
         """
         Initialize Order Flow Analyzer
         
         Args:
-            instrument_token: Instrument token (default: 256265 for Nifty 50)
+            instrument_token: Instrument token (default: 12683010 for Nifty 50 Futures)
         """
         self.instrument_token = instrument_token
     
@@ -109,12 +109,78 @@ class OrderFlowAnalyzer:
                               analysis_date: date) -> pd.DataFrame:
         """
         Fetch order flow data from database
+        For futures, we need to get the active futures contract token
         """
         conn = get_db_connection()
         cursor = conn.cursor()
         
         start_datetime = f"{analysis_date} {start_time}"
         end_datetime = f"{analysis_date} {end_time}"
+        
+        # Try to find the active futures contract token
+        # First, try with the provided instrument_token
+        # If no data found, try to find any futures contract for this date
+        actual_instrument_token = self.instrument_token
+        logging.info(f"Attempting to fetch order flow data for instrument_token={actual_instrument_token}, date={analysis_date}, time_range={start_time}-{end_time}")
+        
+        # First, check if we have data for the provided token
+        test_query = """
+            SELECT COUNT(*) as count
+            FROM my_schema.futures_ticks
+            WHERE instrument_token = %s
+            AND run_date = %s
+            AND timestamp >= %s
+            AND timestamp <= %s
+        """
+        cursor.execute(test_query, (actual_instrument_token, analysis_date, start_datetime, end_datetime))
+        test_result = cursor.fetchone()
+        has_data = test_result[0] > 0 if test_result else False
+        
+        if not has_data:
+            # No data for provided token, try to find any futures contract for this date
+            logging.info(f"No data found for instrument_token={actual_instrument_token}, searching for any futures contract for date {analysis_date}")
+            
+            futures_query = """
+                SELECT DISTINCT instrument_token
+                FROM my_schema.futures_ticks
+                WHERE run_date = %s
+                AND timestamp >= %s
+                AND timestamp <= %s
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """
+            cursor.execute(futures_query, (analysis_date, start_datetime, end_datetime))
+            futures_result = cursor.fetchone()
+            if futures_result:
+                actual_instrument_token = futures_result[0]
+                logging.info(f"Found active futures contract token: {actual_instrument_token} for date {analysis_date}")
+            else:
+                # Fallback: try to get any futures token for this date (without time filter)
+                cursor.execute("""
+                    SELECT DISTINCT instrument_token
+                    FROM my_schema.futures_ticks
+                    WHERE run_date = %s
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                """, (analysis_date,))
+                fallback_result = cursor.fetchone()
+                if fallback_result:
+                    actual_instrument_token = fallback_result[0]
+                    logging.info(f"Using fallback futures contract token: {actual_instrument_token} for date {analysis_date}")
+                else:
+                    # Check if ANY data exists for this date
+                    cursor.execute("""
+                        SELECT COUNT(*) as count, MIN(timestamp) as min_ts, MAX(timestamp) as max_ts
+                        FROM my_schema.futures_ticks
+                        WHERE run_date = %s
+                    """, (analysis_date,))
+                    check_result = cursor.fetchone()
+                    if check_result and check_result[0] > 0:
+                        logging.warning(f"Found {check_result[0]} futures ticks for date {analysis_date}, but none in time range {start_time}-{end_time}. Min: {check_result[1]}, Max: {check_result[2]}")
+                    else:
+                        logging.warning(f"No futures data found for date {analysis_date} at all")
+                    conn.close()
+                    return pd.DataFrame()
         
         query = """
             SELECT 
@@ -133,12 +199,16 @@ class OrderFlowAnalyzer:
             ORDER BY timestamp ASC
         """
         
-        cursor.execute(query, (self.instrument_token, analysis_date, start_datetime, end_datetime))
+        logging.info(f"Executing query with instrument_token={actual_instrument_token}, run_date={analysis_date}, start={start_datetime}, end={end_datetime}")
+        cursor.execute(query, (actual_instrument_token, analysis_date, start_datetime, end_datetime))
         rows = cursor.fetchall()
         conn.close()
         
         if not rows:
+            logging.warning(f"Query returned no rows for instrument_token={actual_instrument_token}, date={analysis_date}, time_range={start_time}-{end_time}")
             return pd.DataFrame()
+        
+        logging.info(f"Query returned {len(rows)} rows for order flow analysis")
         
         df = pd.DataFrame(rows, columns=[
             'timestamp', 'last_price', 'buy_quantity', 'sell_quantity',
