@@ -2495,10 +2495,20 @@
                 });
         }
         
+        // Track latest timestamp for gainers/losers polling
+        let lastKnownLatestTimestamp = null;
+        let gainersLosersPollInterval = null;
+        
         // Load gainers and losers data
         function loadGainersLosers() {
-            // Load gainers with caching
-            fetch('/api/gainers')
+            // Load gainers without caching
+            fetch('/api/gainers', {
+                cache: 'no-store',
+                headers: {
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache'
+                }
+            })
                 .then(response => response.json())
                 .then(data => {
                     console.log('Gainers API response:', data);
@@ -2509,6 +2519,8 @@
                             '<tr><td colspan="6" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading gainers</td></tr>';
                         return;
                     }
+                    
+                    // Note: We'll update timestamp from the polling endpoint
                     
                     const tbody = document.getElementById('gainersTableBody');
                     tbody.innerHTML = '';
@@ -2570,8 +2582,14 @@
                             '<tr><td colspan="6" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading gainers</td></tr>';
                 });
             
-            // Load losers with caching
-            fetch('/api/losers')
+            // Load losers without caching
+            fetch('/api/losers', {
+                cache: 'no-store',
+                headers: {
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache'
+                }
+            })
                 .then(response => response.json())
                 .then(data => {
                     console.log('Losers API response:', data);
@@ -2582,6 +2600,8 @@
                             '<tr><td colspan="6" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading losers</td></tr>';
                         return;
                     }
+                    
+                    // Note: We'll update timestamp from the polling endpoint
                     
                     const tbody = document.getElementById('losersTableBody');
                     tbody.innerHTML = '';
@@ -2641,6 +2661,65 @@
                     console.error('Error fetching losers:', error);
                         document.getElementById('losersTableBody').innerHTML = 
                             '<tr><td colspan="6" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading losers</td></tr>';
+                });
+        }
+        
+        // Poll for updates in rt_intraday_price and refresh gainers/losers if new data is found
+        function startGainersLosersPolling() {
+            // Clear existing interval if any
+            if (gainersLosersPollInterval) {
+                clearInterval(gainersLosersPollInterval);
+            }
+            
+            // Initialize timestamp immediately
+            checkForRtIntradayPriceUpdates();
+            
+            // Poll every 30 seconds for updates
+            gainersLosersPollInterval = setInterval(() => {
+                checkForRtIntradayPriceUpdates();
+            }, 30000); // 30 seconds
+        }
+        
+        function stopGainersLosersPolling() {
+            if (gainersLosersPollInterval) {
+                clearInterval(gainersLosersPollInterval);
+                gainersLosersPollInterval = null;
+            }
+        }
+        
+        function checkForRtIntradayPriceUpdates() {
+            fetch('/api/rt_intraday_price/latest')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        console.error('Error checking for updates:', data.error);
+                        return;
+                    }
+                    
+                    const currentLatestTimestamp = data.latest_timestamp;
+                    
+                    // Debug logging
+                    console.log('Polling check:', {
+                        currentTimestamp: currentLatestTimestamp,
+                        lastKnownTimestamp: lastKnownLatestTimestamp,
+                        areEqual: currentLatestTimestamp === lastKnownLatestTimestamp
+                    });
+                    
+                    // If we have a new latest_timestamp that's different from what we know, refresh
+                    if (currentLatestTimestamp && lastKnownLatestTimestamp && currentLatestTimestamp !== lastKnownLatestTimestamp) {
+                        console.log(`New data detected! Previous: ${lastKnownLatestTimestamp}, Current: ${currentLatestTimestamp}`);
+                        console.log('Refreshing gainers and losers...');
+                        loadGainersLosers();
+                        // Update the timestamp after refreshing
+                        lastKnownLatestTimestamp = currentLatestTimestamp;
+                    } else if (currentLatestTimestamp && !lastKnownLatestTimestamp) {
+                        // First time loading, store the timestamp
+                        console.log('Initializing timestamp:', currentLatestTimestamp);
+                        lastKnownLatestTimestamp = currentLatestTimestamp;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking for rt_intraday_price updates:', error);
                 });
         }
         
@@ -4710,6 +4789,11 @@
             // Start derivatives suggestions refresh (every 1 minute)
             startDerivativesSuggestionsRefresh();
         });
+        
+        // Cleanup polling when page unloads
+        window.addEventListener('beforeunload', function() {
+            stopGainersLosersPolling();
+        });
 
         // Tab Switching Functionality
         function switchTab(tabName) {
@@ -4727,6 +4811,15 @@
             const selectedTab = document.getElementById(tabName + '-tab');
             if (selectedTab) {
                 selectedTab.classList.add('active');
+                
+                // Start/stop polling based on tab
+                if (tabName === 'gainers-losers') {
+                    // Start polling for gainers/losers updates
+                    startGainersLosersPolling();
+                } else {
+                    // Stop polling when switching away from Stocks tab
+                    stopGainersLosersPolling();
+                }
                 
                 // Load data based on tab name
                 if (tabName === 'gainers-losers') {
@@ -6045,33 +6138,38 @@
                     
                     // Prepare data for Chart.js Financial candlestick
                     // Data format: {x: timestamp, o: open, h: high, l: low, c: close}
+                    // Round to 2 decimal places for display
                     const candlestickData = data.data.map(d => {
                         // Convert date string to timestamp
                         const timestamp = new Date(d.date).getTime();
                         return {
-                            x: timestamp, o: d.open, h: d.high, l: d.low, c: d.close
+                            x: timestamp, 
+                            o: parseFloat(d.open.toFixed(2)), 
+                            h: parseFloat(d.high.toFixed(2)), 
+                            l: parseFloat(d.low.toFixed(2)), 
+                            c: parseFloat(d.close.toFixed(2))
                         };
                     });
                     
-                    // Prepare indicator data for line charts
+                    // Prepare indicator data for line charts (rounded to 2 decimal places)
                     const sma20Data = data.data.map(d => ({
                         x: new Date(d.date).getTime(),
-                        y: d.sma_20
+                        y: d.sma_20 !== null && !isNaN(d.sma_20) ? parseFloat(d.sma_20.toFixed(2)) : null
                     })).filter(d => d.y !== null && !isNaN(d.y));
                     
                     const sma50Data = data.data.map(d => ({
                         x: new Date(d.date).getTime(),
-                        y: d.sma_50
+                        y: d.sma_50 !== null && !isNaN(d.sma_50) ? parseFloat(d.sma_50.toFixed(2)) : null
                     })).filter(d => d.y !== null && !isNaN(d.y));
                     
                     const sma200Data = data.data.map(d => ({
                         x: new Date(d.date).getTime(),
-                        y: d.sma_200
+                        y: d.sma_200 !== null && !isNaN(d.sma_200) ? parseFloat(d.sma_200.toFixed(2)) : null
                     })).filter(d => d.y !== null && !isNaN(d.y));
                     
                     const supertrendData = data.data.map(d => ({
                         x: new Date(d.date).getTime(),
-                        y: d.supertrend,
+                        y: d.supertrend !== null && !isNaN(d.supertrend) ? parseFloat(d.supertrend.toFixed(2)) : null,
                         direction: d.supertrend_direction
                     })).filter(d => d.y !== null && !isNaN(d.y));
                     
@@ -6102,7 +6200,12 @@
                             maintainAspectRatio: false,
                             scales: {
                                 y: {
-                                    beginAtZero: false
+                                    beginAtZero: false,
+                                    ticks: {
+                                        callback: function(value) {
+                                            return value.toFixed(2);
+                                        }
+                                    }
                                 }
                             },
                             plugins: {
@@ -6113,6 +6216,24 @@
                                 title: {
                                     display: true,
                                     text: `${currentStockSymbol} - Last ${days} Days`
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            let label = context.dataset.label || '';
+                                            if (label) {
+                                                label += ': ';
+                                            }
+                                            if (context.parsed.y !== null) {
+                                                label += context.parsed.y.toFixed(2);
+                                            }
+                                            // For candlestick data, show OHLC values
+                                            if (context.raw && typeof context.raw === 'object' && 'o' in context.raw) {
+                                                label = `O: ${context.raw.o.toFixed(2)} H: ${context.raw.h.toFixed(2)} L: ${context.raw.l.toFixed(2)} C: ${context.raw.c.toFixed(2)}`;
+                                            }
+                                            return label;
+                                        }
+                                    }
                                 }
                             }
                         }

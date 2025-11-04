@@ -396,6 +396,12 @@ class SwingTradeScanner:
         # Pattern 15: Engulfing Candlestick
         patterns.extend(self._detect_engulfing_candlestick(price_data, indicators, current_price))
         
+        # Pattern 16: Bear Trap (Bullish reversal pattern)
+        patterns.extend(self._detect_bear_trap(price_data, indicators, current_price))
+        
+        # Pattern 17: Dead Cat Bounce (Bearish continuation pattern)
+        patterns.extend(self._detect_dead_cat_bounce(price_data, indicators, current_price))
+        
         return patterns
     
     def _detect_head_and_shoulders(self, price_data: pd.DataFrame, indicators: Dict, current_price: float) -> List[Dict]:

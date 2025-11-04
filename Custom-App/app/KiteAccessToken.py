@@ -53,11 +53,11 @@ def get_cache_headers(endpoint_path: str) -> dict:
         # Positions - 5 minutes
         'positions': 300,
         
-        # Gainers/Losers - 1 hour (3600 seconds)
-        'gainers': 3600,
-        'losers': 3600,
-        'gainers_losers': 3600,
-        'top_gainers': 3600,
+        # Gainers/Losers - 30 seconds (to match polling interval)
+        'gainers': 30,
+        'losers': 30,
+        'gainers_losers': 30,
+        'top_gainers': 30,
         
         # Swing trades - 30 minutes (1800 seconds)
         'swing_trades': 1800,
@@ -1896,7 +1896,8 @@ async def api_add_new_stock(request: Request):
                         price_low = EXCLUDED.price_low,
                         price_open = EXCLUDED.price_open,
                         country = EXCLUDED.country,
-                        volume = EXCLUDED.volume
+                        volume = EXCLUDED.volume,
+                        created_at = CURRENT_TIMESTAMP
                 """)
                 
                 try:
@@ -3079,25 +3080,22 @@ async def api_gainers():
             return cached_json_response({"gainers": []}, "/api/gainers")
         
         # Simplified query using CTEs for better readability and debugging
+        # Use the calculated latest_date and prev_date to ensure correct date comparison
         cursor.execute("""
-                        select "Curr".scrip_id, 
+            select "Curr".scrip_id, 
                    100*("Curr".price_close - "Prev".price_close)/"Prev".price_close "Gain",
                    "Curr".price_close as current_price,
                    "Prev".price_close as previous_price
             from my_schema.master_scrips ms,
             (
                 select SCRIP_ID, PRICE_CLOSE from my_schema.rt_intraday_price rip 
-                where PRICE_DATE = (select mAX(PRICE_DATE) from my_schema.rt_intraday_price rip2 where country = 'IN' 
-                                    and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH'))
+                where price_date::date = %s
                 and country = 'IN'
                 and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
             ) "Curr",
             (
                 select SCRIP_ID, PRICE_CLOSE from my_schema.rt_intraday_price rip 
-                where PRICE_DATE = (select DATE(mAX(PRICE_DATE))::text from my_schema.rt_intraday_price rip2 
-                                    where price_date < (select max(price_date) from my_schema.rt_intraday_price rip5 
-                                                        where country = 'IN' 
-                                                        and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')) )
+                where price_date::date = %s
                 and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
                 and country = 'IN'
             ) "Prev"
@@ -3107,7 +3105,7 @@ async def api_gainers():
             and ms.scrip_country = 'IN'
             order by 100*("Curr".price_close - "Prev".price_close)/"Prev".price_close desc
             limit 10
-        """)
+        """, (latest_date, prev_date))
         
         gainers = cursor.fetchall()
         logging.info(f"Query returned {len(gainers)} rows from database")
@@ -3192,7 +3190,11 @@ async def api_gainers():
         conn.close()
         logging.info(f"Fetched {len(gainers_list)} gainers, returning response")
         logging.debug(f"Gainers list: {gainers_list}")
-        return cached_json_response({"gainers": gainers_list}, "/api/gainers")
+        return cached_json_response({
+            "gainers": gainers_list,
+            "latest_date": str(latest_date) if latest_date else None,
+            "previous_date": str(prev_date) if prev_date else None
+        }, "/api/gainers")
     except Exception as e:
         logging.error(f"Error fetching gainers: {e}")
         import traceback
@@ -3251,6 +3253,7 @@ async def api_losers():
             return cached_json_response({"losers": []}, "/api/losers")
         
         # Simplified query using CTEs for better readability and debugging
+        # Use the calculated latest_date and prev_date to ensure correct date comparison
         cursor.execute("""
             select "Curr".scrip_id, 
                    100*("Curr".price_close - "Prev".price_close)/"Prev".price_close "Gain",
@@ -3259,17 +3262,13 @@ async def api_losers():
             from my_schema.master_scrips ms,
             (
                 select SCRIP_ID, PRICE_CLOSE from my_schema.rt_intraday_price rip 
-                where PRICE_DATE = (select mAX(PRICE_DATE) from my_schema.rt_intraday_price rip2 where country = 'IN' 
-                                    and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH'))
+                where price_date::date = %s
                 and country = 'IN'
                 and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
             ) "Curr",
             (
                 select SCRIP_ID, PRICE_CLOSE from my_schema.rt_intraday_price rip 
-                where PRICE_DATE = (select DATE(mAX(PRICE_DATE))::text from my_schema.rt_intraday_price rip2 
-                                    where price_date < (select max(price_date) from my_schema.rt_intraday_price rip5 
-                                                        where country = 'IN' 
-                                                        and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')) )
+                where price_date::date = %s
                 and scrip_id not in ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
                 and country = 'IN'
             ) "Prev"
@@ -3279,7 +3278,7 @@ async def api_losers():
             and ms.scrip_country = 'IN'
             order by 100*("Prev".price_close - "Curr".price_close)/"Prev".price_close desc
             limit 10
-        """)
+        """, (latest_date, prev_date))
         
         losers = cursor.fetchall()
         logging.info(f"Query returned {len(losers)} rows from database")
@@ -3358,12 +3357,57 @@ async def api_losers():
         conn.close()
         logging.info(f"Fetched {len(losers_list)} losers, returning response")
         logging.debug(f"Losers list: {losers_list}")
-        return cached_json_response({"losers": losers_list}, "/api/losers")
+        return cached_json_response({
+            "losers": losers_list,
+            "latest_date": str(latest_date) if latest_date else None,
+            "previous_date": str(prev_date) if prev_date else None
+        }, "/api/losers")
     except Exception as e:
         logging.error(f"Error fetching losers: {e}")
         import traceback
         logging.error(traceback.format_exc())
         return cached_json_response({"error": str(e), "losers": []}, "/api/losers")
+
+@app.get("/api/rt_intraday_price/latest")
+async def api_rt_intraday_price_latest():
+    """API endpoint to check for latest updates in rt_intraday_price table"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get latest date and timestamp
+        cursor.execute("""
+            SELECT 
+                MAX(price_date::date) as latest_date,
+                MAX(created_at) as latest_timestamp
+            FROM my_schema.rt_intraday_price
+            WHERE country = 'IN'
+            AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+        """)
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        latest_date = result['latest_date'] if result else None
+        latest_timestamp = result['latest_timestamp'] if result else None
+        
+        # Return without cache headers for real-time polling
+        from fastapi.responses import JSONResponse
+        return JSONResponse(content={
+            "success": True,
+            "latest_date": str(latest_date) if latest_date else None,
+            "latest_timestamp": str(latest_timestamp) if latest_timestamp else None
+        }, headers={
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        })
+        
+    except Exception as e:
+        logging.error(f"Error checking latest rt_intraday_price: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
 
 @app.get("/api/holdings")
 async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=1), sort_by: str = Query(None), sort_dir: str = Query("asc"), search: str = Query(None)):
@@ -3654,7 +3698,7 @@ async def api_positions():
                 average_price, 
                 pnl 
             FROM my_schema.positions 
-            WHERE run_date = CURRENT_DATE)
+            WHERE run_date = CURRENT_DATE
             ORDER BY trading_symbol
         """)
         
@@ -4382,19 +4426,19 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
             supertrend, supertrend_direction = calculate_supertrend(highs_array, lows_array, closes_array)
             logging.info(f"Indicators calculated using pandas")
         
-        # Build data array with indicators
+        # Build data array with indicators (rounded to 2 decimal places)
         for i in range(len(dates)):
             data.append({
                 "date": dates[i],
-                "open": opens[i],
-                "high": highs[i],
-                "low": lows[i],
-                "close": closes[i],
+                "open": round(float(opens[i]), 2) if opens[i] else 0.0,
+                "high": round(float(highs[i]), 2) if highs[i] else 0.0,
+                "low": round(float(lows[i]), 2) if lows[i] else 0.0,
+                "close": round(float(closes[i]), 2) if closes[i] else 0.0,
                 "volume": volumes[i],
-                "sma_20": float(sma_20[i]) if not np.isnan(sma_20[i]) else None,
-                "sma_50": float(sma_50[i]) if not np.isnan(sma_50[i]) else None,
-                "sma_200": float(sma_200[i]) if not np.isnan(sma_200[i]) else None,
-                "supertrend": float(supertrend[i]) if not np.isnan(supertrend[i]) else None,
+                "sma_20": round(float(sma_20[i]), 2) if not np.isnan(sma_20[i]) else None,
+                "sma_50": round(float(sma_50[i]), 2) if not np.isnan(sma_50[i]) else None,
+                "sma_200": round(float(sma_200[i]), 2) if not np.isnan(sma_200[i]) else None,
+                "supertrend": round(float(supertrend[i]), 2) if not np.isnan(supertrend[i]) else None,
                 "supertrend_direction": int(supertrend_direction[i]) if not np.isnan(supertrend_direction[i]) else None
             })
         

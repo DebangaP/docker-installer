@@ -95,7 +95,8 @@ def refresh_stock_prices(db_config=None):
                             price_low = EXCLUDED.price_low,
                             price_open = EXCLUDED.price_open,
                             country = EXCLUDED.country,
-                            volume = EXCLUDED.volume
+                            volume = EXCLUDED.volume,
+                            created_at = CURRENT_TIMESTAMP
                     """
                     
                     try:
@@ -208,7 +209,8 @@ if __name__ == '__main__':
                             price_low = EXCLUDED.price_low,
                             price_open = EXCLUDED.price_open,
                             country = EXCLUDED.country,
-                            volume = EXCLUDED.volume
+                            volume = EXCLUDED.volume,
+                            created_at = CURRENT_TIMESTAMP
                     """
     
                     try:

@@ -275,6 +275,7 @@ class ProphetPricePredictor:
                     weekly_seasonality=True,
                     yearly_seasonality=False,
                     changepoint_prior_scale=0.05,  # More conservative changepoints for stock data
+                    changepoint_range=0.95,  # Allow changepoints in first 95% of data (default is 0.8)
                     seasonality_prior_scale=10.0,
                     interval_width=0.80  # 80% confidence interval
                 )
@@ -443,6 +444,9 @@ class ProphetPricePredictor:
             rows = []
             skipped_count = 0
             low_confidence_count = 0
+            missing_scrip_id_count = 0
+            missing_price_count = 0
+            invalid_price_count = 0
             for pred in predictions:
                 try:
                     # Validate required fields
@@ -450,6 +454,7 @@ class ProphetPricePredictor:
                     if not scrip_id:
                         logger.warning(f"Skipping prediction: missing scrip_id")
                         skipped_count += 1
+                        missing_scrip_id_count += 1
                         continue
                     
                     # Support both 'predicted_price' (new) and 'predicted_price_30d' (old) for backward compatibility
@@ -457,6 +462,7 @@ class ProphetPricePredictor:
                     if predicted_price is None:
                         logger.warning(f"Skipping prediction for {scrip_id}: missing predicted_price")
                         skipped_count += 1
+                        missing_price_count += 1
                         continue
                     
                     # Convert to native types and validate
@@ -469,18 +475,20 @@ class ProphetPricePredictor:
                     if current_price is None or predicted_price is None:
                         logger.warning(f"Skipping prediction for {scrip_id}: invalid price values (current={current_price}, predicted={predicted_price})")
                         skipped_count += 1
+                        invalid_price_count += 1
                         continue
                     
                     # Ensure prediction_confidence has a default value
                     if prediction_confidence is None:
                         prediction_confidence = 50.0
                     
-                    # Filter out predictions with confidence < 50%
-                    if prediction_confidence < 50.0:
-                        logger.debug(f"Skipping prediction for {scrip_id}: confidence {prediction_confidence:.2f}% < 50%")
-                        skipped_count += 1
-                        low_confidence_count += 1
-                        continue
+                    # Note: Removing confidence filter to save all predictions
+                    # Confidence filtering can be done at query time if needed
+                    # if prediction_confidence < 50.0:
+                    #     logger.debug(f"Skipping prediction for {scrip_id}: confidence {prediction_confidence:.2f}% < 50%")
+                    #     skipped_count += 1
+                    #     low_confidence_count += 1
+                    #     continue
                     
                     prediction_details = {
                         'target_date': pred.get('target_date'),
@@ -510,37 +518,77 @@ class ProphetPricePredictor:
                     continue
             
             if skipped_count > 0:
+                logger.warning(f"Skipped {skipped_count} predictions out of {len(predictions)} total:")
+                if missing_scrip_id_count > 0:
+                    logger.warning(f"  - {missing_scrip_id_count} missing scrip_id")
+                if missing_price_count > 0:
+                    logger.warning(f"  - {missing_price_count} missing predicted_price")
+                if invalid_price_count > 0:
+                    logger.warning(f"  - {invalid_price_count} invalid price values")
                 if low_confidence_count > 0:
-                    logger.info(f"Filtered out {low_confidence_count} predictions with confidence < 50%")
-                    logger.warning(f"Skipped {skipped_count} predictions total (including {low_confidence_count} with low confidence and {skipped_count - low_confidence_count} with missing/invalid data)")
-                else:
-                    logger.warning(f"Skipped {skipped_count} predictions due to missing or invalid data")
+                    logger.warning(f"  - {low_confidence_count} with confidence < 50% (confidence filter is currently disabled)")
+                logger.info(f"Successfully prepared {len(rows)} predictions for database insertion")
             
-            # Bulk insert
+            # Bulk insert in batches to ensure partial data is saved even if some batches fail
             if rows:
-                try:
-                    cursor.executemany("""
-                        INSERT INTO my_schema.prophet_predictions 
-                        (scrip_id, run_date, prediction_days, current_price, predicted_price_30d, 
-                         predicted_price_change_pct, prediction_confidence, prediction_details, status)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (scrip_id, run_date, prediction_days) 
-                        DO UPDATE SET
-                            current_price = EXCLUDED.current_price,
-                            predicted_price_30d = EXCLUDED.predicted_price_30d,
-                            predicted_price_change_pct = EXCLUDED.predicted_price_change_pct,
-                            prediction_confidence = EXCLUDED.prediction_confidence,
-                            prediction_details = EXCLUDED.prediction_details,
-                            status = EXCLUDED.status
-                    """, rows)
+                batch_size = 100  # Process 100 rows at a time
+                total_rows = len(rows)
+                successful_batches = 0
+                failed_batches = 0
+                total_inserted = 0
+                
+                insert_query = """
+                    INSERT INTO my_schema.prophet_predictions 
+                    (scrip_id, run_date, prediction_days, current_price, predicted_price_30d, 
+                     predicted_price_change_pct, prediction_confidence, prediction_details, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (scrip_id, run_date, prediction_days) 
+                    DO UPDATE SET
+                        current_price = EXCLUDED.current_price,
+                        predicted_price_30d = EXCLUDED.predicted_price_30d,
+                        predicted_price_change_pct = EXCLUDED.predicted_price_change_pct,
+                        prediction_confidence = EXCLUDED.prediction_confidence,
+                        prediction_details = EXCLUDED.prediction_details,
+                        status = EXCLUDED.status
+                """
+                
+                # Process rows in batches
+                for i in range(0, total_rows, batch_size):
+                    batch = rows[i:i + batch_size]
+                    batch_num = (i // batch_size) + 1
+                    total_batches = (total_rows + batch_size - 1) // batch_size
                     
-                    conn.commit()
-                    logger.info(f"Successfully saved {len(rows)} predictions to database")
-                except Exception as db_error:
-                    logger.error(f"Database error during bulk insert: {db_error}")
-                    import traceback
-                    logger.error(traceback.format_exc())
-                    raise
+                    try:
+                        cursor.executemany(insert_query, batch)
+                        conn.commit()
+                        successful_batches += 1
+                        total_inserted += len(batch)
+                        logger.debug(f"Batch {batch_num}/{total_batches}: Successfully inserted {len(batch)} predictions")
+                    except Exception as batch_error:
+                        failed_batches += 1
+                        logger.error(f"Batch {batch_num}/{total_batches}: Failed to insert {len(batch)} predictions: {batch_error}")
+                        import traceback
+                        logger.error(traceback.format_exc())
+                        # Rollback this batch but continue with next batch
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                        # Continue processing next batch
+                        continue
+                
+                # Summary logging
+                if successful_batches > 0:
+                    logger.info(f"Successfully saved {total_inserted} predictions in {successful_batches} batch(es) out of {total_batches} total batches")
+                if failed_batches > 0:
+                    logger.warning(f"Failed to save {total_rows - total_inserted} predictions in {failed_batches} failed batch(es)")
+                
+                # Return True if at least some data was saved
+                if total_inserted > 0:
+                    return True
+                else:
+                    logger.error(f"Failed to save any predictions - all {total_batches} batches failed")
+                    return False
             else:
                 logger.warning(f"No valid rows to save out of {len(predictions)} predictions")
                 if skipped_count == len(predictions):

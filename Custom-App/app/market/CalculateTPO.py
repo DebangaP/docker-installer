@@ -178,7 +178,7 @@ class TPOProfile:
                 if letters and count > 0:
                     # Position text in the middle of the bar
                     ax.text(count/2, price, letters, 
-                           ha='center', va='center', fontsize=8, fontweight='bold',
+                           ha='center', va='center', fontsize=10, fontweight='bold',
                            color='white', zorder=15)
         
         if show_metrics:
