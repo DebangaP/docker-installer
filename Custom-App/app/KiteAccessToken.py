@@ -2570,6 +2570,49 @@ async def api_prophet_top_gainers(
                     "needs_generation": False
                 }
         
+        # Calculate days_in_leaderboard for each stock
+        if top_gainers and len(top_gainers) > 0:
+            conn = get_db_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            
+            # Get scrip_ids from top_gainers
+            scrip_ids = [gainer.get('scrip_id') for gainer in top_gainers if gainer.get('scrip_id')]
+            
+            if scrip_ids:
+                # Calculate days_in_leaderboard for all stocks in one query
+                placeholders = ','.join(['%s'] * len(scrip_ids))
+                cursor.execute(f"""
+                    WITH ranked_predictions AS (
+                        SELECT 
+                            scrip_id,
+                            run_date,
+                            ROW_NUMBER() OVER (PARTITION BY run_date ORDER BY predicted_price_change_pct DESC) as rank
+                        FROM my_schema.prophet_predictions
+                        WHERE prediction_days = %s
+                        AND status = 'ACTIVE'
+                        AND predicted_price_change_pct > 0
+                        AND prediction_confidence >= 50
+                        AND scrip_id IN ({placeholders})
+                    ),
+                    top_10_dates AS (
+                        SELECT DISTINCT scrip_id, run_date
+                        FROM ranked_predictions
+                        WHERE rank <= 10
+                    )
+                    SELECT scrip_id, COUNT(DISTINCT run_date) as days_count
+                    FROM top_10_dates
+                    GROUP BY scrip_id
+                """, [prediction_days] + scrip_ids)
+                
+                days_counts = {row['scrip_id']: row['days_count'] for row in cursor.fetchall()}
+                
+                # Add days_in_leaderboard to each gainer
+                for gainer in top_gainers:
+                    scrip_id = gainer.get('scrip_id')
+                    gainer['days_in_leaderboard'] = days_counts.get(scrip_id, 0)
+            
+            conn.close()
+        
         return {
             "success": True,
             "top_gainers": top_gainers,
@@ -2581,6 +2624,114 @@ async def api_prophet_top_gainers(
         import traceback
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e), "top_gainers": []}
+
+@app.get("/api/prophet_predictions/days_in_leaderboard")
+async def api_days_in_leaderboard(
+    scrip_id: str = Query(..., description="Stock symbol"),
+    prediction_days: int = Query(30, description="Prediction days to check (default: 30)")
+):
+    """API endpoint to count how many days a stock has been in Top 10 leaderboard"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get all distinct run_dates where this stock appeared in top 10
+        # For each run_date, get top 10 stocks by predicted_price_change_pct
+        cursor.execute("""
+            WITH ranked_predictions AS (
+                SELECT 
+                    scrip_id,
+                    run_date,
+                    ROW_NUMBER() OVER (PARTITION BY run_date ORDER BY predicted_price_change_pct DESC) as rank
+                FROM my_schema.prophet_predictions
+                WHERE prediction_days = %s
+                AND status = 'ACTIVE'
+                AND predicted_price_change_pct > 0
+                AND prediction_confidence >= 50
+            ),
+            top_10_dates AS (
+                SELECT DISTINCT run_date
+                FROM ranked_predictions
+                WHERE scrip_id = %s
+                AND rank <= 10
+            )
+            SELECT COUNT(DISTINCT run_date) as days_count
+            FROM top_10_dates
+        """, (prediction_days, scrip_id))
+        
+        result = cursor.fetchone()
+        days_count = result['days_count'] if result else 0
+        
+        conn.close()
+        
+        return {
+            "success": True,
+            "scrip_id": scrip_id,
+            "prediction_days": prediction_days,
+            "days_in_leaderboard": days_count
+        }
+        
+    except Exception as e:
+        logging.error(f"Error counting days in leaderboard for {scrip_id}: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "days_in_leaderboard": 0}
+
+@app.get("/api/prophet_predictions/history/{scrip_id}")
+async def api_prophet_prediction_history(
+    scrip_id: str,
+    prediction_days: int = Query(30, description="Prediction days to filter by (default: 30)"),
+    limit: int = Query(100, ge=1, le=365, description="Maximum number of historical predictions to return")
+):
+    """API endpoint to get historical predictions for a stock to display in chart"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        cursor.execute("""
+            SELECT 
+                run_date,
+                current_price,
+                predicted_price_change_pct,
+                prediction_confidence,
+                prediction_days
+            FROM my_schema.prophet_predictions
+            WHERE scrip_id = %s
+            AND prediction_days = %s
+            AND status = 'ACTIVE'
+            ORDER BY run_date DESC
+            LIMIT %s
+        """, (scrip_id, prediction_days, limit))
+        
+        predictions = cursor.fetchall()
+        conn.close()
+        
+        # Convert to list of dicts with proper date formatting
+        history_list = []
+        for pred in predictions:
+            history_list.append({
+                "run_date": str(pred['run_date']) if pred['run_date'] else None,
+                "current_price": float(pred['current_price']) if pred['current_price'] else 0.0,
+                "predicted_price_change_pct": float(pred['predicted_price_change_pct']) if pred['predicted_price_change_pct'] else 0.0,
+                "prediction_confidence": float(pred['prediction_confidence']) if pred['prediction_confidence'] else 0.0,
+                "prediction_days": int(pred['prediction_days']) if pred['prediction_days'] else prediction_days
+            })
+        
+        # Reverse to show chronological order (oldest first)
+        history_list.reverse()
+        
+        return {
+            "success": True,
+            "scrip_id": scrip_id,
+            "prediction_days": prediction_days,
+            "history": history_list
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting prediction history for {scrip_id}: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "history": []}
 
 @app.get("/api/prophet_predictions/symbol_search")
 async def api_prophet_symbol_search(
@@ -3503,7 +3654,7 @@ async def api_positions():
                 average_price, 
                 pnl 
             FROM my_schema.positions 
-            WHERE run_date = (SELECT MAX(run_date) FROM my_schema.positions)
+            WHERE run_date = CURRENT_DATE)
             ORDER BY trading_symbol
         """)
         

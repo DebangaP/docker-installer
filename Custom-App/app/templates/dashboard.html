@@ -938,12 +938,13 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Prediction (60D) Target</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Predicted Gain %</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Ghost Confidence</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Days in Leaderboard</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
                                 </tr>
                             </thead>
                             <tbody id="topGainersTableBody">
                                 <tr>
-                                    <td colspan="8" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Click Refresh to load top gainers</td>
+                                    <td colspan="9" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Click Refresh to load top gainers</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -5583,14 +5584,14 @@
             }
             
             statusDiv.innerHTML = `<span style="color: #666;">⏳ Loading top gainers for ${predictionDays} days...</span>`;
-            tbody.innerHTML = '<tr><td colspan="8" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td></tr>';
             
             fetch(`/api/prophet_predictions/top_gainers?limit=10&prediction_days=${predictionDays}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
                         statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${data.error || 'Failed to load top gainers'}</span>`;
-                        tbody.innerHTML = '<tr><td colspan="8" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading top gainers</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="9" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading top gainers</td></tr>';
                         return;
                     }
                     
@@ -5604,7 +5605,7 @@
                     
                     if (topGainers.length === 0) {
                         statusDiv.innerHTML = '<span style="color: #ffc107;">⚠️ No predictions available. Click "Generate Predictions" button to create predictions.</span>';
-                        tbody.innerHTML = `<tr><td colspan="8" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">
+                        tbody.innerHTML = `<tr><td colspan="9" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">
                             No top gainers found. <button onclick="generateProphetPredictionsWithDays()" style="padding: 6px 12px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 8px; font-size: 11px;">⚡ Generate Predictions Now</button>
                         </td></tr>`;
                         return;
@@ -5620,6 +5621,7 @@
                         const predictedChangePct = gainer.predicted_price_change_pct || 0;
                         const confidence = gainer.prediction_confidence || 0;
                         const predictionDays = gainer.prediction_days || 30;
+                        const daysInLeaderboard = gainer.days_in_leaderboard || 0;
                         
                         symbols.push(symbol);
                         
@@ -5640,6 +5642,9 @@
                                 </td>
                                 <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${confidenceColor}; font-size: 12px;">
                                     ${confidence.toFixed(0)}%
+                                </td>
+                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                                    <span onclick="showPredictionHistory('${symbol}', ${predictionDays})" style="cursor: pointer; color: #17a2b8; font-weight: bold; text-decoration: underline;" title="Click to view prediction history chart">${daysInLeaderboard}</span>
                                 </td>
                                 <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
                                     ${predictionDays} days
@@ -5663,8 +5668,165 @@
                 .catch(error => {
                     console.error('Error loading top gainers:', error);
                     statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message || 'Failed to load top gainers'}</span>`;
-                    tbody.innerHTML = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading top gainers</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading top gainers</td></tr>';
                 });
+        }
+        
+        // Prediction History Chart Modal
+        let predictionHistoryChart = null;
+        
+        function showPredictionHistory(symbol, predictionDays) {
+            // Show modal
+            const modal = document.getElementById('predictionHistoryModal');
+            if (!modal) {
+                // Create modal if it doesn't exist
+                createPredictionHistoryModal();
+            }
+            document.getElementById('predictionHistoryModal').style.display = 'block';
+            document.getElementById('predictionHistorySymbol').textContent = `${symbol} - Prediction History (${predictionDays} days)`;
+            
+            // Fetch prediction history
+            fetch(`/api/prophet_predictions/history/${symbol}?prediction_days=${predictionDays}&limit=100`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        document.getElementById('predictionHistoryStatus').innerHTML = 
+                            `<span style="color: #dc3545;">Error: ${data.error || 'Failed to load prediction history'}</span>`;
+                        return;
+                    }
+                    
+                    if (!data.history || data.history.length === 0) {
+                        document.getElementById('predictionHistoryStatus').innerHTML = 
+                            `<span style="color: #666;">No prediction history available for ${symbol}</span>`;
+                        return;
+                    }
+                    
+                    // Draw chart
+                    drawPredictionHistoryChart(data.history, symbol);
+                })
+                .catch(error => {
+                    console.error('Error loading prediction history:', error);
+                    document.getElementById('predictionHistoryStatus').innerHTML = 
+                        `<span style="color: #dc3545;">Error loading prediction history</span>`;
+                });
+        }
+        
+        function createPredictionHistoryModal() {
+            const modal = document.createElement('div');
+            modal.id = 'predictionHistoryModal';
+            modal.style.cssText = 'display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);';
+            modal.innerHTML = `
+                <div style="background-color: #fefefe; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 20px; border: 1px solid #888; width: 80vw; max-width: 900px; height: 70vh; border-radius: 10px; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.3); overflow: hidden;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-shrink: 0;">
+                        <h2 id="predictionHistorySymbol" style="margin: 0; font-size: 1.5em;">Prediction History</h2>
+                        <button onclick="closePredictionHistoryModal()" style="background-color: #dc3545; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 14px;">Close</button>
+                    </div>
+                    <div id="predictionHistoryStatus" style="margin-bottom: 10px; flex-shrink: 0; font-size: 12px; color: #666;"></div>
+                    <div style="flex: 1; overflow: hidden; position: relative;">
+                        <canvas id="predictionHistoryChartCanvas" style="width: 100%; height: 100%;"></canvas>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+        
+        function closePredictionHistoryModal() {
+            document.getElementById('predictionHistoryModal').style.display = 'none';
+            if (predictionHistoryChart) {
+                predictionHistoryChart.destroy();
+                predictionHistoryChart = null;
+            }
+        }
+        
+        function drawPredictionHistoryChart(history, symbol) {
+            const canvas = document.getElementById('predictionHistoryChartCanvas');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Destroy existing chart if it exists
+            if (predictionHistoryChart) {
+                predictionHistoryChart.destroy();
+            }
+            
+            // Prepare data
+            const labels = history.map(h => h.run_date || '');
+            const predictedGainPct = history.map(h => h.predicted_price_change_pct || 0);
+            const confidence = history.map(h => h.prediction_confidence || 0);
+            
+            // Create chart
+            predictionHistoryChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Predicted Gain %',
+                            data: predictedGainPct,
+                            borderColor: '#17a2b8',
+                            backgroundColor: 'rgba(23, 162, 184, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.4,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Confidence %',
+                            data: confidence,
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.4,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `${symbol} - Prediction History Over Time`
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Predicted Gain %'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Confidence %'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        }
+                    }
+                }
+            });
         }
         
         // Stock Symbol Search Functions
