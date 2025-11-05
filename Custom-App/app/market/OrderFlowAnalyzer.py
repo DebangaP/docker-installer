@@ -141,13 +141,16 @@ class OrderFlowAnalyzer:
             logging.info(f"No data found for instrument_token={actual_instrument_token}, searching for any futures contract for date {analysis_date}")
             
             futures_query = """
-                SELECT DISTINCT instrument_token
-                FROM my_schema.futures_ticks
-                WHERE run_date = %s
-                AND timestamp >= %s
-                AND timestamp <= %s
-                ORDER BY timestamp DESC
-                LIMIT 1
+                SELECT instrument_token
+                FROM (
+                    SELECT instrument_token, timestamp
+                    FROM my_schema.futures_ticks
+                    WHERE run_date = %s
+                    AND timestamp >= %s
+                    AND timestamp <= %s
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                ) AS subquery
             """
             cursor.execute(futures_query, (analysis_date, start_datetime, end_datetime))
             futures_result = cursor.fetchone()
@@ -157,11 +160,14 @@ class OrderFlowAnalyzer:
             else:
                 # Fallback: try to get any futures token for this date (without time filter)
                 cursor.execute("""
-                    SELECT DISTINCT instrument_token
-                    FROM my_schema.futures_ticks
-                    WHERE run_date = %s
-                    ORDER BY timestamp DESC
-                    LIMIT 1
+                    SELECT instrument_token
+                    FROM (
+                        SELECT instrument_token, timestamp
+                        FROM my_schema.futures_ticks
+                        WHERE run_date = %s
+                        ORDER BY timestamp DESC
+                        LIMIT 1
+                    ) AS subquery
                 """, (analysis_date,))
                 fallback_result = cursor.fetchone()
                 if fallback_result:
