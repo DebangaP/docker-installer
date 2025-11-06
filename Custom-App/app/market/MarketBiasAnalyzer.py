@@ -79,6 +79,7 @@ class MarketBiasAnalyzer:
         self.analysis_timestamp = None
         self.pre_market_profile = None
         self.real_time_profile = None
+        self.long_term_profiles = []  # Store multiple daily TPO profiles for long-term analysis
         
     def analyze_pre_market_bias(self, analysis_date: str = None) -> Dict:
         """
@@ -168,6 +169,346 @@ class MarketBiasAnalyzer:
         
         return bias_analysis
     
+    def analyze_long_term_tpo_bias(self, num_days: int = 20, analysis_date: str = None) -> Dict:
+        """
+        Analyze longer-duration TPO profiles for directional bias
+        
+        Args:
+            num_days: Number of trading days to analyze (default: 20)
+            analysis_date: Reference date for analysis in 'YYYY-MM-DD' format
+            
+        Returns:
+            Dictionary containing long-term TPO bias analysis
+        """
+        if not analysis_date:
+            analysis_date = datetime.now().strftime('%Y-%m-%d')
+        
+        # Fetch trading days data
+        trading_days = self.db_fetcher.fetch_trading_days_data(
+            table_name='ticks',
+            instrument_token=self.instrument_token,
+            num_days=num_days,
+            market_start_time="09:15",
+            market_end_time="15:30"
+        )
+        
+        if not trading_days or len(trading_days) < 5:
+            return {
+                'bias_score': 0.0,
+                'bias_direction': 'Neutral',
+                'bias_strength': 'Weak',
+                'bias_factors': [],
+                'analysis_quality': 'Insufficient Data'
+            }
+        
+        # Calculate TPO profiles for each day
+        daily_profiles = []
+        for trading_date, day_data in trading_days:
+            if day_data.empty:
+                continue
+            
+            tpo_profile = TPOProfile(tick_size=self.tick_size)
+            tpo_profile.calculate_tpo(day_data)
+            
+            if tpo_profile.tpo_data is not None and not tpo_profile.tpo_data.empty:
+                current_price = day_data['last_price'].iloc[-1] if not day_data.empty else None
+                daily_profiles.append({
+                    'date': trading_date,
+                    'tpo_profile': tpo_profile,
+                    'current_price': current_price,
+                    'poc': tpo_profile.poc,
+                    'value_area_high': tpo_profile.value_area_high,
+                    'value_area_low': tpo_profile.value_area_low,
+                    'poc_high': tpo_profile.poc_high,
+                    'poc_low': tpo_profile.poc_low
+                })
+        
+        if len(daily_profiles) < 5:
+            return {
+                'bias_score': 0.0,
+                'bias_direction': 'Neutral',
+                'bias_strength': 'Weak',
+                'bias_factors': [],
+                'analysis_quality': 'Insufficient Data'
+            }
+        
+        self.long_term_profiles = daily_profiles
+        
+        # Analyze long-term bias using the rules
+        bias_score = 0.0
+        bias_factors = []
+        
+        # Rule 1: POC Movement Analysis
+        poc_movement_score = self._analyze_poc_movement(daily_profiles)
+        bias_score += poc_movement_score
+        if abs(poc_movement_score) > 5:
+            direction = "Bullish" if poc_movement_score > 0 else "Bearish"
+            bias_factors.append(f"POC Movement ({direction}): {poc_movement_score:.1f}")
+        
+        # Rule 2: Value Area Movement Analysis
+        va_movement_score = self._analyze_value_area_movement(daily_profiles)
+        bias_score += va_movement_score
+        if abs(va_movement_score) > 5:
+            direction = "Bullish" if va_movement_score > 0 else "Bearish"
+            bias_factors.append(f"Value Area Movement ({direction}): {va_movement_score:.1f}")
+        
+        # Rule 3: Distribution Shape Analysis
+        distribution_score = self._analyze_distribution_shape(daily_profiles)
+        bias_score += distribution_score
+        if abs(distribution_score) > 5:
+            direction = "Bullish" if distribution_score > 0 else "Bearish"
+            bias_factors.append(f"Distribution Shape ({direction}): {distribution_score:.1f}")
+        
+        # Rule 4: Control Location Relative to Price
+        control_location_score = self._analyze_control_location(daily_profiles)
+        bias_score += control_location_score
+        if abs(control_location_score) > 5:
+            direction = "Bullish" if control_location_score > 0 else "Bearish"
+            bias_factors.append(f"Control Location ({direction}): {control_location_score:.1f}")
+        
+        # Determine bias direction and strength
+        bias_direction = "Neutral"
+        bias_strength = "Weak"
+        
+        if bias_score > 15:
+            bias_direction = "Bullish"
+            bias_strength = "Strong" if bias_score > 30 else "Moderate"
+        elif bias_score < -15:
+            bias_direction = "Bearish"
+            bias_strength = "Strong" if bias_score < -30 else "Moderate"
+        
+        return {
+            'bias_score': bias_score,
+            'bias_direction': bias_direction,
+            'bias_strength': bias_strength,
+            'bias_factors': bias_factors,
+            'num_days_analyzed': len(daily_profiles),
+            'analysis_quality': 'Good' if len(daily_profiles) >= 10 else 'Fair'
+        }
+    
+    def _analyze_poc_movement(self, daily_profiles: List[Dict]) -> float:
+        """
+        Analyze POC movement over sessions
+        Higher POC trend = bullish, Lower POC trend = bearish
+        
+        Returns:
+            Score from -30 to +30
+        """
+        if len(daily_profiles) < 3:
+            return 0.0
+        
+        pocs = [p['poc'] for p in daily_profiles if p['poc'] is not None]
+        
+        if len(pocs) < 3:
+            return 0.0
+        
+        # Calculate POC trend (linear regression slope)
+        x = np.arange(len(pocs))
+        y = np.array(pocs)
+        
+        # Remove NaN values
+        valid_mask = ~np.isnan(y)
+        if valid_mask.sum() < 3:
+            return 0.0
+        
+        x_valid = x[valid_mask]
+        y_valid = y[valid_mask]
+        
+        if len(x_valid) < 3:
+            return 0.0
+        
+        # Calculate slope
+        slope = np.polyfit(x_valid, y_valid, 1)[0]
+        
+        # Normalize by average POC to get percentage change
+        avg_poc = np.mean(y_valid)
+        if avg_poc > 0:
+            poc_change_pct = (slope / avg_poc) * 100
+            
+            # Scale to -30 to +30 score
+            # Positive slope (POC moving higher) = bullish
+            # Negative slope (POC moving lower) = bearish
+            score = poc_change_pct * 3  # Scale factor
+            return np.clip(score, -30, 30)
+        
+        return 0.0
+    
+    def _analyze_value_area_movement(self, daily_profiles: List[Dict]) -> float:
+        """
+        Analyze Value Area movement over sessions
+        Upward movement or expansion upward = bullish
+        Downward movement = bearish
+        
+        Returns:
+            Score from -30 to +30
+        """
+        if len(daily_profiles) < 3:
+            return 0.0
+        
+        va_highs = [p['value_area_high'] for p in daily_profiles 
+                   if p['value_area_high'] is not None]
+        va_lows = [p['value_area_low'] for p in daily_profiles 
+                  if p['value_area_low'] is not None]
+        
+        if len(va_highs) < 3 or len(va_lows) < 3:
+            return 0.0
+        
+        # Analyze VA High movement
+        x = np.arange(len(va_highs))
+        y_high = np.array(va_highs)
+        y_low = np.array(va_lows)
+        
+        # Remove NaN values
+        valid_mask = ~(np.isnan(y_high) | np.isnan(y_low))
+        if valid_mask.sum() < 3:
+            return 0.0
+        
+        x_valid = x[valid_mask]
+        y_high_valid = y_high[valid_mask]
+        y_low_valid = y_low[valid_mask]
+        
+        if len(x_valid) < 3:
+            return 0.0
+        
+        # Calculate VA center movement
+        va_centers = (y_high_valid + y_low_valid) / 2
+        slope = np.polyfit(x_valid, va_centers, 1)[0]
+        
+        # Calculate VA expansion (size change)
+        va_sizes = y_high_valid - y_low_valid
+        size_slope = np.polyfit(x_valid, va_sizes, 1)[0]
+        
+        # Normalize by average VA center
+        avg_va_center = np.mean(va_centers)
+        if avg_va_center > 0:
+            va_movement_pct = (slope / avg_va_center) * 100
+            
+            # Expansion upward (higher VA high) = bullish
+            expansion_score = 0
+            if size_slope > 0 and y_high_valid[-1] > y_high_valid[0]:
+                expansion_score = 10  # VA expanding upward
+            elif size_slope < 0 and y_low_valid[-1] < y_low_valid[0]:
+                expansion_score = -10  # VA contracting downward
+            
+            # Scale to -30 to +30 score
+            score = va_movement_pct * 2 + expansion_score
+            return np.clip(score, -30, 30)
+        
+        return 0.0
+    
+    def _analyze_distribution_shape(self, daily_profiles: List[Dict]) -> float:
+        """
+        Analyze distribution shape
+        Balanced/bell-shaped = neutral
+        Trend day with pronounced distribution = directional strength
+        
+        Returns:
+            Score from -30 to +30
+        """
+        if len(daily_profiles) < 5:
+            return 0.0
+        
+        # Analyze recent profiles for trend day characteristics
+        recent_profiles = daily_profiles[-5:]
+        
+        trend_scores = []
+        for profile_data in recent_profiles:
+            tpo_profile = profile_data['tpo_profile']
+            if tpo_profile.tpo_data is None or tpo_profile.tpo_data.empty:
+                continue
+            
+            prices = tpo_profile.tpo_data['price'].values
+            counts = tpo_profile.tpo_data['tpo_count'].values
+            
+            if len(counts) < 3:
+                continue
+            
+            # Calculate distribution skewness
+            poc_idx = np.argmax(counts)
+            poc_price = prices[poc_idx]
+            
+            # Count TPOs above and below POC
+            upper_tpos = counts[prices > poc_price].sum()
+            lower_tpos = counts[prices < poc_price].sum()
+            total_tpos = counts.sum()
+            
+            if total_tpos > 0:
+                # Skewness: positive = bullish (more TPOs above POC), negative = bearish
+                skewness = (upper_tpos - lower_tpos) / total_tpos
+                
+                # Distribution concentration (how focused vs balanced)
+                max_count = counts.max()
+                concentration = max_count / total_tpos
+                
+                # Trend day = high concentration + high skewness
+                if concentration > 0.3:  # More than 30% of TPOs at one level
+                    # Strong trend day
+                    trend_score = skewness * 20 * concentration
+                    trend_scores.append(trend_score)
+                else:
+                    # Balanced distribution = neutral
+                    trend_scores.append(0)
+        
+        if trend_scores:
+            avg_trend_score = np.mean(trend_scores)
+            return np.clip(avg_trend_score * 10, -30, 30)
+        
+        return 0.0
+    
+    def _analyze_control_location(self, daily_profiles: List[Dict]) -> float:
+        """
+        Analyze control location relative to price
+        Trading mostly above control areas = bullish
+        Trading mostly below control areas = bearish
+        
+        Returns:
+            Score from -30 to +30
+        """
+        if len(daily_profiles) < 5:
+            return 0.0
+        
+        above_control_count = 0
+        below_control_count = 0
+        total_count = 0
+        
+        for profile_data in daily_profiles:
+            poc = profile_data['poc']
+            current_price = profile_data['current_price']
+            
+            if poc is not None and current_price is not None and not np.isnan(poc) and not np.isnan(current_price):
+                total_count += 1
+                if current_price > poc:
+                    above_control_count += 1
+                elif current_price < poc:
+                    below_control_count += 1
+        
+        if total_count == 0:
+            return 0.0
+        
+        # Calculate percentage above/below control
+        above_pct = above_control_count / total_count
+        below_pct = below_control_count / total_count
+        
+        # Score: positive if mostly above, negative if mostly below
+        # Strong signal if >70% on one side
+        if above_pct >= 0.7:
+            score = 30  # Strong bullish
+        elif above_pct >= 0.6:
+            score = 20  # Moderate bullish
+        elif above_pct >= 0.55:
+            score = 10  # Weak bullish
+        elif below_pct >= 0.7:
+            score = -30  # Strong bearish
+        elif below_pct >= 0.6:
+            score = -20  # Moderate bearish
+        elif below_pct >= 0.55:
+            score = -10  # Weak bearish
+        else:
+            # Balanced around control
+            score = (above_pct - below_pct) * 20
+        
+        return np.clip(score, -30, 30)
+    
     def generate_comprehensive_analysis(self, analysis_date: str = None) -> Dict:
         """
         Generate comprehensive market bias and key levels analysis
@@ -189,8 +530,11 @@ class MarketBiasAnalyzer:
         # Analyze real-time bias
         real_time_analysis = self.analyze_real_time_bias(analysis_date)
         
+        # Analyze long-term TPO bias (20 days)
+        long_term_analysis = self.analyze_long_term_tpo_bias(num_days=20, analysis_date=analysis_date)
+        
         # Combine analyses for comprehensive bias determination
-        comprehensive_bias = self._combine_bias_analyses(pre_market_analysis, real_time_analysis)
+        comprehensive_bias = self._combine_bias_analyses(pre_market_analysis, real_time_analysis, long_term_analysis)
         
         # Calculate key levels
         key_levels = self._calculate_key_levels()
@@ -208,6 +552,7 @@ class MarketBiasAnalyzer:
             'instrument_token': int(self.instrument_token),
             'pre_market_analysis': convert_numpy_types(pre_market_analysis),
             'real_time_analysis': convert_numpy_types(real_time_analysis),
+            'long_term_analysis': convert_numpy_types(long_term_analysis),
             'comprehensive_bias': convert_numpy_types(comprehensive_bias),
             'key_levels': convert_numpy_types(key_levels),
             'market_structure': convert_numpy_types(market_structure),
@@ -424,23 +769,34 @@ class MarketBiasAnalyzer:
             'analysis_quality': 'Good'
         }
     
-    def _combine_bias_analyses(self, pre_market: Dict, real_time: Dict) -> Dict:
+    def _combine_bias_analyses(self, pre_market: Dict, real_time: Dict, long_term: Dict = None) -> Dict:
         """
-        Combine pre-market and real-time bias analyses
+        Combine pre-market, real-time, and long-term bias analyses
         
         Args:
             pre_market: Pre-market bias analysis
             real_time: Real-time bias analysis
+            long_term: Long-term TPO bias analysis (optional)
             
         Returns:
             Combined bias analysis
         """
-        # Weight the analyses (pre-market 30%, real-time 70%)
-        pre_market_weight = 0.3
-        real_time_weight = 0.7
+        # Weight the analyses (pre-market 20%, real-time 40%, long-term 40%)
+        pre_market_weight = 0.2
+        real_time_weight = 0.4
+        long_term_weight = 0.4
+        
+        if long_term is None or long_term.get('analysis_quality') == 'Insufficient Data':
+            # Fallback to original weighting if long-term analysis is not available
+            pre_market_weight = 0.3
+            real_time_weight = 0.7
+            long_term_weight = 0.0
         
         combined_score = (pre_market['bias_score'] * pre_market_weight + 
                          real_time['bias_score'] * real_time_weight)
+        
+        if long_term_weight > 0 and long_term:
+            combined_score += long_term['bias_score'] * long_term_weight
         
         # Determine combined direction and strength
         bias_direction = "Neutral"
@@ -457,6 +813,8 @@ class MarketBiasAnalyzer:
         combined_factors = []
         combined_factors.extend([f"Pre-market: {factor}" for factor in pre_market.get('bias_factors', [])])
         combined_factors.extend([f"Real-time: {factor}" for factor in real_time.get('bias_factors', [])])
+        if long_term and long_term.get('bias_factors'):
+            combined_factors.extend([f"Long-term TPO: {factor}" for factor in long_term.get('bias_factors', [])])
         
         return {
             'bias_score': combined_score,
@@ -464,7 +822,9 @@ class MarketBiasAnalyzer:
             'bias_strength': bias_strength,
             'bias_factors': combined_factors,
             'pre_market_weight': pre_market_weight,
-            'real_time_weight': real_time_weight
+            'real_time_weight': real_time_weight,
+            'long_term_weight': long_term_weight,
+            'includes_long_term': long_term_weight > 0
         }
     
     def _calculate_key_levels(self) -> Dict:

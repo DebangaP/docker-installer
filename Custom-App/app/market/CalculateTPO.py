@@ -53,13 +53,29 @@ class TPOProfile:
         
         # Build TPO profile
         tpo_dict = defaultdict(list)
+        period_count = 0
         for period in sorted(df['time_period'].unique()):
             period_data = df[df['time_period'] == period]
             prices_in_period = period_data['price_level'].unique()
-            letter = chr(65 + len(tpo_dict) % 26)  # A, B, C, ...
+            
+            # Generate TPO letters: A-Z, then a-z, then double letters
+            if period_count < 26:
+                letter = chr(65 + period_count)  # A-Z
+            elif period_count < 52:
+                letter = chr(97 + period_count - 26)  # a-z
+            else:
+                # Double letters: AA, AB, etc.
+                first_letter_idx = (period_count - 52) // 26
+                second_letter_idx = (period_count - 52) % 26
+                if first_letter_idx < 26:
+                    letter = chr(65 + first_letter_idx) + chr(65 + second_letter_idx)
+                else:
+                    letter = chr(97 + first_letter_idx - 26) + chr(97 + second_letter_idx - 26)
             
             for price in prices_in_period:
                 tpo_dict[price].append(letter)
+            
+            period_count += 1
         
         # Convert to DataFrame
         self.tpo_data = pd.DataFrame([
@@ -244,8 +260,8 @@ class PostgresDataFetcher:
         if not table_name.isidentifier():
             raise ValueError("Invalid table name")
         
-        # Build query: only select columns actually required for TPO (timestamp, last_price)
-        query = "SELECT timestamp, last_price FROM my_schema.\"{}\"".format(table_name)
+        # Build query: select timestamp, last_price, and volume for TPO and volume profile
+        query = "SELECT timestamp, last_price, volume FROM my_schema.\"{}\"".format(table_name)
         params = {}
         
         conditions = []
@@ -285,6 +301,72 @@ class PostgresDataFetcher:
     def close(self):
         """Close the database connection"""
         self.engine.dispose()
+    
+    def fetch_trading_days_data(self, table_name, instrument_token, num_days=5, 
+                               market_start_time="09:15", market_end_time="15:30"):
+        """
+        Fetch tick data for the last N trading days
+        
+        Args:
+            table_name: Name of the table containing tick data
+            instrument_token: Instrument token to filter
+            num_days: Number of trading days to fetch (default: 5)
+            market_start_time: Market start time in HH:MM format (default: "09:15")
+            market_end_time: Market end time in HH:MM format (default: "15:30")
+            
+        Returns:
+            List of tuples: (date, DataFrame) for each trading day, ordered from oldest to newest
+        """
+        from pytz import timezone
+        
+        IST = timezone('Asia/Kolkata')
+        today = datetime.now(IST).date()
+        
+        trading_days_data = []
+        current_date = today
+        days_found = 0
+        
+        # Go back up to 10 days to find 5 trading days (accounting for weekends)
+        max_days_back = num_days * 2 + 2
+        
+        for day_offset in range(max_days_back):
+            check_date = current_date - timedelta(days=day_offset)
+            day_of_week = check_date.weekday()  # 0=Monday, 6=Sunday
+            
+            # Skip weekends
+            if day_of_week >= 5:  # Saturday (5) or Sunday (6)
+                continue
+            
+            # Create start and end timestamps for this trading day
+            start_time_str = f"{check_date} {market_start_time}"
+            end_time_str = f"{check_date} {market_end_time}"
+            
+            try:
+                start_time = IST.localize(datetime.strptime(start_time_str, "%Y-%m-%d %H:%M"))
+                end_time = IST.localize(datetime.strptime(end_time_str, "%Y-%m-%d %H:%M"))
+            except:
+                continue
+            
+            # Fetch data for this day
+            day_data = self.fetch_tick_data(
+                table_name=table_name,
+                instrument_token=instrument_token,
+                start_time=start_time,
+                end_time=end_time
+            )
+            
+            if not day_data.empty:
+                day_data['trading_date'] = check_date
+                trading_days_data.append((check_date, day_data))
+                days_found += 1
+                
+                if days_found >= num_days:
+                    break
+        
+        # Sort by date (oldest first)
+        trading_days_data.sort(key=lambda x: x[0])
+        
+        return trading_days_data
 
 
 
@@ -587,6 +669,266 @@ class RealTimeTPOProfile:
         self.cumulative_data = pd.DataFrame()
         self.last_update_time = None
         logging.info("TPO profile reset")
+
+
+def plot_5day_tpo_chart(db_fetcher, table_name, instrument_token=256265, 
+                        tick_size=5, market_start_time="09:15", market_end_time="15:30"):
+    """
+    Generate a 5-day TPO chart with TPO profiles and volume profiles side by side
+    
+    Args:
+        db_fetcher: PostgresDataFetcher instance
+        table_name: Table name containing tick data
+        instrument_token: Instrument token (default: 256265 for Nifty 50)
+        tick_size: Price tick size for TPO calculation
+        market_start_time: Market start time
+        market_end_time: Market end time
+        
+    Returns:
+        Base64 encoded image string
+    """
+    import base64
+    import io
+    
+    # Fetch data for last 5 trading days
+    trading_days = db_fetcher.fetch_trading_days_data(
+        table_name=table_name,
+        instrument_token=instrument_token,
+        num_days=5,
+        market_start_time=market_start_time,
+        market_end_time=market_end_time
+    )
+    
+    # Ensure days are ordered chronologically from left to right: oldest (left) to newest (right)
+    # fetch_trading_days_data sorts oldest first, which is what we want for left-to-right display
+    if not trading_days:
+        # Create empty chart
+        fig, ax = plt.subplots(figsize=(20, 12))
+        ax.text(0.5, 0.5, 'No trading data available', 
+               ha='center', va='center', fontsize=16,
+               transform=ax.transAxes)
+        ax.set_title('5-Day TPO Market Profile', fontsize=18, fontweight='bold')
+    else:
+        num_days = len(trading_days)
+        fig = plt.figure(figsize=(28, 12), facecolor='black')
+        
+        # Create subplots: 1 row x (num_days * 2 + 1) columns
+        # Each day has TPO (left) and Volume (right) side by side, plus price scale at the end
+        # Layout: [TPO1][Vol1][TPO2][Vol2][TPO3][Vol3][TPO4][Vol4][TPO5][Vol5][PriceScale]
+        from matplotlib.gridspec import GridSpec
+        gs = GridSpec(1, num_days * 2 + 1, figure=fig, hspace=0.2, wspace=0.1,
+                     width_ratios=[1, 1] * num_days + [0.4])
+        
+        # Calculate global price range for all days
+        all_prices = []
+        for _, day_data in trading_days:
+            if not day_data.empty and 'last_price' in day_data.columns:
+                # Convert to float to handle Decimal types
+                prices = day_data['last_price'].dropna().astype(float).tolist()
+                all_prices.extend(prices)
+        
+        if not all_prices:
+            plt.close(fig)
+            return None
+        
+        price_min = float(min(all_prices))
+        price_max = float(max(all_prices))
+        price_range = price_max - price_min
+        price_padding = price_range * 0.05  # 5% padding
+        
+        y_min = price_min - price_padding
+        y_max = price_max + price_padding
+        
+        # Process each day
+        for day_idx, (trading_date, day_data) in enumerate(trading_days):
+            # Calculate TPO profile for this day
+            tpo_profile = TPOProfile(tick_size=tick_size)
+            tpo_profile.calculate_tpo(day_data)
+            
+            # Calculate volume profile for this day
+            if 'volume' in day_data.columns and 'last_price' in day_data.columns:
+                # Convert to float to handle Decimal types
+                day_data['last_price'] = day_data['last_price'].astype(float)
+                if 'volume' in day_data.columns:
+                    day_data['volume'] = day_data['volume'].fillna(0).astype(float)
+                day_data['price_level'] = (day_data['last_price'] / tick_size).round() * tick_size
+                volume_profile = day_data.groupby('price_level')['volume'].sum().reset_index()
+                volume_profile.columns = ['price', 'volume']
+                volume_profile = volume_profile.sort_values('price', ascending=False)
+                
+                # Calculate POC from volume (price with highest volume)
+                if not volume_profile.empty:
+                    poc_volume = volume_profile.loc[volume_profile['volume'].idxmax()]
+                    volume_poc_price = poc_volume['price']
+                    volume_poc_volume = poc_volume['volume']
+                else:
+                    volume_poc_price = None
+                    volume_poc_volume = 0
+            else:
+                volume_profile = pd.DataFrame()
+                volume_poc_price = None
+                volume_poc_volume = 0
+            
+            # TPO Profile (left side of day)
+            ax_tpo = fig.add_subplot(gs[0, day_idx * 2])
+            
+            if tpo_profile.tpo_data is not None and not tpo_profile.tpo_data.empty:
+                prices = tpo_profile.tpo_data['price'].values
+                counts = tpo_profile.tpo_data['tpo_count'].values
+                letters_list = tpo_profile.tpo_data['tpo_letters'].values if 'tpo_letters' in tpo_profile.tpo_data.columns else [''] * len(prices)
+                
+                # Color coding: green for regular TPOs, purple for Value Area, orange for Initial Balance
+                colors = []
+                for price in prices:
+                    color = '#32CD32'  # Default: green for regular TPOs
+                    # Check Value Area first (purple)
+                    if tpo_profile.value_area_high and tpo_profile.value_area_low:
+                        if tpo_profile.value_area_low <= price <= tpo_profile.value_area_high:
+                            color = '#9370DB'  # Purple for Value Area
+                    # Check Initial Balance (orange/yellow) - only if not in Value Area
+                    elif tpo_profile.initial_balance_high and tpo_profile.initial_balance_low:
+                        if tpo_profile.initial_balance_low <= price <= tpo_profile.initial_balance_high:
+                            color = '#FFA500'  # Orange for Initial Balance
+                    colors.append(color)
+                
+                bars = ax_tpo.barh(prices, counts, height=tick_size*0.8, 
+                                  color=colors, alpha=0.7, edgecolor='black', linewidth=0.5)
+                
+                # Add TPO letters - positioned from left to right (earliest to latest)
+                for price, count, letters in zip(prices, counts, letters_list):
+                    if letters and count > 0:
+                        # Ensure letters are a string and not duplicated
+                        if isinstance(letters, str):
+                            # Only show letters if we have valid data
+                            if len(letters) > 0 and count > 0:
+                                # Position text centered in the bar (bars grow left to right)
+                                ax_tpo.text(count/2, price, letters, 
+                                           ha='center', va='center', fontsize=8, fontweight='bold',
+                                           color='white', zorder=15, clip_on=True)
+                
+                # Add POC line (red)
+                if tpo_profile.poc:
+                    ax_tpo.axhline(y=tpo_profile.poc, color='red', linewidth=2, 
+                                  linestyle='-', zorder=10)
+                
+                # Add Value Area lines (green)
+                if tpo_profile.value_area_high:
+                    ax_tpo.axhline(y=tpo_profile.value_area_high, color='green', 
+                                  linewidth=1.5, linestyle='--', zorder=9)
+                if tpo_profile.value_area_low:
+                    ax_tpo.axhline(y=tpo_profile.value_area_low, color='green', 
+                                  linewidth=1.5, linestyle='--', zorder=9)
+                
+                # Add Initial Balance lines (orange/yellow)
+                if tpo_profile.initial_balance_high:
+                    ax_tpo.axhline(y=tpo_profile.initial_balance_high, color='orange', 
+                                  linewidth=1.5, linestyle=':', zorder=8)
+                if tpo_profile.initial_balance_low:
+                    ax_tpo.axhline(y=tpo_profile.initial_balance_low, color='orange', 
+                                  linewidth=1.5, linestyle=':', zorder=8)
+                
+                # Add red triangle for last price
+                if not day_data.empty and 'last_price' in day_data.columns:
+                    last_price = float(day_data['last_price'].iloc[-1])
+                    max_count = float(counts.max()) if len(counts) > 0 else 1.0
+                    # Position triangle at the right edge of the chart
+                    ax_tpo.plot([max_count * 1.1], [last_price], 'r^', markersize=10, 
+                              zorder=20, clip_on=False, markeredgecolor='red', markeredgewidth=1)
+            
+            ax_tpo.set_xlabel('TPO Count', fontsize=9, color='white')
+            ax_tpo.set_title(f'{trading_date.strftime("%m/%d")}', fontsize=11, fontweight='bold', color='white', pad=5)
+            ax_tpo.set_ylim(y_min, y_max)
+            ax_tpo.grid(True, alpha=0.3, axis='y', color='gray')
+            # TPO bars grow to the right (same direction as volume) for left-to-right display
+            ax_tpo.set_facecolor('black')
+            ax_tpo.tick_params(colors='white', labelsize=8)
+            # Hide y-axis labels for inner days (only show on first day)
+            if day_idx > 0:
+                ax_tpo.set_yticklabels([])
+            else:
+                ax_tpo.set_ylabel('Price', fontsize=10, color='white')
+            
+            # Volume Profile (right side of day)
+            ax_vol = fig.add_subplot(gs[0, day_idx * 2 + 1])
+            
+            if not volume_profile.empty:
+                vol_prices = volume_profile['price'].values
+                volumes = volume_profile['volume'].values
+                
+                # Color coding: blue/grey for volume, magenta for POC
+                vol_colors = []
+                for price in vol_prices:
+                    if volume_poc_price and abs(price - volume_poc_price) < tick_size:
+                        vol_colors.append('#FF00FF')  # Magenta for POC
+                    else:
+                        vol_colors.append('#4169E1')  # Blue for regular volume
+                
+                ax_vol.barh(vol_prices, volumes, height=tick_size*0.8,
+                           color=vol_colors, alpha=0.7, edgecolor='black', linewidth=0.5)
+                
+                # Add POC line extending from TPO to Volume (magenta line)
+                if volume_poc_price:
+                    ax_vol.axhline(y=volume_poc_price, color='magenta', linewidth=2,
+                                  linestyle='-', zorder=10)
+                    # Also add POC line to TPO chart if it matches
+                    if tpo_profile.poc and abs(volume_poc_price - tpo_profile.poc) < tick_size:
+                        ax_tpo.axhline(y=volume_poc_price, color='magenta', linewidth=2,
+                                      linestyle='-', zorder=10, alpha=0.7)
+            
+            ax_vol.set_xlabel('Volume', fontsize=9, color='white')
+            ax_vol.set_ylim(y_min, y_max)
+            ax_vol.grid(True, alpha=0.3, axis='y', color='gray')
+            ax_vol.set_facecolor('black')
+            ax_vol.tick_params(colors='white', labelsize=8)
+            # Hide y-axis labels for volume profiles
+            ax_vol.set_yticklabels([])
+        
+        # Add price scale on the right
+        ax_price_scale = fig.add_subplot(gs[0, num_days * 2])
+        
+        # Create price scale with finer increments
+        price_ticks = np.arange(y_min, y_max + tick_size, tick_size * 5)
+        price_labels = [f'{p:.2f}' for p in price_ticks]
+        
+        # Current price
+        if trading_days:
+            last_day_data = trading_days[-1][1]
+            if not last_day_data.empty and 'last_price' in last_day_data.columns:
+                current_price = float(last_day_data['last_price'].iloc[-1])
+                price_labels_with_current = []
+                for p in price_ticks:
+                    if abs(p - current_price) < tick_size * 2:
+                        price_labels_with_current.append(f'{p:.2f} (C)')
+                    else:
+                        price_labels_with_current.append(f'{p:.2f}')
+                price_labels = price_labels_with_current
+        
+        ax_price_scale.set_ylim(y_min, y_max)
+        ax_price_scale.set_yticks(price_ticks)
+        ax_price_scale.set_yticklabels(price_labels, fontsize=9, color='white')
+        ax_price_scale.set_ylabel('Price', fontsize=12, fontweight='bold', color='white')
+        ax_price_scale.set_facecolor('black')
+        ax_price_scale.spines['top'].set_color('white')
+        ax_price_scale.spines['bottom'].set_color('white')
+        ax_price_scale.spines['left'].set_color('white')
+        ax_price_scale.spines['right'].set_color('white')
+        ax_price_scale.tick_params(colors='white', labelsize=9)
+        ax_price_scale.grid(True, alpha=0.2, axis='y', color='gray')
+        
+        # Add overall title
+        fig.suptitle('5-Day TPO Market Profile with Volume Profile', 
+                    fontsize=16, fontweight='bold', y=0.98, color='white')
+    
+    plt.tight_layout(rect=[0, 0, 0.95, 0.96])
+    
+    # Convert to base64
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format='png', dpi=150, bbox_inches='tight', facecolor='black')
+    buffer.seek(0)
+    image_base64 = base64.b64encode(buffer.getvalue()).decode()
+    plt.close()
+    
+    return f"data:image/png;base64,{image_base64}"
 
 
 # Example Usage

@@ -139,6 +139,62 @@ class SwingTradeScanner:
             logging.error(f"Error fetching price data for {scrip_id}: {e}")
             return None
     
+    def get_prophet_prediction(self, scrip_id: str) -> Optional[Dict]:
+        """
+        Get Prophet prediction for a stock (if available)
+        
+        Args:
+            scrip_id: Stock symbol
+            
+        Returns:
+            Dictionary with Prophet prediction data (predicted_price_change_pct, prediction_confidence, prediction_days)
+            or None if not available
+        """
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            
+            # Try to get 30-day prediction first (most common)
+            cursor.execute("""
+                SELECT predicted_price_change_pct, prediction_confidence, prediction_days, run_date
+                FROM my_schema.prophet_predictions
+                WHERE scrip_id = %s
+                AND prediction_days = 30
+                AND status = 'ACTIVE'
+                ORDER BY run_date DESC
+                LIMIT 1
+            """, (scrip_id.upper(),))
+            
+            row = cursor.fetchone()
+            
+            # If no 30-day prediction, try to get latest prediction regardless of prediction_days
+            if not row:
+                cursor.execute("""
+                    SELECT predicted_price_change_pct, prediction_confidence, prediction_days, run_date
+                    FROM my_schema.prophet_predictions
+                    WHERE scrip_id = %s
+                    AND status = 'ACTIVE'
+                    ORDER BY run_date DESC, prediction_days DESC
+                    LIMIT 1
+                """, (scrip_id.upper(),))
+                row = cursor.fetchone()
+            
+            cursor.close()
+            conn.close()
+            
+            if row:
+                return {
+                    'predicted_price_change_pct': row.get('predicted_price_change_pct'),
+                    'prediction_confidence': row.get('prediction_confidence'),
+                    'prediction_days': row.get('prediction_days')
+                }
+            
+            return None
+            
+        except Exception as e:
+            logging.debug(f"Error fetching Prophet prediction for {scrip_id}: {e}")
+            return None
+    
     def calculate_indicators(self, price_data: pd.DataFrame) -> Dict:
         """
         Calculate all technical indicators
@@ -1144,7 +1200,7 @@ class SwingTradeScanner:
         
         return patterns
     
-    def calculate_confidence(self, pattern: Dict, indicators: Dict, price_data: pd.DataFrame) -> float:
+    def calculate_confidence(self, pattern: Dict, indicators: Dict, price_data: pd.DataFrame, prophet_prediction: Optional[Dict] = None) -> float:
         """
         Calculate confidence score for a pattern (0-100)
         
@@ -1152,6 +1208,7 @@ class SwingTradeScanner:
             pattern: Pattern dictionary
             indicators: Technical indicators
             price_data: Price data
+            prophet_prediction: Optional Prophet prediction data (dict with 'predicted_price_change_pct' and 'prediction_confidence')
             
         Returns:
             Confidence score (0-100)
@@ -1215,6 +1272,61 @@ class SwingTradeScanner:
         if support_levels and resistance_levels:
             confidence += 10  # Clear support/resistance levels
         
+        # Prophet prediction alignment bonus
+        if prophet_prediction:
+            pred_pct = prophet_prediction.get('predicted_price_change_pct')
+            pred_conf = prophet_prediction.get('prediction_confidence', 0)
+            
+            if pred_pct is not None and pred_conf is not None:
+                try:
+                    pred_pct = float(pred_pct)
+                    pred_conf = float(pred_conf)
+                    
+                    # Check if Prophet prediction aligns with pattern direction
+                    pattern_direction = pattern.get('direction', 'BUY')
+                    is_bullish_pattern = pattern_direction == 'BUY'
+                    is_bullish_prediction = pred_pct > 0
+                    
+                    # If directions align, boost confidence
+                    if (is_bullish_pattern and is_bullish_prediction) or (not is_bullish_pattern and not is_bullish_prediction):
+                        # Boost confidence based on Prophet confidence and magnitude
+                        # Higher boost for stronger predictions and higher Prophet confidence
+                        if pred_conf >= 70:
+                            # High confidence Prophet prediction: add 10-20 points
+                            if abs(pred_pct) >= 15:
+                                confidence += 20  # Strong prediction (>15% change)
+                            elif abs(pred_pct) >= 10:
+                                confidence += 15  # Good prediction (10-15% change)
+                            else:
+                                confidence += 10  # Moderate prediction (<10% change)
+                        elif pred_conf >= 50:
+                            # Medium confidence Prophet prediction: add 5-10 points
+                            if abs(pred_pct) >= 15:
+                                confidence += 10
+                            elif abs(pred_pct) >= 10:
+                                confidence += 8
+                            else:
+                                confidence += 5
+                        else:
+                            # Low confidence Prophet prediction: add 2-5 points
+                            if abs(pred_pct) >= 15:
+                                confidence += 5
+                            elif abs(pred_pct) >= 10:
+                                confidence += 3
+                            else:
+                                confidence += 2
+                    else:
+                        # Directions don't align - reduce confidence slightly
+                        # But don't penalize too harshly as Prophet might be wrong
+                        if pred_conf >= 70 and abs(pred_pct) >= 10:
+                            confidence -= 5  # Strong contradictory prediction
+                        elif pred_conf >= 50:
+                            confidence -= 3  # Moderate contradictory prediction
+                        # Low confidence contradictions are ignored
+                except (ValueError, TypeError):
+                    # Invalid Prophet prediction data, ignore
+                    pass
+        
         return min(confidence, 100.0)
     
     def get_patterns_for_stock(self, scrip_id: str) -> List[str]:
@@ -1277,9 +1389,12 @@ class SwingTradeScanner:
             # Detect patterns
             patterns = self.detect_patterns(price_data, indicators)
             
+            # Get Prophet prediction for this stock (if available)
+            prophet_prediction = self.get_prophet_prediction(scrip_id)
+            
             # Calculate confidence and prepare recommendations
             for pattern in patterns:
-                confidence = self.calculate_confidence(pattern, indicators, price_data)
+                confidence = self.calculate_confidence(pattern, indicators, price_data, prophet_prediction)
                 
                 if confidence >= self.min_confidence:
                     # Calculate risk-reward ratio

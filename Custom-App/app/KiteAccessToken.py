@@ -947,6 +947,55 @@ async def api_tpo_charts(analysis_date: str = Query(None)):
         logging.error(f"Error generating TPO charts: {e}")
         return {"error": str(e)}
 
+@app.get("/api/tpo_5day_chart")
+async def api_tpo_5day_chart(analysis_date: str = Query(None)):
+    """API endpoint to generate 5-day TPO chart with volume profiles"""
+    try:
+        from market.CalculateTPO import PostgresDataFetcher, plot_5day_tpo_chart
+        import matplotlib
+        matplotlib.use('Agg')
+        
+        DB_CONFIG = {
+            'host': 'postgres',
+            'database': 'mydb',
+            'user': 'postgres',
+            'password': 'postgres',
+            'port': 5432
+        }
+        
+        db_fetcher = PostgresDataFetcher(**DB_CONFIG)
+        
+        # Generate 5-day TPO chart
+        chart_image = plot_5day_tpo_chart(
+            db_fetcher=db_fetcher,
+            table_name='ticks',
+            instrument_token=256265,
+            tick_size=5,
+            market_start_time="09:15",
+            market_end_time="15:30"
+        )
+        
+        if chart_image:
+            return {
+                "success": True,
+                "chart_image": chart_image,
+                "message": "5-day TPO chart generated successfully"
+            }
+        else:
+            return {
+                "success": False,
+                "error": "Failed to generate 5-day TPO chart - no data available"
+            }
+        
+    except Exception as e:
+        logging.error(f"Error generating 5-day TPO chart: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 @app.get("/api/analysis_date")
 async def get_analysis_date():
     """Get current ANALYSIS_DATE configuration"""
@@ -6751,6 +6800,110 @@ async def api_options_latest(
             "success": False,
             "error": str(e)
         }, "/api/options_latest")
+
+@app.get("/api/options_oi_analysis")
+async def api_options_oi_analysis(
+    expiry: str = Query(None, description="Expiry date in YYYY-MM-DD format (default: latest expiry)"),
+    option_type: str = Query(None, description="Option type: 'CE' or 'PE' (default: both)"),
+    analysis_date: str = Query(None, description="Analysis date in YYYY-MM-DD format (default: today)"),
+    top_n: int = Query(50, description="Number of top strikes to display (default: 50)"),
+    include_chart: bool = Query(True, description="Include chart image in response (default: True)")
+):
+    """
+    API endpoint for Options Open Interest analysis
+    Joins options_ticks, options_tick_ohlc, and options_tick_depth tables
+    to analyze OI distribution by strike price
+    """
+    try:
+        from options.OptionsOIAnalyzer import OptionsOIAnalyzer
+        from datetime import datetime, date
+        
+        analyzer = OptionsOIAnalyzer()
+        
+        # Parse dates
+        expiry_date = None
+        if expiry:
+            try:
+                expiry_date = datetime.strptime(expiry, '%Y-%m-%d').date()
+            except ValueError:
+                return {
+                    "success": False,
+                    "error": f"Invalid expiry date format. Use YYYY-MM-DD"
+                }
+        
+        analysis_date_obj = None
+        if analysis_date:
+            try:
+                analysis_date_obj = datetime.strptime(analysis_date, '%Y-%m-%d').date()
+            except ValueError:
+                return {
+                    "success": False,
+                    "error": f"Invalid analysis_date format. Use YYYY-MM-DD"
+                }
+        
+        # Validate option_type
+        if option_type and option_type not in ['CE', 'PE']:
+            return {
+                "success": False,
+                "error": "option_type must be 'CE' or 'PE'"
+            }
+        
+        # Generate analysis report
+        if include_chart:
+            report = analyzer.generate_oi_analysis_report(
+                expiry=expiry_date,
+                analysis_date=analysis_date_obj
+            )
+        else:
+            # Just get data without chart
+            oi_data = analyzer.get_oi_by_strike(
+                expiry=expiry_date,
+                option_type=option_type,
+                analysis_date=analysis_date_obj,
+                include_ohlc=True
+            )
+            summary = analyzer.get_oi_summary(
+                expiry=expiry_date,
+                analysis_date=analysis_date_obj
+            )
+            
+            # Convert DataFrame to dict
+            oi_data_dict = oi_data.to_dict('records') if not oi_data.empty else []
+            
+            # Convert numpy types
+            import numpy as np
+            import pandas as pd
+            for record in oi_data_dict:
+                for key, value in record.items():
+                    if isinstance(value, (np.integer, np.int64)):
+                        record[key] = int(value)
+                    elif isinstance(value, (np.floating, np.float64)):
+                        record[key] = float(value) if not pd.isna(value) else None
+                    elif isinstance(value, pd.Timestamp):
+                        record[key] = value.isoformat()
+                    elif pd.isna(value):
+                        record[key] = None
+            
+            report = {
+                'success': True,
+                'analysis_date': (analysis_date_obj or date.today()).isoformat(),
+                'expiry': expiry_date.isoformat() if expiry_date else None,
+                'summary': summary,
+                'oi_data': oi_data_dict,
+                'total_records': len(oi_data),
+                'chart_image': None
+            }
+        
+        return report
+        
+    except Exception as e:
+        logging.error(f"Error generating OI analysis: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 @app.get("/api/margin/calculate")
 async def api_margin_calculate(

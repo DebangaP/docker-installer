@@ -524,6 +524,32 @@
                     <div class="metric-label" style="font-size: 11px;">Risk Level</div>
                 </div>
             </div>
+            <!-- Long-Term TPO Analysis Section -->
+            <div id="longTermTPOSection" style="padding: 15px; border-top: 1px solid #e0e0e0; margin-top: 10px; display: none;">
+                <div style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #333;">📈 Long-Term TPO Analysis (20 Days)</div>
+                <div class="metrics-grid" style="gap: 10px; margin-bottom: 10px;">
+                    <div class="metric-card" style="padding: 10px; background-color: #f8f9fa;">
+                        <div class="metric-value" id="longTermBiasScore" style="font-size: 16px; color: #6c757d;">N/A</div>
+                        <div class="metric-label" style="font-size: 11px;">Long-Term Bias Score</div>
+                    </div>
+                    <div class="metric-card" style="padding: 10px; background-color: #f8f9fa;">
+                        <div class="metric-value" id="longTermBiasDirection" style="font-size: 16px; color: #6c757d;">N/A</div>
+                        <div class="metric-label" style="font-size: 11px;">Long-Term Direction</div>
+                    </div>
+                    <div class="metric-card" style="padding: 10px; background-color: #f8f9fa;">
+                        <div class="metric-value" id="longTermBiasStrength" style="font-size: 16px; color: #6c757d;">N/A</div>
+                        <div class="metric-label" style="font-size: 11px;">Long-Term Strength</div>
+                    </div>
+                    <div class="metric-card" style="padding: 10px; background-color: #f8f9fa;">
+                        <div class="metric-value" id="longTermDaysAnalyzed" style="font-size: 16px; color: #6c757d;">N/A</div>
+                        <div class="metric-label" style="font-size: 11px;">Days Analyzed</div>
+                    </div>
+                </div>
+                <div id="longTermTPOFactors" style="margin-top: 10px; padding: 10px; background-color: #f8f9fa; border-radius: 5px; font-size: 12px;">
+                    <div style="font-weight: 600; margin-bottom: 8px; color: #333;">Key Factors:</div>
+                    <div id="longTermTPOFactorsList" style="color: #666;">No factors available</div>
+                </div>
+            </div>
         </div>
 
         <!-- TPO Charts Section (full width) -->
@@ -534,6 +560,20 @@
             </div>
             <div class="tpo-chart-container" style="height: 600px;">
                 <img id="tpoChartImage" src="" alt="TPO Charts" style="width: 100%; height: 100%; object-fit: contain; border-radius: 8px;" />
+            </div>
+        </div>
+
+        <!-- 5-Day TPO Chart Section (full width) -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header">
+                <h3 class="card-title">📊 5-Day TPO Market Profile with Volume Profile</h3>
+                <span class="card-icon">📈</span>
+                <button onclick="load5DayTPOChart()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #007bff; color: white; border: none; margin-left: 10px;">
+                    🔄 Refresh Chart
+                </button>
+            </div>
+            <div class="tpo-chart-container" style="height: 700px; background-color: #000;">
+                <img id="tpo5DayChartImage" src="" alt="5-Day TPO Chart" style="width: 100%; height: 100%; object-fit: contain; border-radius: 8px;" />
             </div>
         </div>
 
@@ -665,6 +705,33 @@
             <div id="optionsScannerContainer" style="padding: 15px;">
                 <div style="text-align: center; padding: 20px; color: #666;">
                     Configure filters above and click "Scan Options" to find candidates
+                </div>
+            </div>
+        </div>
+
+        <!-- Options OI Analysis Section -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header" style="padding: 15px 25px; background-color: #17a2b8; color: white;">
+                <h3 class="card-title" style="font-size: 16px; color: white;">📊 Top 5 Options by Open Interest</h3>
+                <button onclick="loadTop5OIOptions()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #17a2b8; border: none; margin-left: 10px;">
+                    🔄 Refresh OI Analysis
+                </button>
+            </div>
+            <div id="top5OIContainer" style="padding: 15px;">
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    Click "Refresh OI Analysis" to load top 5 options by Open Interest
+                </div>
+            </div>
+            <!-- OI Chart Modal -->
+            <div id="oiChartModal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+                <div style="background-color: white; margin: 5% auto; padding: 20px; border-radius: 10px; width: 90%; max-width: 1200px; max-height: 80vh; overflow-y: auto;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 id="oiChartTitle" style="margin: 0; color: #17a2b8;">Open Interest Chart</h3>
+                        <button onclick="closeOIChart()" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; font-size: 14px;">✕ Close</button>
+                    </div>
+                    <div id="oiChartContainer" style="text-align: center; padding: 20px;">
+                        <div style="color: #666;">Loading chart...</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2114,6 +2181,7 @@
             
             const comprehensiveBias = marketBiasData.comprehensive_bias;
             const recommendations = marketBiasData.trading_recommendations;
+            const longTermAnalysis = marketBiasData.long_term_analysis;
             
             // Update bias metrics
             document.getElementById('biasScore').textContent = comprehensiveBias.bias_score.toFixed(1);
@@ -2141,6 +2209,50 @@
                 biasStrengthElement.style.color = '#ffc107';
             } else {
                 biasStrengthElement.style.color = '#6c757d';
+            }
+            
+            // Update Long-Term TPO Analysis section
+            const longTermSection = document.getElementById('longTermTPOSection');
+            if (longTermAnalysis && longTermAnalysis.analysis_quality !== 'Insufficient Data') {
+                longTermSection.style.display = 'block';
+                
+                // Update long-term metrics
+                document.getElementById('longTermBiasScore').textContent = longTermAnalysis.bias_score.toFixed(1);
+                document.getElementById('longTermBiasDirection').textContent = longTermAnalysis.bias_direction;
+                document.getElementById('longTermBiasStrength').textContent = longTermAnalysis.bias_strength;
+                document.getElementById('longTermDaysAnalyzed').textContent = longTermAnalysis.num_days_analyzed || 'N/A';
+                
+                // Color code long-term bias direction
+                const longTermDirectionElement = document.getElementById('longTermBiasDirection');
+                if (longTermAnalysis.bias_direction === 'Bullish') {
+                    longTermDirectionElement.style.color = '#28a745';
+                } else if (longTermAnalysis.bias_direction === 'Bearish') {
+                    longTermDirectionElement.style.color = '#dc3545';
+                } else {
+                    longTermDirectionElement.style.color = '#6c757d';
+                }
+                
+                // Color code long-term bias strength
+                const longTermStrengthElement = document.getElementById('longTermBiasStrength');
+                if (longTermAnalysis.bias_strength === 'Strong') {
+                    longTermStrengthElement.style.color = '#dc3545';
+                } else if (longTermAnalysis.bias_strength === 'Moderate') {
+                    longTermStrengthElement.style.color = '#ffc107';
+                } else {
+                    longTermStrengthElement.style.color = '#6c757d';
+                }
+                
+                // Display long-term TPO factors
+                const factorsList = document.getElementById('longTermTPOFactorsList');
+                if (longTermAnalysis.bias_factors && longTermAnalysis.bias_factors.length > 0) {
+                    factorsList.innerHTML = '<ul style="margin: 0; padding-left: 20px;">' + 
+                        longTermAnalysis.bias_factors.map(factor => `<li style="margin-bottom: 5px;">${factor}</li>`).join('') + 
+                        '</ul>';
+                } else {
+                    factorsList.textContent = 'No factors available';
+                }
+            } else {
+                longTermSection.style.display = 'none';
             }
         }
         
@@ -2200,6 +2312,7 @@
                 if (window.tpoChartRenderer) {
                     window.tpoChartRenderer.loadTPOCharts();
                 }
+                load5DayTPOChart(); // Reload 5-day TPO chart
             })
             .catch(error => {
                 console.error('Error setting analysis date:', error);
@@ -2231,11 +2344,37 @@
                 if (window.tpoChartRenderer) {
                     window.tpoChartRenderer.loadTPOCharts();
                 }
+                load5DayTPOChart(); // Reload 5-day TPO chart
             })
             .catch(error => {
                 console.error('Error switching to live mode:', error);
             });
         });
+        
+        // Load 5-Day TPO Chart
+        function load5DayTPOChart() {
+            const chartImage = document.getElementById('tpo5DayChartImage');
+            if (!chartImage) return;
+            
+            chartImage.src = '';
+            chartImage.style.display = 'none';
+            
+            fetch('/api/tpo_5day_chart')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.chart_image) {
+                        chartImage.src = data.chart_image;
+                        chartImage.style.display = 'block';
+                    } else {
+                        chartImage.alt = data.error || 'Failed to load 5-day TPO chart';
+                        console.error('Error loading 5-day TPO chart:', data.error || 'Unknown error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching 5-day TPO chart:', error);
+                    chartImage.alt = 'Error loading chart';
+                });
+        }
         
         // Global variable for sort settings
         let sortColumn = 'trading_symbol';
@@ -3109,6 +3248,8 @@
                                 <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Score</th>
                                 <th style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 11px;">Days</th>
                                 <th style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 11px;">Moneyness</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">OI</th>
+                                <th style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 11px;">OI Chart</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -3156,6 +3297,12 @@
                                 ${moneyness}
                             </span>
                         </td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 10px; font-weight: 600;" class="oi-cell" data-tradingsymbol="${candidate.tradingsymbol}">
+                            <span class="oi-value">Loading...</span>
+                        </td>
+                        <td style="padding: 6px 8px; border: 1px solid #ddd; text-align: center;">
+                            <canvas id="oi-sparkline-${candidate.tradingsymbol}" width="100" height="30" style="cursor: pointer;" onclick="showOIChart('${candidate.tradingsymbol}', ${candidate.strike_price}, '${candidate.option_type}', '${candidate.expiry || ''}')"></canvas>
+                        </td>
                     </tr>
                 `;
             });
@@ -3172,6 +3319,9 @@
             `;
             
             container.innerHTML = html;
+            
+            // Load OI data and sparklines for displayed options
+            loadOIDataForOptions(top5Candidates);
         }
         
         function loadDerivativesSuggestions() {
@@ -4285,6 +4435,122 @@
                 });
         }
         
+        // Auto-refresh for Order Flow Analysis, Footprint Analysis, and Critical Micro Levels
+        let orderFlowAnalysisRefreshTimer = null;
+        let footprintAnalysisRefreshTimer = null;
+        let microLevelsRefreshTimer = null;
+        let orderFlowAnalysisAutoRefreshStarted = false;
+        let footprintAnalysisAutoRefreshStarted = false;
+        let microLevelsAutoRefreshStarted = false;
+        
+        // Start auto-refresh for Order Flow Analysis
+        function startOrderFlowAnalysisAutoRefresh() {
+            const liveMarketTab = document.getElementById('live-market-tab');
+            
+            if (orderFlowAnalysisRefreshTimer) {
+                clearInterval(orderFlowAnalysisRefreshTimer);
+            }
+            
+            // Refresh every 5 minutes (300000 ms)
+            orderFlowAnalysisRefreshTimer = setInterval(() => {
+                if (liveMarketTab && liveMarketTab.classList.contains('active')) {
+                    console.log('Auto-refreshing Order Flow Analysis (5-minute interval)...');
+                    loadOrderFlowAnalysis();
+                }
+            }, 300000); // 5 minutes
+            
+            console.log('Order Flow Analysis auto-refresh started (every 5 minutes)');
+        }
+        
+        // Stop auto-refresh for Order Flow Analysis
+        function stopOrderFlowAnalysisAutoRefresh() {
+            if (orderFlowAnalysisRefreshTimer) {
+                clearInterval(orderFlowAnalysisRefreshTimer);
+                orderFlowAnalysisRefreshTimer = null;
+                console.log('Order Flow Analysis auto-refresh stopped');
+            }
+        }
+        
+        // Initialize auto-refresh for Order Flow Analysis
+        function initOrderFlowAnalysisAutoRefresh() {
+            if (!orderFlowAnalysisAutoRefreshStarted) {
+                startOrderFlowAnalysisAutoRefresh();
+                orderFlowAnalysisAutoRefreshStarted = true;
+            }
+        }
+        
+        // Start auto-refresh for Footprint Analysis
+        function startFootprintAnalysisAutoRefresh() {
+            const liveMarketTab = document.getElementById('live-market-tab');
+            
+            if (footprintAnalysisRefreshTimer) {
+                clearInterval(footprintAnalysisRefreshTimer);
+            }
+            
+            // Refresh every 5 minutes (300000 ms)
+            footprintAnalysisRefreshTimer = setInterval(() => {
+                if (liveMarketTab && liveMarketTab.classList.contains('active')) {
+                    console.log('Auto-refreshing Footprint Analysis (5-minute interval)...');
+                    loadFootprintAnalysis();
+                }
+            }, 300000); // 5 minutes
+            
+            console.log('Footprint Analysis auto-refresh started (every 5 minutes)');
+        }
+        
+        // Stop auto-refresh for Footprint Analysis
+        function stopFootprintAnalysisAutoRefresh() {
+            if (footprintAnalysisRefreshTimer) {
+                clearInterval(footprintAnalysisRefreshTimer);
+                footprintAnalysisRefreshTimer = null;
+                console.log('Footprint Analysis auto-refresh stopped');
+            }
+        }
+        
+        // Initialize auto-refresh for Footprint Analysis
+        function initFootprintAnalysisAutoRefresh() {
+            if (!footprintAnalysisAutoRefreshStarted) {
+                startFootprintAnalysisAutoRefresh();
+                footprintAnalysisAutoRefreshStarted = true;
+            }
+        }
+        
+        // Start auto-refresh for Critical Micro Levels
+        function startMicroLevelsAutoRefresh() {
+            const liveMarketTab = document.getElementById('live-market-tab');
+            
+            if (microLevelsRefreshTimer) {
+                clearInterval(microLevelsRefreshTimer);
+            }
+            
+            // Refresh every 5 minutes (300000 ms)
+            microLevelsRefreshTimer = setInterval(() => {
+                if (liveMarketTab && liveMarketTab.classList.contains('active')) {
+                    console.log('Auto-refreshing Critical Micro Levels (5-minute interval)...');
+                    loadMicroLevels();
+                }
+            }, 300000); // 5 minutes
+            
+            console.log('Critical Micro Levels auto-refresh started (every 5 minutes)');
+        }
+        
+        // Stop auto-refresh for Critical Micro Levels
+        function stopMicroLevelsAutoRefresh() {
+            if (microLevelsRefreshTimer) {
+                clearInterval(microLevelsRefreshTimer);
+                microLevelsRefreshTimer = null;
+                console.log('Critical Micro Levels auto-refresh stopped');
+            }
+        }
+        
+        // Initialize auto-refresh for Critical Micro Levels
+        function initMicroLevelsAutoRefresh() {
+            if (!microLevelsAutoRefreshStarted) {
+                startMicroLevelsAutoRefresh();
+                microLevelsAutoRefreshStarted = true;
+            }
+        }
+        
         // Display Micro Levels
         function displayMicroLevels(data) {
             const container = document.getElementById('microLevelsContainer');
@@ -4706,6 +4972,221 @@
             }
         });
         
+        // Load OI data for options in scanner table
+        function loadOIDataForOptions(candidates) {
+            candidates.forEach(candidate => {
+                if (candidate.tradingsymbol) {
+                    // Load OI value
+                    fetch(`/api/options_data?instrument_token=${candidate.instrument_token}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success && data.option_data) {
+                                const oiCell = document.querySelector(`.oi-cell[data-tradingsymbol="${candidate.tradingsymbol}"] .oi-value`);
+                                if (oiCell) {
+                                    const oi = data.option_data.oi || 0;
+                                    oiCell.textContent = formatIndianNumber(oi);
+                                    oiCell.style.color = oi > 1000000 ? '#28a745' : oi > 500000 ? '#ffc107' : '#6c757d';
+                                }
+                            }
+                        })
+                        .catch(error => console.error('Error loading OI:', error));
+                    
+                    // Load OI sparkline
+                    loadOISparkline(candidate.tradingsymbol, candidate.strike_price, candidate.option_type, candidate.expiry);
+                }
+            });
+        }
+        
+        // Load OI sparkline chart
+        function loadOISparkline(tradingsymbol, strike, optionType, expiry) {
+            const canvasId = `oi-sparkline-${tradingsymbol}`;
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            
+            // Get OI data for sparkline (last 10 data points)
+            let expiryStr = null;
+            if (expiry) {
+                if (typeof expiry === 'string' && expiry.includes('-')) {
+                    expiryStr = expiry.split('T')[0]; // Already in YYYY-MM-DD format
+                } else if (expiry instanceof Date) {
+                    expiryStr = expiry.toISOString().split('T')[0];
+                }
+            }
+            let url = `/api/options_oi_analysis?option_type=${optionType}&include_chart=false&top_n=10`;
+            if (expiryStr) {
+                url += `&expiry=${expiryStr}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.oi_data && data.oi_data.length > 0) {
+                        // Find matching strike
+                        const strikeData = data.oi_data.filter(item => 
+                            Math.abs(item.strike_price - strike) < 0.01 && 
+                            item.option_type === optionType
+                        );
+                        
+                        if (strikeData.length > 0) {
+                            // Create simple sparkline - we'll use a simplified version
+                            // For now, just show a placeholder
+                            const ctx = canvas.getContext('2d');
+                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                            
+                            // Simple line chart
+                            const oi = strikeData[0].total_oi || 0;
+                            const maxOI = Math.max(...data.oi_data.map(d => d.total_oi || 0));
+                            const height = (oi / maxOI) * canvas.height;
+                            
+                            ctx.fillStyle = optionType === 'CE' ? '#28a745' : '#dc3545';
+                            ctx.fillRect(0, canvas.height - height, canvas.width, height);
+                            
+                            ctx.strokeStyle = optionType === 'CE' ? '#155724' : '#721c24';
+                            ctx.lineWidth = 2;
+                            ctx.beginPath();
+                            ctx.moveTo(0, canvas.height - height);
+                            ctx.lineTo(canvas.width, canvas.height - height);
+                            ctx.stroke();
+                        }
+                    }
+                })
+                .catch(error => console.error('Error loading OI sparkline:', error));
+        }
+        
+        // Load Top 5 OI Options
+        function loadTop5OIOptions() {
+            const container = document.getElementById('top5OIContainer');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading top 5 options by Open Interest...</div>';
+            
+            fetch('/api/options_oi_analysis?top_n=5&include_chart=false')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load OI data'}</div>`;
+                        return;
+                    }
+                    
+                    if (!data.oi_data || data.oi_data.length === 0) {
+                        container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">No OI data available</div>';
+                        return;
+                    }
+                    
+                    let html = `
+                        <div style="margin-bottom: 15px; padding: 10px; background-color: #e7f3ff; border-radius: 5px;">
+                            <strong>Top 5 Options by Open Interest</strong> (Total OI: ${formatIndianNumber(data.summary.total_oi)})
+                        </div>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                                <thead>
+                                    <tr style="background-color: #17a2b8; color: white;">
+                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: left; font-size: 11px;">Symbol</th>
+                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 11px;">Type</th>
+                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Strike</th>
+                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">OI</th>
+                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Volume</th>
+                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Price</th>
+                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 11px;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    
+                    data.oi_data.slice(0, 5).forEach((option, index) => {
+                        const optionTypeColor = option.option_type === 'CE' ? '#28a745' : '#dc3545';
+                        const optionTypeBg = option.option_type === 'CE' ? '#d4edda' : '#f8d7da';
+                        
+                        html += `
+                            <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : '#f8f9fa'}; cursor: pointer;" onclick="showOIChart('${option.tradingsymbol || ''}', ${option.strike_price}, '${option.option_type}', '${option.expiry || ''}')">
+                                <td style="padding: 8px; border: 1px solid #ddd; font-weight: 600; font-size: 11px;">${option.tradingsymbol || 'N/A'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+                                    <span style="padding: 3px 8px; border-radius: 3px; background-color: ${optionTypeBg}; color: ${optionTypeColor}; font-weight: 600; font-size: 10px;">
+                                        ${option.option_type}
+                                    </span>
+                                </td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 11px;">₹${option.strike_price.toFixed(2)}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 11px; color: ${optionTypeColor};">
+                                    ${formatIndianNumber(option.total_oi || 0)}
+                                </td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">${formatIndianNumber(option.total_volume || 0)}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">₹${(option.avg_last_price || 0).toFixed(2)}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+                                    <button style="background: #17a2b8; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 10px;" onclick="event.stopPropagation(); showOIChart('${option.tradingsymbol || ''}', ${option.strike_price}, '${option.option_type}', '${option.expiry || ''}')">View Chart</button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    
+                    html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                    
+                    container.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error loading top 5 OI options:', error);
+                    container.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading OI data: ${error.message}</div>`;
+                });
+        }
+        
+        // Show OI Chart Modal
+        function showOIChart(tradingsymbol, strike, optionType, expiry) {
+            const modal = document.getElementById('oiChartModal');
+            const title = document.getElementById('oiChartTitle');
+            const container = document.getElementById('oiChartContainer');
+            
+            title.textContent = `Open Interest Chart - ${tradingsymbol} (${strike} ${optionType})`;
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading chart...</div>';
+            modal.style.display = 'block';
+            
+            let expiryStr = null;
+            if (expiry) {
+                if (typeof expiry === 'string' && expiry.includes('-')) {
+                    expiryStr = expiry.split('T')[0]; // Already in YYYY-MM-DD format
+                } else if (expiry instanceof Date) {
+                    expiryStr = expiry.toISOString().split('T')[0];
+                }
+            }
+            let url = `/api/options_oi_analysis?option_type=${optionType}&include_chart=true&top_n=50`;
+            if (expiryStr) {
+                url += `&expiry=${expiryStr}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load chart'}</div>`;
+                        return;
+                    }
+                    
+                    if (data.chart_image) {
+                        container.innerHTML = `<img src="${data.chart_image}" style="max-width: 100%; height: auto;" alt="OI Chart" />`;
+                    } else {
+                        container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">No chart data available</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading OI chart:', error);
+                    container.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading chart: ${error.message}</div>`;
+                });
+        }
+        
+        // Close OI Chart Modal
+        function closeOIChart() {
+            const modal = document.getElementById('oiChartModal');
+            modal.style.display = 'none';
+        }
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('oiChartModal');
+            if (event.target === modal) {
+                closeOIChart();
+            }
+        }
+        
         // Fetch wrapper - respects HTTP cache headers from server
         // The browser's HTTP cache will automatically cache responses based on 
         // Cache-Control headers sent by the API (see get_cache_headers in KiteAccessToken.py)
@@ -4724,6 +5205,18 @@
             loadPositions();
             loadPremarketAnalysis(); // Load pre-market analysis on page load
             loadOptionsScanner(); // Load options scanner on page load
+            loadTop5OIOptions(); // Load top 5 OI options on page load
+            load5DayTPOChart(); // Load 5-day TPO chart on page load
+            
+            // Load Order Flow Analysis, Footprint Analysis, and Critical Micro Levels on page load
+            loadOrderFlowAnalysis();
+            loadFootprintAnalysis();
+            loadMicroLevels();
+            
+            // Initialize auto-refresh for Order Flow Analysis, Footprint Analysis, and Critical Micro Levels
+            initOrderFlowAnalysisAutoRefresh();
+            initFootprintAnalysisAutoRefresh();
+            initMicroLevelsAutoRefresh();
             
             // Mark Live Market tab as loaded
             TabLoadTracker.markLoaded('live-market');
@@ -4737,6 +5230,9 @@
         // Cleanup polling when page unloads
         window.addEventListener('beforeunload', function() {
             stopGainersLosersPolling();
+            stopOrderFlowAnalysisAutoRefresh();
+            stopFootprintAnalysisAutoRefresh();
+            stopMicroLevelsAutoRefresh();
         });
 
         // Tab Switching Functionality
@@ -4806,11 +5302,22 @@
                         {% endif %}
                     }
                 } else if (tabName === 'live-market') {
+                    // Live Market is already loaded on initial load
+                    // Ensure auto-refresh is running for Order Flow, Footprint, and Micro Levels
+                    initOrderFlowAnalysisAutoRefresh();
+                    initFootprintAnalysisAutoRefresh();
+                    initMicroLevelsAutoRefresh();
                     if (!TabLoadTracker.isLoaded(tabName)) {
-                        // Live Market is already loaded on initial load
                         TabLoadTracker.markLoaded(tabName);
                     }
-                } else if (tabName === 'utilities') {
+                } else {
+                    // Stop auto-refresh when switching away from Live Market tab
+                    stopOrderFlowAnalysisAutoRefresh();
+                    stopFootprintAnalysisAutoRefresh();
+                    stopMicroLevelsAutoRefresh();
+                }
+                
+                if (tabName === 'utilities') {
                     if (!TabLoadTracker.isLoaded(tabName)) {
                         // Utilities tab doesn't need data loading
                         TabLoadTracker.markLoaded(tabName);
