@@ -58,19 +58,14 @@ class TPOProfile:
             period_data = df[df['time_period'] == period]
             prices_in_period = period_data['price_level'].unique()
             
-            # Generate TPO letters: A-Z, then a-z, then double letters
+            # Generate TPO letters: A-Z, then AA, AB, AC, etc. (all uppercase)
             if period_count < 26:
                 letter = chr(65 + period_count)  # A-Z
-            elif period_count < 52:
-                letter = chr(97 + period_count - 26)  # a-z
             else:
-                # Double letters: AA, AB, etc.
-                first_letter_idx = (period_count - 52) // 26
-                second_letter_idx = (period_count - 52) % 26
-                if first_letter_idx < 26:
-                    letter = chr(65 + first_letter_idx) + chr(65 + second_letter_idx)
-                else:
-                    letter = chr(97 + first_letter_idx - 26) + chr(97 + second_letter_idx - 26)
+                # Double letters: AA, AB, AC, etc. (all uppercase)
+                first_letter_idx = (period_count - 26) // 26
+                second_letter_idx = (period_count - 26) % 26
+                letter = chr(65 + first_letter_idx) + chr(65 + second_letter_idx)
             
             for price in prices_in_period:
                 tpo_dict[price].append(letter)
@@ -164,7 +159,7 @@ class TPOProfile:
         self.value_area_high = self.tpo_data.loc[upper_idx, 'price']
         self.value_area_low = self.tpo_data.loc[lower_idx, 'price']
     
-    def plot_profile(self, ax=None, show_metrics=True, show_letters=True):
+    def plot_profile(self, ax=None, show_metrics=True, show_letters=True, dark_mode=False):
         """
         Plot TPO profile with key metrics and TPO letters
         
@@ -172,21 +167,57 @@ class TPOProfile:
             ax: Matplotlib axis object (creates new if None)
             show_metrics: Whether to show POC, VA, and IB lines
             show_letters: Whether to show TPO letters on the bars
+            dark_mode: Whether to use dark background styling
         """
         if self.tpo_data is None or self.tpo_data.empty:
             return None
         
         if ax is None:
             fig, ax = plt.subplots(figsize=(12, 8))
+            if dark_mode:
+                fig.patch.set_facecolor('black')
         else:
             ax.clear()
+        
+        # Apply dark mode styling if requested
+        if dark_mode:
+            ax.set_facecolor('black')
+            ax.tick_params(colors='white', labelsize=10)
+            ax.spines['top'].set_color('white')
+            ax.spines['bottom'].set_color('white')
+            ax.spines['left'].set_color('white')
+            ax.spines['right'].set_color('white')
+            title_color = 'white'
+            label_color = 'white'
+            grid_color = 'gray'
+        else:
+            title_color = 'black'
+            label_color = 'black'
+            grid_color = 'gray'
         
         # Plot horizontal bars for TPO count
         prices = self.tpo_data['price'].values
         counts = self.tpo_data['tpo_count'].values
         
-        bars = ax.barh(prices, counts, height=self.tick_size*0.8, 
-                      color='steelblue', alpha=0.7, edgecolor='black', linewidth=0.5)
+        # Color coding: green for regular TPOs, purple for Value Area, orange for Initial Balance (matching 5-Day TPO)
+        if dark_mode:
+            colors = []
+            for price in prices:
+                color = '#32CD32'  # Default: green for regular TPOs
+                # Check Value Area first (purple)
+                if self.value_area_high and self.value_area_low:
+                    if self.value_area_low <= price <= self.value_area_high:
+                        color = '#9370DB'  # Purple for Value Area
+                # Check Initial Balance (orange/yellow) - only if not in Value Area
+                elif self.initial_balance_high and self.initial_balance_low:
+                    if self.initial_balance_low <= price <= self.initial_balance_high:
+                        color = '#FFA500'  # Orange for Initial Balance
+                colors.append(color)
+            bars = ax.barh(prices, counts, height=self.tick_size*0.8, 
+                          color=colors, alpha=0.7, edgecolor='black', linewidth=0.5)
+        else:
+            bars = ax.barh(prices, counts, height=self.tick_size*0.8, 
+                          color='steelblue', alpha=0.7, edgecolor='black', linewidth=0.5)
         
         # Add TPO letters on the bars
         if show_letters and 'tpo_letters' in self.tpo_data.columns:
@@ -231,11 +262,17 @@ class TPOProfile:
                 ax.axhline(y=self.initial_balance_low, color='orange', linewidth=1.5,
                           linestyle=':', label=f'IBL: {self.initial_balance_low:.2f}', zorder=8)
         
-        ax.set_xlabel('TPO Count', fontsize=12)
-        ax.set_ylabel('Price', fontsize=12)
-        ax.set_title('Market Profile (TPO)', fontsize=14, fontweight='bold')
-        ax.legend(loc='upper right', fontsize=14)
-        ax.grid(True, alpha=0.3, axis='y')
+        ax.set_xlabel('TPO Count', fontsize=12, color=label_color)
+        ax.set_ylabel('Price', fontsize=12, color=label_color)
+        ax.set_title('Market Profile (TPO)', fontsize=14, fontweight='bold', color=title_color)
+        
+        # Set legend with appropriate colors for dark mode
+        if dark_mode:
+            legend = ax.legend(loc='upper right', fontsize=14, facecolor='black', edgecolor='white', labelcolor='white')
+        else:
+            legend = ax.legend(loc='upper right', fontsize=14)
+        
+        ax.grid(True, alpha=0.3, axis='y', color=grid_color)
         
         return ax
 

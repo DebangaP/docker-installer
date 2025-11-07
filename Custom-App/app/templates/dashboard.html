@@ -558,7 +558,7 @@
                 <h3 class="card-title">📈 TPO Market Profile</h3>
                 <span class="card-icon">📊</span>
             </div>
-            <div class="tpo-chart-container" style="height: 600px;">
+            <div class="tpo-chart-container" style="height: 600px; background-color: #000;">
                 <img id="tpoChartImage" src="" alt="TPO Charts" style="width: 100%; height: 100%; object-fit: contain; border-radius: 8px;" />
             </div>
         </div>
@@ -713,9 +713,14 @@
         <div class="card" style="margin-bottom: 20px;">
             <div class="card-header" style="padding: 15px 25px; background-color: #17a2b8; color: white;">
                 <h3 class="card-title" style="font-size: 16px; color: white;">📊 Top 5 Options by Open Interest</h3>
-                <button onclick="loadTop5OIOptions()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #17a2b8; border: none; margin-left: 10px;">
-                    🔄 Refresh OI Analysis
-                </button>
+                <div style="display: flex; gap: 10px;">
+                    <button onclick="showFullOIChart()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #17a2b8; border: none; cursor: pointer;">
+                        📊 View Chart
+                    </button>
+                    <button onclick="loadTop5OIOptions()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #17a2b8; border: none; margin-left: 10px;">
+                        🔄 Refresh OI Analysis
+                    </button>
+                </div>
             </div>
             <div id="top5OIContainer" style="padding: 15px;">
                 <div style="text-align: center; padding: 20px; color: #666;">
@@ -724,13 +729,31 @@
             </div>
             <!-- OI Chart Modal -->
             <div id="oiChartModal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
-                <div style="background-color: white; margin: 5% auto; padding: 20px; border-radius: 10px; width: 90%; max-width: 1200px; max-height: 80vh; overflow-y: auto;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div id="oiChartModalContent" style="background-color: white; margin: 10% auto; padding: 20px; border-radius: 10px; width: 80%; height: 80vh; overflow: hidden; display: flex; flex-direction: column; position: relative; transition: none;">
+                    <!-- Resize handles -->
+                    <div class="resize-handle resize-handle-n" style="position: absolute; top: 0; left: 0; right: 0; height: 5px; cursor: ns-resize; z-index: 10; background: transparent;"></div>
+                    <div class="resize-handle resize-handle-s" style="position: absolute; bottom: 0; left: 0; right: 0; height: 5px; cursor: ns-resize; z-index: 10; background: transparent;"></div>
+                    <div class="resize-handle resize-handle-e" style="position: absolute; top: 0; bottom: 0; right: 0; width: 5px; cursor: ew-resize; z-index: 10; background: transparent;"></div>
+                    <div class="resize-handle resize-handle-w" style="position: absolute; top: 0; bottom: 0; left: 0; width: 5px; cursor: ew-resize; z-index: 10; background: transparent;"></div>
+                    <div class="resize-handle resize-handle-ne" style="position: absolute; top: 0; right: 0; width: 15px; height: 15px; cursor: nesw-resize; z-index: 11; background: transparent;"></div>
+                    <div class="resize-handle resize-handle-nw" style="position: absolute; top: 0; left: 0; width: 15px; height: 15px; cursor: nwse-resize; z-index: 11; background: transparent;"></div>
+                    <div class="resize-handle resize-handle-se" style="position: absolute; bottom: 0; right: 0; width: 15px; height: 15px; cursor: nwse-resize; z-index: 11; background: transparent;"></div>
+                    <div class="resize-handle resize-handle-sw" style="position: absolute; bottom: 0; left: 0; width: 15px; height: 15px; cursor: nesw-resize; z-index: 11; background: transparent;"></div>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0;">
                         <h3 id="oiChartTitle" style="margin: 0; color: #17a2b8;">Open Interest Chart</h3>
-                        <button onclick="closeOIChart()" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; font-size: 14px;">✕ Close</button>
+                        <div style="display: flex; gap: 10px;">
+                            <button onclick="zoomOIChart('in')" style="background: #28a745; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 14px;" title="Zoom In">🔍+</button>
+                            <button onclick="zoomOIChart('out')" style="background: #ffc107; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 14px;" title="Zoom Out">🔍-</button>
+                            <button onclick="zoomOIChart('reset')" style="background: #6c757d; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 14px;" title="Reset Zoom">↺</button>
+                            <button id="oiChartMaximizeBtn" onclick="toggleOIMaximize()" style="background: #17a2b8; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; font-size: 14px;">⛶ Maximize</button>
+                            <button onclick="closeOIChart()" style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; font-size: 14px;">✕ Close</button>
+                        </div>
                     </div>
-                    <div id="oiChartContainer" style="text-align: center; padding: 20px;">
-                        <div style="color: #666;">Loading chart...</div>
+                    <div id="oiChartContainer" style="text-align: center; padding: 10px; flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; position: relative;" onwheel="handleOIChartWheel(event)">
+                        <div id="oiChartImageWrapper" style="position: relative; display: inline-block; overflow: auto;">
+                            <div style="color: #666;">Loading chart...</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -4997,9 +5020,53 @@
             });
         }
         
+        // Show Full OI Chart (all options, top 50)
+        function showFullOIChart() {
+            const modal = document.getElementById('oiChartModal');
+            const title = document.getElementById('oiChartTitle');
+            const container = document.getElementById('oiChartContainer');
+            
+            // Open in maximized state by default
+            oiChartMaximized = true;
+            updateOIModalSize();
+            
+            title.textContent = 'Open Interest Chart - Top 50 Strikes';
+            const imageWrapper = document.getElementById('oiChartImageWrapper');
+            imageWrapper.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading chart...</div>';
+            modal.style.display = 'block';
+            
+            // Initialize resize handles
+            setTimeout(() => initOIChartResize(), 100);
+            
+            // Fetch full OI chart (no specific symbol filter)
+            let url = `/api/options_oi_analysis?include_chart=true&top_n=50`;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        imageWrapper.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load chart'}</div>`;
+                        return;
+                    }
+                    
+                    if (data.chart_image) {
+                        imageWrapper.innerHTML = `<img id="oiChartImage" src="${data.chart_image}" style="max-width: none; max-height: none; width: 100%; height: auto; object-fit: contain; transition: transform 0.1s;" alt="OI Chart" />`;
+                        // Reset zoom when new image loads
+                        oiChartZoomLevel = 1;
+                        updateOIChartZoom();
+                    } else {
+                        imageWrapper.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">No chart data available</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading OI chart:', error);
+                    imageWrapper.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading chart: ${error.message}</div>`;
+                });
+        }
+        
         // Load OI sparkline chart
-        function loadOISparkline(tradingsymbol, strike, optionType, expiry) {
-            const canvasId = `oi-sparkline-${tradingsymbol}`;
+        function loadOISparkline(tradingsymbol, strike, optionType, expiry, canvasIdOverride = null) {
+            const canvasId = canvasIdOverride || `oi-sparkline-${tradingsymbol}`;
             const canvas = document.getElementById(canvasId);
             if (!canvas) return;
             
@@ -5096,7 +5163,7 @@
                         const optionTypeBg = option.option_type === 'CE' ? '#d4edda' : '#f8d7da';
                         
                         html += `
-                            <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : '#f8f9fa'}; cursor: pointer;" onclick="showOIChart('${option.tradingsymbol || ''}', ${option.strike_price}, '${option.option_type}', '${option.expiry || ''}')">
+                            <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : '#f8f9fa'};">
                                 <td style="padding: 8px; border: 1px solid #ddd; font-weight: 600; font-size: 11px;">${option.tradingsymbol || 'N/A'}</td>
                                 <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
                                     <span style="padding: 3px 8px; border-radius: 3px; background-color: ${optionTypeBg}; color: ${optionTypeColor}; font-weight: 600; font-size: 10px;">
@@ -5110,7 +5177,7 @@
                                 <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">${formatIndianNumber(option.total_volume || 0)}</td>
                                 <td style="padding: 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">₹${(option.avg_last_price || 0).toFixed(2)}</td>
                                 <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
-                                    <button style="background: #17a2b8; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 10px;" onclick="event.stopPropagation(); showOIChart('${option.tradingsymbol || ''}', ${option.strike_price}, '${option.option_type}', '${option.expiry || ''}')">View Chart</button>
+                                    <button style="background: #17a2b8; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 10px;" onclick="event.stopPropagation(); showOIChartForOption('${option.tradingsymbol || ''}', ${option.strike_price}, '${option.option_type}', '${option.expiry || ''}')">View Chart</button>
                                 </td>
                             </tr>
                         `;
@@ -5130,14 +5197,34 @@
                 });
         }
         
-        // Show OI Chart Modal
-        function showOIChart(tradingsymbol, strike, optionType, expiry) {
+        // Track OI chart maximize state and zoom
+        let oiChartMaximized = false;
+        let oiChartZoomLevel = 1;
+        let isResizing = false;
+        let resizeHandle = null;
+        let startX = 0;
+        let startY = 0;
+        let startWidth = 0;
+        let startHeight = 0;
+        let startLeft = 0;
+        let startTop = 0;
+        
+        // Show OI Chart for a specific option (filtered by option type and expiry)
+        function showOIChartForOption(tradingsymbol, strike, optionType, expiry) {
             const modal = document.getElementById('oiChartModal');
             const title = document.getElementById('oiChartTitle');
             const container = document.getElementById('oiChartContainer');
             
+            // Open in maximized state by default
+            oiChartMaximized = true;
+            updateOIModalSize();
+            
+            // Initialize resize handles
+            setTimeout(() => initOIChartResize(), 100);
+            
             title.textContent = `Open Interest Chart - ${tradingsymbol} (${strike} ${optionType})`;
-            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading chart...</div>';
+            const imageWrapper = document.getElementById('oiChartImageWrapper');
+            imageWrapper.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading chart...</div>';
             modal.style.display = 'block';
             
             let expiryStr = null;
@@ -5148,6 +5235,7 @@
                     expiryStr = expiry.toISOString().split('T')[0];
                 }
             }
+            // Filter by option type and expiry for this specific option
             let url = `/api/options_oi_analysis?option_type=${optionType}&include_chart=true&top_n=50`;
             if (expiryStr) {
                 url += `&expiry=${expiryStr}`;
@@ -5162,7 +5250,11 @@
                     }
                     
                     if (data.chart_image) {
-                        container.innerHTML = `<img src="${data.chart_image}" style="max-width: 100%; height: auto;" alt="OI Chart" />`;
+                        const imageWrapper = document.getElementById('oiChartImageWrapper');
+                        imageWrapper.innerHTML = `<img id="oiChartImage" src="${data.chart_image}" style="max-width: none; max-height: none; width: 100%; height: auto; object-fit: contain; transition: transform 0.1s;" alt="OI Chart" />`;
+                        // Reset zoom when new image loads
+                        oiChartZoomLevel = 1;
+                        updateOIChartZoom();
                     } else {
                         container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">No chart data available</div>';
                     }
@@ -5173,10 +5265,201 @@
                 });
         }
         
+        // Show OI Chart Modal (generic function for backward compatibility)
+        function showOIChart(tradingsymbol, strike, optionType, expiry) {
+            showOIChartForOption(tradingsymbol, strike, optionType, expiry);
+        }
+        
+        // Toggle OI Chart Maximize
+        function toggleOIMaximize() {
+            oiChartMaximized = !oiChartMaximized;
+            updateOIModalSize();
+        }
+        
+        // Update OI Modal Size
+        function updateOIModalSize() {
+            const modalContent = document.getElementById('oiChartModalContent');
+            const maximizeBtn = document.getElementById('oiChartMaximizeBtn');
+            
+            if (oiChartMaximized) {
+                // Maximized: 90% width and height
+                modalContent.style.width = '90%';
+                modalContent.style.height = '90vh';
+                modalContent.style.margin = '5% auto';
+                modalContent.style.left = 'auto';
+                modalContent.style.top = 'auto';
+                maximizeBtn.textContent = '⛶ Restore';
+                maximizeBtn.style.background = '#6c757d';
+            } else {
+                // Normal: 80% width and height
+                modalContent.style.width = '80%';
+                modalContent.style.height = '80vh';
+                modalContent.style.margin = '10% auto';
+                modalContent.style.left = 'auto';
+                modalContent.style.top = 'auto';
+                maximizeBtn.textContent = '⛶ Maximize';
+                maximizeBtn.style.background = '#17a2b8';
+            }
+        }
+        
+        // Zoom OI Chart
+        function zoomOIChart(action) {
+            const chartImage = document.getElementById('oiChartImage');
+            if (!chartImage) return;
+            
+            if (action === 'in') {
+                oiChartZoomLevel = Math.min(oiChartZoomLevel + 0.25, 5); // Max 5x zoom
+            } else if (action === 'out') {
+                oiChartZoomLevel = Math.max(oiChartZoomLevel - 0.25, 0.25); // Min 0.25x zoom
+            } else if (action === 'reset') {
+                oiChartZoomLevel = 1;
+            }
+            
+            updateOIChartZoom();
+        }
+        
+        // Update OI Chart Zoom
+        function updateOIChartZoom() {
+            const chartImage = document.getElementById('oiChartImage');
+            if (!chartImage) return;
+            
+            chartImage.style.transform = `scale(${oiChartZoomLevel})`;
+            chartImage.style.transformOrigin = 'center center';
+        }
+        
+        // Handle mouse wheel zoom for OI Chart
+        function handleOIChartWheel(event) {
+            if (event.ctrlKey || event.metaKey) {
+                event.preventDefault();
+                const delta = event.deltaY > 0 ? -0.1 : 0.1;
+                oiChartZoomLevel = Math.max(0.25, Math.min(5, oiChartZoomLevel + delta));
+                updateOIChartZoom();
+            }
+        }
+        
+        // Initialize resize handles for OI Chart Modal
+        function initOIChartResize() {
+            const modalContent = document.getElementById('oiChartModalContent');
+            if (!modalContent) return;
+            
+            // Remove existing event listeners by cloning and replacing
+            const handles = modalContent.querySelectorAll('.resize-handle');
+            
+            handles.forEach(handle => {
+                // Remove old listeners by cloning
+                const newHandle = handle.cloneNode(true);
+                handle.parentNode.replaceChild(newHandle, handle);
+                
+                // Add new listener
+                newHandle.addEventListener('mousedown', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    isResizing = true;
+                    resizeHandle = newHandle;
+                    
+                    const rect = modalContent.getBoundingClientRect();
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    startWidth = rect.width;
+                    startHeight = rect.height;
+                    startLeft = rect.left;
+                    startTop = rect.top;
+                    
+                    document.addEventListener('mousemove', handleResize);
+                    document.addEventListener('mouseup', stopResize);
+                });
+            });
+        }
+        
+        // Handle resize
+        function handleResize(e) {
+            if (!isResizing || !resizeHandle) return;
+            
+            const modalContent = document.getElementById('oiChartModalContent');
+            if (!modalContent) return;
+            
+            const deltaX = e.clientX - startX;
+            const deltaY = e.clientY - startY;
+            
+            const handleClass = resizeHandle.className;
+            
+            // Calculate new dimensions based on handle
+            let newWidth = startWidth;
+            let newHeight = startHeight;
+            let newLeft = startLeft;
+            let newTop = startTop;
+            
+            // Handle different resize directions
+            if (handleClass.includes('resize-handle-e') || handleClass.includes('resize-handle-ne') || handleClass.includes('resize-handle-se')) {
+                newWidth = startWidth + deltaX;
+            }
+            if (handleClass.includes('resize-handle-w') || handleClass.includes('resize-handle-nw') || handleClass.includes('resize-handle-sw')) {
+                newWidth = startWidth - deltaX;
+                newLeft = startLeft + deltaX;
+            }
+            if (handleClass.includes('resize-handle-s') || handleClass.includes('resize-handle-se') || handleClass.includes('resize-handle-sw')) {
+                newHeight = startHeight + deltaY;
+            }
+            if (handleClass.includes('resize-handle-n') || handleClass.includes('resize-handle-ne') || handleClass.includes('resize-handle-nw')) {
+                newHeight = startHeight - deltaY;
+                newTop = startTop + deltaY;
+            }
+            
+            // Apply minimum size constraints
+            const minWidth = 400;
+            const minHeight = 300;
+            const maxWidth = window.innerWidth - 20;
+            const maxHeight = window.innerHeight - 20;
+            
+            // Constrain width
+            if (newWidth >= minWidth && newWidth <= maxWidth) {
+                modalContent.style.width = newWidth + 'px';
+                if (newLeft !== startLeft) {
+                    modalContent.style.left = newLeft + 'px';
+                    modalContent.style.right = 'auto';
+                    modalContent.style.margin = '0';
+                } else {
+                    // Center horizontally if not resizing from left/right
+                    modalContent.style.left = 'auto';
+                    modalContent.style.right = 'auto';
+                    modalContent.style.marginLeft = 'auto';
+                    modalContent.style.marginRight = 'auto';
+                }
+            }
+            
+            // Constrain height
+            if (newHeight >= minHeight && newHeight <= maxHeight) {
+                modalContent.style.height = newHeight + 'px';
+                if (newTop !== startTop) {
+                    modalContent.style.top = newTop + 'px';
+                    modalContent.style.bottom = 'auto';
+                    modalContent.style.margin = '0';
+                } else {
+                    // Center vertically if not resizing from top/bottom
+                    modalContent.style.top = 'auto';
+                    modalContent.style.bottom = 'auto';
+                    modalContent.style.marginTop = 'auto';
+                    modalContent.style.marginBottom = 'auto';
+                }
+            }
+        }
+        
+        // Stop resize
+        function stopResize() {
+            isResizing = false;
+            resizeHandle = null;
+            document.removeEventListener('mousemove', handleResize);
+            document.removeEventListener('mouseup', stopResize);
+        }
+        
         // Close OI Chart Modal
         function closeOIChart() {
             const modal = document.getElementById('oiChartModal');
             modal.style.display = 'none';
+            // Reset to normal size when closing
+            oiChartMaximized = false;
+            oiChartZoomLevel = 1;
+            updateOIModalSize();
         }
         
         // Close modal when clicking outside
@@ -5186,6 +5469,11 @@
                 closeOIChart();
             }
         }
+        
+        // Initialize resize handles when modal is shown
+        document.addEventListener('DOMContentLoaded', function() {
+            initOIChartResize();
+        });
         
         // Fetch wrapper - respects HTTP cache headers from server
         // The browser's HTTP cache will automatically cache responses based on 

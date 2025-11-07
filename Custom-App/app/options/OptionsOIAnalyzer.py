@@ -341,25 +341,26 @@ class OptionsOIAnalyzer:
                 axis=1
             )
             
-            # Create figure with subplots
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 12))
+            # Create figure with subplots - make top 50 strikes chart bigger, OI Distribution smaller
+            # height_ratios: 3:1 means top chart gets 75% of height, bottom chart gets 25%
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 14), height_ratios=[3, 1])
             
-            # Plot 1: Bar chart of OI by strike
+            # Plot 1: Bar chart of OI by strike (bigger chart)
             colors = top_df['option_type'].map({'CE': 'green', 'PE': 'red'})
             ax1.barh(range(len(top_df)), top_df['total_oi'], color=colors, alpha=0.7)
             ax1.set_yticks(range(len(top_df)))
-            ax1.set_yticklabels(top_df['strike_label'], fontsize=10)
-            ax1.set_xlabel('Open Interest', fontsize=12, fontweight='bold')
-            ax1.set_title(f'Top {top_n} Strikes by Open Interest', fontsize=14, fontweight='bold')
+            ax1.set_yticklabels(top_df['strike_label'], fontsize=11)
+            ax1.set_xlabel('Open Interest', fontsize=13, fontweight='bold')
+            ax1.set_title(f'Top {top_n} Strikes by Open Interest', fontsize=16, fontweight='bold')
             ax1.grid(True, alpha=0.3, axis='x')
             ax1.invert_yaxis()  # Highest OI at top
             
             # Add value labels on bars
             for i, (idx, row) in enumerate(top_df.iterrows()):
                 ax1.text(row['total_oi'], i, f"{int(row['total_oi']):,}", 
-                        va='center', fontsize=9, fontweight='bold')
+                        va='center', fontsize=10, fontweight='bold')
             
-            # Plot 2: Line chart of OI distribution (if we have enough data)
+            # Plot 2: Line chart of OI distribution (smaller chart)
             if len(top_df) > 1:
                 # Sort by strike price for line chart
                 top_df_sorted = top_df.sort_values('strike_price')
@@ -370,17 +371,19 @@ class OptionsOIAnalyzer:
                 
                 if not ce_data.empty:
                     ax2.plot(ce_data['strike_price'], ce_data['total_oi'], 
-                            marker='o', label='CE', color='green', linewidth=2, markersize=6)
+                            marker='o', label='CE', color='green', linewidth=2, markersize=5)
                 
                 if not pe_data.empty:
                     ax2.plot(pe_data['strike_price'], pe_data['total_oi'], 
-                            marker='s', label='PE', color='red', linewidth=2, markersize=6)
+                            marker='s', label='PE', color='red', linewidth=2, markersize=5)
                 
-                ax2.set_xlabel('Strike Price', fontsize=12, fontweight='bold')
-                ax2.set_ylabel('Open Interest', fontsize=12, fontweight='bold')
-                ax2.set_title('OI Distribution Across Strikes', fontsize=14, fontweight='bold')
-                ax2.legend()
+                ax2.set_xlabel('Strike Price', fontsize=11, fontweight='bold')
+                ax2.set_ylabel('Open Interest', fontsize=11, fontweight='bold')
+                ax2.set_title('OI Distribution Across Strikes', fontsize=12, fontweight='bold')
+                ax2.legend(fontsize=10)
                 ax2.grid(True, alpha=0.3)
+                # Reduce tick label sizes for smaller chart
+                ax2.tick_params(labelsize=9)
             
             # Add summary text
             summary = self.get_oi_summary(expiry=expiry, analysis_date=analysis_date)

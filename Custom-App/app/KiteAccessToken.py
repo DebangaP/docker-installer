@@ -906,34 +906,52 @@ async def api_tpo_charts(analysis_date: str = Query(None)):
             end_time=f'{target_date} 15:30:00.000 +0530'
         )
         
-        # Generate charts
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 10))
+        # Generate charts with dark background
+        fig = plt.figure(figsize=(24, 10), facecolor='black')
+        ax1 = fig.add_subplot(1, 2, 1)
+        ax2 = fig.add_subplot(1, 2, 2)
         
         # Pre-market chart
         if not pre_market_df.empty:
             pre_market_tpo = TPOProfile(tick_size=5)
             pre_market_tpo.calculate_tpo(pre_market_df)
-            pre_market_tpo.plot_profile(ax=ax1, show_metrics=True, show_letters=True)
-            ax1.set_title(f"Pre-market TPO Profile ({target_date})", fontsize=14, fontweight='bold')
+            pre_market_tpo.plot_profile(ax=ax1, show_metrics=True, show_letters=True, dark_mode=True)
+            ax1.set_title(f"Pre-market TPO Profile ({target_date})", fontsize=14, fontweight='bold', color='white')
         else:
-            ax1.text(0.5, 0.5, 'No pre-market data', ha='center', va='center', transform=ax1.transAxes)
-            ax1.set_title(f"Pre-market TPO Profile ({target_date})", fontsize=14, fontweight='bold')
+            ax1.set_facecolor('black')
+            ax1.text(0.5, 0.5, 'No pre-market data', ha='center', va='center', transform=ax1.transAxes, color='white', fontsize=12)
+            ax1.set_title(f"Pre-market TPO Profile ({target_date})", fontsize=14, fontweight='bold', color='white')
+            ax1.tick_params(colors='white', labelsize=10)
+            ax1.spines['top'].set_color('white')
+            ax1.spines['bottom'].set_color('white')
+            ax1.spines['left'].set_color('white')
+            ax1.spines['right'].set_color('white')
+            ax1.xaxis.label.set_color('white')
+            ax1.yaxis.label.set_color('white')
         
         # Real-time chart
         if not real_time_df.empty:
             real_time_tpo = TPOProfile(tick_size=5)
             real_time_tpo.calculate_tpo(real_time_df)
-            real_time_tpo.plot_profile(ax=ax2, show_metrics=True, show_letters=True)
-            ax2.set_title(f"Real-time TPO Profile ({target_date})", fontsize=14, fontweight='bold')
+            real_time_tpo.plot_profile(ax=ax2, show_metrics=True, show_letters=True, dark_mode=True)
+            ax2.set_title(f"Real-time TPO Profile ({target_date})", fontsize=14, fontweight='bold', color='white')
         else:
-            ax2.text(0.5, 0.5, 'No real-time data', ha='center', va='center', transform=ax2.transAxes)
-            ax2.set_title(f"Real-time TPO Profile ({target_date})", fontsize=14, fontweight='bold')
+            ax2.set_facecolor('black')
+            ax2.text(0.5, 0.5, 'No real-time data', ha='center', va='center', transform=ax2.transAxes, color='white', fontsize=12)
+            ax2.set_title(f"Real-time TPO Profile ({target_date})", fontsize=14, fontweight='bold', color='white')
+            ax2.tick_params(colors='white', labelsize=10)
+            ax2.spines['top'].set_color('white')
+            ax2.spines['bottom'].set_color('white')
+            ax2.spines['left'].set_color('white')
+            ax2.spines['right'].set_color('white')
+            ax2.xaxis.label.set_color('white')
+            ax2.yaxis.label.set_color('white')
         
         plt.tight_layout()
         
         # Convert to base64
         buffer = io.BytesIO()
-        plt.savefig(buffer, format='png', dpi=150, bbox_inches='tight')
+        plt.savefig(buffer, format='png', dpi=150, bbox_inches='tight', facecolor='black')
         buffer.seek(0)
         image_base64 = base64.b64encode(buffer.getvalue()).decode()
         plt.close()
