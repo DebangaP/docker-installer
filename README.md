@@ -22,24 +22,18 @@ To be noted that this is not a Production grade app.
 10. Visit **http://localhost:3001/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&to=now&timezone=browser** to see your Grafana Dashboard (user=admin/ password=adminpassword)
 
 **NIFTY50 Ticks**
-**<img width="706" height="507" alt="image" src="https://github.com/user-attachments/assets/b2866788-9859-4005-81c5-63c6228c176b" />
 
 **Todays' Positions**
-**<img width="930" height="180" alt="image" src="https://github.com/user-attachments/assets/f187eca5-32f2-400d-b5c1-cbf4f65d3c77" />
 
 **TPO-based Derivative Suggestions**
 <img width="1327" height="956" alt="image" src="https://github.com/user-attachments/assets/f0e9350f-979a-46b4-b159-d7218601a8be" />
 
 
 **Latest Trades**
-**<img width="952" height="187" alt="image" src="https://github.com/user-attachments/assets/be7a4b30-3045-4ed5-b907-3d0a006f88a8" />
 
 **Your Holdings**
-<img width="770" height="127" alt="image" src="https://github.com/user-attachments/assets/7e61a635-7272-4e7d-bd0a-44d400deb4fe" />
 
 **Click on any particular stock to see its daily Candlestick chart**
-<img width="1080" height="386" alt="image" src="https://github.com/user-attachments/assets/333ce042-4ad8-4d6d-a868-64fdb56eebce" />
 
 **Top Gainers and Losers for the last trading day**
-<img width="1872" height="465" alt="image" src="https://github.com/user-attachments/assets/c5093877-1cbd-4146-922a-db92065f9e14" />
 
