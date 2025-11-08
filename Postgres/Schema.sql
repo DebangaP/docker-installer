@@ -129,6 +129,13 @@ CREATE TABLE IF NOT EXISTS my_schema.derivative_suggestions (
     diagnostics JSONB,
     potential_profit DOUBLE PRECISION,
     max_potential_profit DOUBLE PRECISION,
+    max_profit DOUBLE PRECISION,
+    max_loss DOUBLE PRECISION,
+    risk_reward_ratio DOUBLE PRECISION,
+    probability_of_profit DOUBLE PRECISION,
+    breakeven DOUBLE PRECISION,
+    payoff_chart TEXT,
+    payoff_sparkline TEXT,
     run_date DATE DEFAULT CURRENT_DATE
 );
 

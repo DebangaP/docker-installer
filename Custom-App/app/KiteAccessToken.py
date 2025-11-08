@@ -2767,10 +2767,9 @@ async def api_swing_trades_nifty(
 @app.get("/api/prophet_predictions/generate")
 async def api_generate_prophet_predictions(
     prediction_days: int = Query(30, description="Number of days to predict ahead (default: 30, supports 30, 60, 90, 180, etc.)"),
-    limit: int = Query(None, description="Limit number of stocks to process (default: all)"),
-    force: bool = Query(False, description="Force regeneration even if predictions exist for today")
+    limit: int = Query(None, description="Limit number of stocks to process (default: all)")
 ):
-    """API endpoint to generate Prophet price predictions for all stocks (runs once per day)"""
+    """API endpoint to generate Prophet price predictions for all stocks (always regenerates)"""
     try:
         from stocks.ProphetPricePredictor import ProphetPricePredictor
         from datetime import date
@@ -2778,20 +2777,13 @@ async def api_generate_prophet_predictions(
         predictor = ProphetPricePredictor(prediction_days=prediction_days)
         run_date = date.today()
         
-        # Check if predictions already exist for today and this prediction_days (unless force=True)
-        if not force and predictor.check_predictions_exist_for_date(run_date, prediction_days=prediction_days):
-            return {
-                "success": False,
-                "error": f"Predictions already generated for today with {prediction_days} days. Set force=true to regenerate.",
-                "run_date": str(run_date),
-                "prediction_days": prediction_days
-            }
+        # Always regenerate predictions (force=true behavior)
         
-        # Generate predictions
+        # Generate predictions and save immediately after each calculation
         logging.info(f"Starting Prophet prediction generation for run_date={run_date}, prediction_days={prediction_days}, limit={limit}")
-        predictions = predictor.predict_all_stocks(limit=limit, prediction_days=prediction_days)
+        predictions = predictor.predict_all_stocks(limit=limit, prediction_days=prediction_days, save_immediately=True, run_date=run_date)
         
-        logging.info(f"Prophet prediction generation completed: {len(predictions)} predictions generated")
+        logging.info(f"Prophet prediction generation completed: {len(predictions)} predictions generated and saved")
         
         if not predictions:
             error_msg = "No predictions generated. This could be due to: insufficient data (need at least 60 days), Prophet model errors, or data quality issues. Check application logs for details."
@@ -2803,23 +2795,12 @@ async def api_generate_prophet_predictions(
                 "prediction_days": prediction_days
             }
         
-        # Save predictions
-        save_success = predictor.save_predictions(predictions, run_date, prediction_days=prediction_days)
-        
-        if not save_success:
-            return {
-                "success": False,
-                "error": "Failed to save predictions to database",
-                "predictions_generated": len(predictions),
-                "run_date": str(run_date)
-            }
-        
         return {
             "success": True,
             "predictions_generated": len(predictions),
             "run_date": str(run_date),
             "prediction_days": prediction_days,
-            "message": f"Successfully generated and saved {len(predictions)} predictions for {prediction_days} days"
+            "message": f"Successfully generated and saved {len(predictions)} predictions for {prediction_days} days (saved immediately after each calculation)"
         }
         
     except Exception as e:
@@ -2936,6 +2917,83 @@ async def api_prophet_top_gainers(
         import traceback
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e), "top_gainers": []}
+
+@app.get("/api/prophet_predictions/sectoral_averages")
+async def api_prophet_sectoral_averages(
+    prediction_days: int = Query(30, description="Number of prediction days to filter by (default: 30)"),
+    force_refresh: bool = Query(False, description="Force refresh (ignore cache)")
+):
+    """API endpoint to get sectoral averages for Prophet predictions"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get the latest run_date for the specified prediction_days
+        cursor.execute("""
+            SELECT MAX(run_date) as max_run_date
+            FROM my_schema.prophet_predictions 
+            WHERE status = 'ACTIVE' AND prediction_days = %s
+        """, (prediction_days,))
+        
+        result = cursor.fetchone()
+        if not result or not result.get('max_run_date'):
+            cursor.close()
+            conn.close()
+            return {
+                "success": True,
+                "sectoral_averages": [],
+                "message": "No predictions found for the specified prediction_days"
+            }
+        
+        run_date = result['max_run_date']
+        
+        # Get sectoral averages
+        cursor.execute("""
+            SELECT 
+                ms.sector_code,
+                AVG(pp.predicted_price_change_pct) as avg_gain_pct,
+                AVG(pp.prediction_confidence) as avg_confidence,
+                COUNT(*) as stock_count
+            FROM my_schema.prophet_predictions pp
+            LEFT JOIN my_schema.master_scrips ms ON pp.scrip_id = ms.scrip_id
+            WHERE pp.run_date = %s
+            AND pp.prediction_days = %s
+            AND pp.status = 'ACTIVE'
+            AND pp.predicted_price_change_pct > 0
+            AND pp.prediction_confidence >= 50.0
+            AND ms.sector_code IS NOT NULL
+            GROUP BY ms.sector_code
+            ORDER BY avg_gain_pct DESC
+        """, (run_date, prediction_days))
+        
+        rows = cursor.fetchall()
+        sectoral_averages = [dict(row) for row in rows]
+        
+        # Convert numeric types to native Python types
+        for sector in sectoral_averages:
+            if sector.get('avg_gain_pct') is not None:
+                sector['avg_gain_pct'] = float(sector['avg_gain_pct'])
+            if sector.get('avg_confidence') is not None:
+                sector['avg_confidence'] = float(sector['avg_confidence'])
+            if sector.get('stock_count') is not None:
+                sector['stock_count'] = int(sector['stock_count'])
+        
+        cursor.close()
+        conn.close()
+        
+        return {
+            "success": True,
+            "sectoral_averages": sectoral_averages,
+            "run_date": str(run_date),
+            "prediction_days": prediction_days,
+            "count": len(sectoral_averages)
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting sectoral averages: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "sectoral_averages": []}
 
 @app.get("/api/prophet_predictions/days_in_leaderboard")
 async def api_days_in_leaderboard(
@@ -3503,13 +3561,28 @@ async def api_gainers():
             scrip_ids = [g['scrip_id'] for g in gainers_list if g.get('scrip_id')]
             if scrip_ids:
                 # First try to get 60-day predictions
+                # Extract cv_mape and cv_rmse from prediction_details JSONB
+                # Note: cv_metrics are only available if predictions were generated with PROPHET_ENABLE_CROSS_VALIDATION=true
                 cursor.execute("""
-                    SELECT scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days, cv_mape, cv_rmse
+                    SELECT scrip_id, 
+                           predicted_price_change_pct, 
+                           prediction_confidence, 
+                           prediction_days,
+                           CASE 
+                               WHEN prediction_details->'cv_metrics' IS NOT NULL 
+                               THEN CAST((prediction_details->'cv_metrics'->>'mape') AS DOUBLE PRECISION)
+                               ELSE NULL 
+                           END as cv_mape,
+                           CASE 
+                               WHEN prediction_details->'cv_metrics' IS NOT NULL 
+                               THEN CAST((prediction_details->'cv_metrics'->>'rmse') AS DOUBLE PRECISION)
+                               ELSE NULL 
+                           END as cv_rmse
                     FROM my_schema.prophet_predictions
                     WHERE run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE' AND prediction_days = 60)
                     AND prediction_days = 60
                     AND status = 'ACTIVE'
-                    AND scrip_id = ANY(%s)
+                    AND scrip_id = ANY(%s::text[])
                 """, (scrip_ids,))
                 
                 predictions_rows = cursor.fetchall()
@@ -3518,16 +3591,49 @@ async def api_gainers():
                 if not predictions_rows:
                     logging.warning("No 60-day Prophet predictions found for gainers, trying latest predictions")
                     cursor.execute("""
-                        SELECT scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days, cv_mape, cv_rmse
+                        SELECT scrip_id, 
+                               predicted_price_change_pct, 
+                               prediction_confidence, 
+                               prediction_days,
+                               CASE 
+                                   WHEN prediction_details->'cv_metrics' IS NOT NULL 
+                                   THEN CAST((prediction_details->'cv_metrics'->>'mape') AS DOUBLE PRECISION)
+                                   ELSE NULL 
+                               END as cv_mape,
+                               CASE 
+                                   WHEN prediction_details->'cv_metrics' IS NOT NULL 
+                                   THEN CAST((prediction_details->'cv_metrics'->>'rmse') AS DOUBLE PRECISION)
+                                   ELSE NULL 
+                               END as cv_rmse
                         FROM my_schema.prophet_predictions pp1
                         WHERE status = 'ACTIVE'
                         AND run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE')
-                        AND scrip_id = ANY(%s)
+                        AND scrip_id = ANY(%s::text[])
                     """, (scrip_ids,))
                     predictions_rows = cursor.fetchall()
                 
-                predictions_map = {row['scrip_id'].upper(): dict(row) for row in predictions_rows}
+                predictions_map = {}
+                for row in predictions_rows:
+                    try:
+                        scrip_id = row.get('scrip_id') or row.get('SCRIP_ID')
+                        if scrip_id:
+                            scrip_id_upper = scrip_id.upper()
+                            predictions_map[scrip_id_upper] = {
+                                'predicted_price_change_pct': row.get('predicted_price_change_pct'),
+                                'prediction_confidence': row.get('prediction_confidence'),
+                                'prediction_days': row.get('prediction_days'),
+                                'cv_mape': row.get('cv_mape'),
+                                'cv_rmse': row.get('cv_rmse')
+                            }
+                            # Debug logging for first prediction
+                            if len(predictions_map) == 1:
+                                logging.info(f"Sample prediction data: {predictions_map[scrip_id_upper]}")
+                    except Exception as e:
+                        logging.warning(f"Error processing prediction row: {e}, row: {dict(row)}")
+                
                 logging.info(f"Loaded {len(predictions_map)} Prophet predictions for gainers enrichment")
+                logging.info(f"Scrip IDs in gainers: {[g.get('scrip_id', '').upper() for g in gainers_list]}")
+                logging.info(f"Scrip IDs in predictions: {list(predictions_map.keys())}")
                 
                 # Enrich gainers with Prophet predictions
                 for gainer in gainers_list:
@@ -3539,12 +3645,14 @@ async def api_gainers():
                         gainer['prediction_days'] = pred.get('prediction_days', 60)
                         gainer['prophet_cv_mape'] = pred.get('cv_mape')
                         gainer['prophet_cv_rmse'] = pred.get('cv_rmse')
+                        logging.debug(f"Enriched gainer {scrip_id_upper}: prediction_pct={gainer['prophet_prediction_pct']}, confidence={gainer['prophet_confidence']}, mape={gainer['prophet_cv_mape']}, rmse={gainer['prophet_cv_rmse']}")
                     else:
                         gainer['prophet_prediction_pct'] = None
                         gainer['prophet_confidence'] = None
                         gainer['prediction_days'] = None
                         gainer['prophet_cv_mape'] = None
                         gainer['prophet_cv_rmse'] = None
+                        logging.debug(f"No prediction found for gainer {scrip_id_upper}")
         except Exception as e:
             logging.error(f"Error loading Prophet predictions for gainers: {e}")
             import traceback

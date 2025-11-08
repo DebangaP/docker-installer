@@ -647,17 +647,43 @@ class ProphetPricePredictor:
             logger.error(traceback.format_exc())
             return None
     
-    def predict_all_stocks(self, limit: Optional[int] = None, prediction_days: Optional[int] = None) -> List[Dict]:
+    def predict_all_stocks(self, limit: Optional[int] = None, prediction_days: Optional[int] = None, save_immediately: bool = True, run_date: Optional[date] = None) -> List[Dict]:
         """
         Generate predictions for all stocks
         
         Args:
             limit: Optional limit on number of stocks to process
             prediction_days: Number of days to predict ahead (default: uses self.prediction_days)
+            save_immediately: If True, save each prediction immediately after calculation (default: True)
+            run_date: Date for the predictions (default: today)
             
         Returns:
             List of prediction dictionaries
         """
+        if not run_date:
+            run_date = date.today()
+        
+        if prediction_days is None:
+            prediction_days = self.prediction_days
+        
+        # If saving immediately, delete existing predictions for this run_date and prediction_days first
+        if save_immediately:
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    DELETE FROM my_schema.prophet_predictions
+                    WHERE run_date = %s AND prediction_days = %s
+                """, (run_date, prediction_days))
+                conn.commit()
+                deleted_count = cursor.rowcount
+                cursor.close()
+                conn.close()
+                if deleted_count > 0:
+                    logger.info(f"Deleted {deleted_count} existing predictions for run_date={run_date}, prediction_days={prediction_days}")
+            except Exception as e:
+                logger.warning(f"Error deleting existing predictions: {e}. Continuing with generation...")
+        
         stocks = self.get_stocks_list()
         
         if limit:
@@ -666,18 +692,20 @@ class ProphetPricePredictor:
         predictions = []
         errors = []
         skipped = []
+        saved_count = 0
+        save_failed_count = 0
         total = len(stocks)
         cv_enabled_count = 0
         cv_ran_count = 0
         cv_failed_count = 0
         insufficient_data_count = 0
         
-        logger.info(f"Starting Prophet predictions for {total} stocks (cross_validation={self.enable_cross_validation})...")
+        logger.info(f"Starting Prophet predictions for {total} stocks (cross_validation={self.enable_cross_validation}, save_immediately={save_immediately})...")
         
         for idx, stock in enumerate(stocks, 1):
             # Log progress every 10 stocks or at milestones (10%, 25%, 50%, 75%, 100%)
             if idx == 1 or idx % 10 == 0 or idx in [max(1, total//10), max(1, total//4), max(1, total//2), max(1, 3*total//4), total]:
-                logger.info(f"Progress: {idx}/{total} stocks processed ({len(predictions)} successful, {len(errors)} errors)")
+                logger.info(f"Progress: {idx}/{total} stocks processed ({len(predictions)} successful, {saved_count} saved, {len(errors)} errors)")
             
             try:
                 prediction = self.predict_price(stock, prediction_days=prediction_days)
@@ -686,6 +714,14 @@ class ProphetPricePredictor:
                     # Track cv_metrics in predictions
                     if prediction.get('cv_metrics'):
                         cv_ran_count += 1
+                    
+                    # Save immediately if requested
+                    if save_immediately:
+                        if self.save_single_prediction(prediction, run_date=run_date, prediction_days=prediction_days):
+                            saved_count += 1
+                        else:
+                            save_failed_count += 1
+                            logger.warning(f"Failed to save prediction for {stock}")
                 else:
                     skipped.append(stock)
             except Exception as e:
@@ -695,12 +731,136 @@ class ProphetPricePredictor:
         
         # Summary log
         logger.info(f"✓ Prophet predictions completed: {len(predictions)} successful, {len(skipped)} skipped, {len(errors)} errors out of {total} stocks")
+        if save_immediately:
+            logger.info(f"  Saved: {saved_count} predictions saved immediately, {save_failed_count} save failures")
         if self.enable_cross_validation:
             logger.info(f"  Cross-validation: {cv_ran_count} predictions have cv_metrics out of {len(predictions)} successful predictions")
         if errors:
             logger.warning(f"Stocks with errors: {', '.join([s[0] for s in errors[:10]])}{' ...' if len(errors) > 10 else ''}")
         
         return predictions
+    
+    def save_single_prediction(self, prediction: Dict, run_date: Optional[date] = None, prediction_days: Optional[int] = None) -> bool:
+        """
+        Save a single prediction to database immediately
+        
+        Args:
+            prediction: Prediction dictionary
+            run_date: Date for the prediction (default: today)
+            prediction_days: Number of days predicted (default: self.prediction_days)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not run_date:
+            run_date = date.today()
+        
+        if prediction_days is None:
+            prediction_days = self.prediction_days
+        
+        try:
+            # Validate required fields
+            scrip_id = prediction.get('scrip_id')
+            if not scrip_id:
+                logger.warning(f"Skipping prediction: missing scrip_id")
+                return False
+            
+            # Support both 'predicted_price' (new) and 'predicted_price_30d' (old) for backward compatibility
+            predicted_price = prediction.get('predicted_price') or prediction.get('predicted_price_30d')
+            if predicted_price is None:
+                logger.warning(f"Skipping prediction for {scrip_id}: missing predicted_price")
+                return False
+            
+            # Convert to native types and validate
+            current_price = convert_numpy_to_native(prediction.get('current_price'))
+            predicted_price = convert_numpy_to_native(predicted_price)
+            predicted_price_change_pct = convert_numpy_to_native(prediction.get('predicted_price_change_pct'))
+            prediction_confidence = convert_numpy_to_native(prediction.get('prediction_confidence', 50.0))
+            
+            # Ensure numeric values are valid
+            if current_price is None or predicted_price is None:
+                logger.warning(f"Skipping prediction for {scrip_id}: invalid price values (current={current_price}, predicted={predicted_price})")
+                return False
+            
+            # Ensure prediction_confidence has a default value
+            if prediction_confidence is None:
+                prediction_confidence = 50.0
+            
+            prediction_details = {
+                'target_date': prediction.get('target_date'),
+                'lower_bound': prediction.get('lower_bound'),
+                'upper_bound': prediction.get('upper_bound'),
+                'data_points_used': prediction.get('data_points_used', 0),
+                'daily_predictions': prediction.get('daily_predictions', []),
+                'prediction_days': prediction.get('prediction_days', prediction_days),
+                'model_params': prediction.get('model_params', {
+                    'changepoint_prior_scale': 0.05,
+                    'changepoint_range': 0.95,
+                    'seasonality_prior_scale': 10.0,
+                    'interval_width': 0.80
+                })
+            }
+            
+            # Only include cv_metrics if it exists and has valid values
+            cv_metrics_from_pred = prediction.get('cv_metrics')
+            if cv_metrics_from_pred:
+                if isinstance(cv_metrics_from_pred, dict):
+                    mape = cv_metrics_from_pred.get('mape')
+                    rmse = cv_metrics_from_pred.get('rmse')
+                    # Only include if both are valid (not None, not infinity)
+                    if mape is not None and rmse is not None and mape != float('inf') and rmse != float('inf'):
+                        prediction_details['cv_metrics'] = cv_metrics_from_pred
+                        logger.debug(f"Including cv_metrics for {scrip_id}: MAPE={mape}, RMSE={rmse}")
+            
+            # Get database connection and save immediately
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            insert_query = """
+                INSERT INTO my_schema.prophet_predictions 
+                (scrip_id, run_date, prediction_days, current_price, predicted_price_30d, 
+                 predicted_price_change_pct, prediction_confidence, prediction_details, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (scrip_id, run_date, prediction_days) 
+                DO UPDATE SET
+                    current_price = EXCLUDED.current_price,
+                    predicted_price_30d = EXCLUDED.predicted_price_30d,
+                    predicted_price_change_pct = EXCLUDED.predicted_price_change_pct,
+                    prediction_confidence = EXCLUDED.prediction_confidence,
+                    prediction_details = EXCLUDED.prediction_details,
+                    status = EXCLUDED.status
+            """
+            
+            try:
+                cursor.execute(insert_query, (
+                    scrip_id,
+                    run_date,
+                    prediction_days,
+                    float(current_price) if current_price is not None else None,
+                    float(predicted_price) if predicted_price is not None else None,
+                    float(predicted_price_change_pct) if predicted_price_change_pct is not None else None,
+                    float(prediction_confidence),
+                    json.dumps(convert_numpy_to_native(prediction_details)),
+                    'ACTIVE'
+                ))
+                conn.commit()
+                logger.debug(f"Successfully saved prediction for {scrip_id}")
+                return True
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"Error saving prediction for {scrip_id}: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                return False
+            finally:
+                cursor.close()
+                conn.close()
+                
+        except Exception as e:
+            logger.error(f"Error saving single prediction for {prediction.get('scrip_id', 'UNKNOWN')}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
     
     def save_predictions(self, predictions: List[Dict], run_date: Optional[date] = None, prediction_days: Optional[int] = None) -> bool:
         """
@@ -1051,15 +1211,17 @@ class ProphetPricePredictor:
                     return []
             
             # Get top N gainers (filter out predictions with confidence < 50%)
+            # Join with master_scrips to get sector_code
             cursor.execute("""
-                SELECT * 
-                FROM my_schema.prophet_predictions
-                WHERE run_date = %s
-                AND prediction_days = %s
-                AND status = 'ACTIVE'
-                AND predicted_price_change_pct > 0
-                AND prediction_confidence >= 50.0
-                ORDER BY predicted_price_change_pct DESC
+                SELECT pp.*, ms.sector_code
+                FROM my_schema.prophet_predictions pp
+                LEFT JOIN my_schema.master_scrips ms ON pp.scrip_id = ms.scrip_id
+                WHERE pp.run_date = %s
+                AND pp.prediction_days = %s
+                AND pp.status = 'ACTIVE'
+                AND pp.predicted_price_change_pct > 0
+                AND pp.prediction_confidence >= 50.0
+                ORDER BY pp.predicted_price_change_pct DESC
                 LIMIT %s
             """, (run_date, prediction_days, limit))
             
@@ -1079,14 +1241,15 @@ class ProphetPricePredictor:
             if not nifty_included:
                 for nifty_id in nifty_scrip_ids:
                     cursor.execute("""
-                        SELECT * 
-                        FROM my_schema.prophet_predictions
-                        WHERE scrip_id = %s
-                        AND run_date = %s
-                        AND prediction_days = %s
-                        AND status = 'ACTIVE'
-                        AND predicted_price_change_pct > 0
-                        AND prediction_confidence >= 50.0
+                        SELECT pp.*, ms.sector_code
+                        FROM my_schema.prophet_predictions pp
+                        LEFT JOIN my_schema.master_scrips ms ON pp.scrip_id = ms.scrip_id
+                        WHERE pp.scrip_id = %s
+                        AND pp.run_date = %s
+                        AND pp.prediction_days = %s
+                        AND pp.status = 'ACTIVE'
+                        AND pp.predicted_price_change_pct > 0
+                        AND pp.prediction_confidence >= 50.0
                         LIMIT 1
                     """, (nifty_id, run_date, prediction_days))
                     

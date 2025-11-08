@@ -60,6 +60,7 @@ class IntradayOptionsSuggestions:
         self.order_flow_analyzer = OrderFlowAnalyzer(instrument_token=futures_token)
         self.options_fetcher = OptionsDataFetcher()
         self.strategies_generator = OptionsStrategies(risk_free_rate=0.065)
+        self._backtester = None  # Lazy initialization to avoid circular import
         
         # Store previous POC for change detection
         self.previous_poc = None
@@ -536,7 +537,7 @@ class IntradayOptionsSuggestions:
             if order_flow_sentiment in ['Bullish', 'Strong Bullish']:
                 # Strong bullish signal - suggest CE options
                 suggestions.extend(self._generate_ce_suggestions(
-                    options_chain, current_price, current_poc, 'Strong Bullish'
+                    options_chain, current_price, current_poc, 'Strong Bullish', analysis_date, timeframe_days
                 ))
         
         elif poc_direction == 'Down' and poc_strength in ['Moderate', 'Strong']:
@@ -544,7 +545,7 @@ class IntradayOptionsSuggestions:
             if order_flow_sentiment in ['Bearish', 'Strong Bearish']:
                 # Strong bearish signal - suggest PE options
                 suggestions.extend(self._generate_pe_suggestions(
-                    options_chain, current_price, current_poc, 'Strong Bearish'
+                    options_chain, current_price, current_poc, 'Strong Bearish', timeframe_days, analysis_date
                 ))
         
         # Add neutral/range-bound suggestions if POC is stable
@@ -565,11 +566,107 @@ class IntradayOptionsSuggestions:
         
         return suggestions[:10]  # Return top 10 suggestions (including multi-leg)
     
+    def _get_backtester(self):
+        """Lazy initialization of OptionsBacktester to avoid circular import"""
+        if self._backtester is None:
+            from options.OptionsBacktester import OptionsBacktester
+            self._backtester = OptionsBacktester()
+        return self._backtester
+    
+    def _calculate_payoff_metrics(self, suggestion: Dict, current_price: float, analysis_date: date) -> Dict:
+        """
+        Calculate payoff metrics for a suggestion using OptionsBacktester
+        
+        Args:
+            suggestion: Trading suggestion dictionary
+            current_price: Current underlying price
+            analysis_date: Analysis date
+            
+        Returns:
+            Dictionary with payoff metrics
+        """
+        try:
+            # Get required fields from suggestion
+            entry_price = suggestion.get('entry_price', 0)
+            strike = suggestion.get('strike_price', 0)
+            option_type = suggestion.get('option_type', 'CE')
+            expiry = suggestion.get('expiry')
+            
+            if not entry_price or not strike or not option_type:
+                return {
+                    'max_profit': 0.0,
+                    'max_loss': -entry_price if entry_price > 0 else 0.0,
+                    'risk_reward_ratio': 0.0,
+                    'breakeven': 0.0,
+                    'probability_of_profit': 0.0,
+                    'payoff_chart': None,
+                    'payoff_sparkline': None
+                }
+            
+            # Use backtester's _calculate_trade_metrics method
+            # For suggestions, we use analysis_date as entry_date and expiry as exit_date
+            # If expiry is not available, use a default time period
+            if expiry:
+                if isinstance(expiry, str):
+                    try:
+                        expiry_date = datetime.strptime(expiry, '%Y-%m-%d').date()
+                    except:
+                        expiry_date = analysis_date + timedelta(days=7)  # Default 7 days
+                elif isinstance(expiry, date):
+                    expiry_date = expiry
+                else:
+                    expiry_date = analysis_date + timedelta(days=7)
+            else:
+                expiry_date = analysis_date + timedelta(days=7)
+            
+            # Calculate metrics using backtester
+            # We need to create a temporary suggestion dict for the backtester
+            temp_suggestion = {
+                'strike_price': strike,
+                'option_type': option_type,
+                'expiry': expiry_date
+            }
+            
+            # Use the backtester's internal method to calculate metrics
+            # We'll use the underlying price calculation from backtester
+            backtester = self._get_backtester()
+            metrics = backtester._calculate_trade_metrics(
+                suggestion=temp_suggestion,
+                entry_date=analysis_date,
+                exit_date=expiry_date,
+                entry_price=entry_price,
+                exit_price=entry_price  # For suggestions, we use entry price as exit price for calculation
+            )
+            
+            return {
+                'max_profit': metrics.get('max_profit', 0.0),
+                'max_loss': metrics.get('max_loss', 0.0),
+                'risk_reward_ratio': metrics.get('risk_reward_ratio', 0.0),
+                'breakeven': metrics.get('breakeven', 0.0),
+                'probability_of_profit': metrics.get('probability_of_profit', 0.0),
+                'payoff_chart': metrics.get('payoff_chart'),
+                'payoff_sparkline': metrics.get('payoff_sparkline')
+            }
+            
+        except Exception as e:
+            logging.warning(f"Error calculating payoff metrics: {e}")
+            return {
+                'max_profit': 0.0,
+                'max_loss': -suggestion.get('entry_price', 0) if suggestion.get('entry_price', 0) > 0 else 0.0,
+                'risk_reward_ratio': 0.0,
+                'breakeven': 0.0,
+                'probability_of_profit': 0.0,
+                'payoff_chart': None,
+                'payoff_sparkline': None
+            }
+    
     def _generate_ce_suggestions(self,
                                 options_chain: pd.DataFrame,
                                 current_price: float,
                                 current_poc: float,
-                                sentiment: str) -> List[Dict]:
+                                sentiment: str,
+                                analysis_date: Optional[date] = None,
+                                timeframe_days: Optional[int] = None) -> List[Dict]:
         """Generate Call option suggestions"""
         suggestions = []
         
@@ -603,7 +700,7 @@ class IntradayOptionsSuggestions:
                 strike, current_poc, current_price, volume, oi, 'CE', sentiment
             )
             
-            suggestions.append({
+            suggestion = {
                 'symbol': tradingsymbol,
                 'option_type': 'CE',
                 'strike_price': strike,
@@ -620,7 +717,15 @@ class IntradayOptionsSuggestions:
                 'volume': volume,
                 'oi': oi,
                 'expiry': expiry
-            })
+            }
+            
+            # Calculate payoff metrics
+            payoff_metrics = self._calculate_payoff_metrics(
+                suggestion, current_price, analysis_date if analysis_date else date.today()
+            )
+            suggestion.update(payoff_metrics)
+            
+            suggestions.append(suggestion)
         
         return suggestions
     
@@ -629,7 +734,8 @@ class IntradayOptionsSuggestions:
                                 current_price: float,
                                 current_poc: float,
                                 sentiment: str,
-                                timeframe_days: Optional[int] = None) -> List[Dict]:
+                                timeframe_days: Optional[int] = None,
+                                analysis_date: Optional[date] = None) -> List[Dict]:
         """Generate Put option suggestions"""
         suggestions = []
         
@@ -663,7 +769,7 @@ class IntradayOptionsSuggestions:
                 strike, current_poc, current_price, volume, oi, 'PE', sentiment
             )
             
-            suggestions.append({
+            suggestion = {
                 'symbol': tradingsymbol,
                 'option_type': 'PE',
                 'strike_price': strike,
@@ -680,7 +786,15 @@ class IntradayOptionsSuggestions:
                 'volume': volume,
                 'oi': oi,
                 'expiry': expiry
-            })
+            }
+            
+            # Calculate payoff metrics
+            payoff_metrics = self._calculate_payoff_metrics(
+                suggestion, current_price, analysis_date if analysis_date else date.today()
+            )
+            suggestion.update(payoff_metrics)
+            
+            suggestions.append(suggestion)
         
         return suggestions
     

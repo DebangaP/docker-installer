@@ -1132,7 +1132,14 @@ class PortfolioHedgeAnalyzer:
                     float(diagnostics.get('beta') or 0.0),
                     s.get('rationale'),
                     json.dumps(s.get('tpo_levels_used') or {}),
-                    json.dumps(diagnostics or {})
+                    json.dumps(diagnostics or {}),
+                    s.get('max_profit'),
+                    s.get('max_loss'),
+                    s.get('risk_reward_ratio'),
+                    s.get('probability_of_profit'),
+                    s.get('breakeven'),
+                    s.get('payoff_chart'),
+                    s.get('payoff_sparkline')
                 ))
 
             if rows:
@@ -1142,12 +1149,15 @@ class PortfolioHedgeAnalyzer:
                         analysis_date, source, strategy_type, strategy_name, instrument, instrument_token,
                         direction, quantity, lot_size, entry_price, strike_price, expiry, total_premium,
                         total_premium_income, margin_required, hedge_value, coverage_percentage,
-                        portfolio_value, beta, rationale, tpo_context, diagnostics
+                        portfolio_value, beta, rationale, tpo_context, diagnostics,
+                        max_profit, max_loss, risk_reward_ratio, probability_of_profit, breakeven,
+                        payoff_chart, payoff_sparkline
                     ) VALUES (
                         %s,%s,%s,%s,%s,%s,
                         %s,%s,%s,%s,%s,%s,%s,
                         %s,%s,%s,%s,
-                        %s,%s,%s,%s,%s
+                        %s,%s,%s,%s,%s,
+                        %s,%s,%s,%s,%s,%s,%s
                     )
                     """,
                     rows

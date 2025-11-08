@@ -1089,7 +1089,7 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Curr Price</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Change %</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Predicted Gain %</th>
-                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prophet Confidence</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Ghost Confidence</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
                                 </tr>
                             </thead>
@@ -1223,11 +1223,11 @@
                 </div>
             </div>
             
-            <!-- Top 20 Potential Gainers Section -->
+            <!-- Sectoral Predictions Section -->
             <div class="card" id="section-top-gainers" style="margin-top: 20px;">
                 <div class="card-header" style="background-color: #28a745; color: white;">
-                    <h3 class="card-title" style="color: white;">🚀 Top 20 Potential Gainers</h3>
-                    <div style="display: flex; gap: 10px; align-items: center;">
+                    <h3 class="card-title" style="color: white;">📊 Sectoral Predictions</h3>
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <label style="color: white; font-size: 12px; margin-right: 5px;">Prediction Days:</label>
                         <select id="predictionDaysSelect" style="padding: 4px 8px; font-size: 12px; border: none; border-radius: 4px;">
                             <option value="30">30 Days</option>
@@ -1235,6 +1235,7 @@
                             <option value="90">90 Days</option>
                             <option value="180">180 Days</option>
                         </select>
+                        <input type="text" id="sectorSearchInput" placeholder="Search by sector..." style="padding: 4px 8px; font-size: 12px; border: none; border-radius: 4px; min-width: 150px;" onkeyup="applySectorSearch()">
                         <button onclick="generateProphetPredictionsWithDays()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #17a2b8; color: white; border: none;">
                             ⚡ Generate Predictions
                         </button>
@@ -1244,12 +1245,21 @@
                     </div>
                 </div>
                 <div style="padding: 15px;">
+                    <!-- Sectoral Averages Cards -->
+                    <div id="sectoralAveragesContainer" style="margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px;"></div>
+                    <!-- Top 20 Potential Gainers Header -->
+                    <div style="margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 4px; border-left: 4px solid #28a745;">
+                        <h4 style="margin: 0; color: #333; font-size: 16px; font-weight: 600;">🚀 Top 20 Potential Gainers</h4>
+                    </div>
                     <div id="topGainersContainer" style="overflow-x: auto;">
                         <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
                             <thead>
                                 <tr style="background-color: #f8f9fa;">
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 12px;">Rank</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 12px;">Symbol</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 12px; cursor: pointer;" onclick="sortBySectorColumn()" title="Click to sort by sector">
+                                        Sector <span id="sectorSortIndicator" style="font-size: 10px;"></span>
+                                    </th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Sparkline (last 30D)</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Current Price</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Prediction (60D) Target</th>
@@ -1263,7 +1273,7 @@
                             </thead>
                             <tbody id="topGainersTableBody">
                                 <tr>
-                                    <td colspan="11" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Click Refresh to load top gainers</td>
+                                    <td colspan="12" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Click Refresh to load top gainers</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1944,7 +1954,7 @@
                 { id: 'section-gainers', title: 'Top Gainers' },
                 { id: 'section-losers', title: 'Top Losers' },
                 { id: 'section-swing-trades', title: 'Swing Trade Recommendations' },
-                { id: 'section-top-gainers', title: 'Top 20 Potential Gainers' },
+                { id: 'section-top-gainers', title: 'Sectoral Predictions' },
                 { id: 'section-stock-search', title: 'Search Stock Prediction' }
             ],
             'utilities': [
@@ -3257,22 +3267,48 @@
                             const prophetConfidence = gainer.prophet_confidence;
                             const predictionDays = gainer.prediction_days;
                             
+                            // Debug logging for first gainer
+                            if (index === 0) {
+                                console.log('First gainer Prophet data:', {
+                                    prophet_prediction_pct: prophetPredictionPct,
+                                    prophet_confidence: prophetConfidence,
+                                    prediction_days: predictionDays,
+                                    full_gainer: gainer
+                                });
+                            }
+                            
                             // Format Prophet prediction display
-                            const prophetPredictionDisplay = (prophetPredictionPct !== null && prophetPredictionPct !== undefined) 
-                                ? (prophetPredictionPct >= 0 
-                                    ? `<div style="color: #28a745; font-weight: bold;">+${prophetPredictionPct.toFixed(2)}%</div>` 
-                                    : `<div style="color: #dc3545; font-weight: bold;">${prophetPredictionPct.toFixed(2)}%</div>`)
-                                : '<span style="color: #999; font-size: 12px;">N/A</span>';
+                            let prophetPredictionDisplay = '<span style="color: #999; font-size: 12px;">N/A</span>';
+                            if (prophetPredictionPct !== null && prophetPredictionPct !== undefined && !isNaN(prophetPredictionPct)) {
+                                try {
+                                    const pctValue = parseFloat(prophetPredictionPct);
+                                    if (pctValue >= 0) {
+                                        prophetPredictionDisplay = `<div style="color: #28a745; font-weight: bold;">+${pctValue.toFixed(2)}%</div>`;
+                                    } else {
+                                        prophetPredictionDisplay = `<div style="color: #dc3545; font-weight: bold;">${pctValue.toFixed(2)}%</div>`;
+                                    }
+                                } catch (e) {
+                                    console.error('Error formatting prophet prediction:', e, prophetPredictionPct);
+                                }
+                            }
                             
-                            const prophetConfidenceDisplay = (prophetConfidence !== null && prophetConfidence !== undefined)
-                                ? (prophetConfidence >= 80 
-                                    ? `<span style="color: #28a745; font-weight: bold;">${prophetConfidence.toFixed(0)}%</span>`
-                                    : prophetConfidence >= 70
-                                    ? `<span style="color: #ffc107; font-weight: bold;">${prophetConfidence.toFixed(0)}%</span>`
-                                    : `<span style="color: #dc3545; font-weight: bold;">${prophetConfidence.toFixed(0)}%</span>`)
-                                : '<span style="color: #999; font-size: 12px;">N/A</span>';
+                            let prophetConfidenceDisplay = '<span style="color: #999; font-size: 12px;">N/A</span>';
+                            if (prophetConfidence !== null && prophetConfidence !== undefined && !isNaN(prophetConfidence)) {
+                                try {
+                                    const confValue = parseFloat(prophetConfidence);
+                                    if (confValue >= 80) {
+                                        prophetConfidenceDisplay = `<span style="color: #28a745; font-weight: bold;">${confValue.toFixed(0)}%</span>`;
+                                    } else if (confValue >= 70) {
+                                        prophetConfidenceDisplay = `<span style="color: #ffc107; font-weight: bold;">${confValue.toFixed(0)}%</span>`;
+                                    } else {
+                                        prophetConfidenceDisplay = `<span style="color: #dc3545; font-weight: bold;">${confValue.toFixed(0)}%</span>`;
+                                    }
+                                } catch (e) {
+                                    console.error('Error formatting prophet confidence:', e, prophetConfidence);
+                                }
+                            }
                             
-                            const predictionDaysDisplay = (predictionDays !== null && predictionDays !== undefined)
+                            const predictionDaysDisplay = (predictionDays !== null && predictionDays !== undefined && !isNaN(predictionDays))
                                 ? `${predictionDays} days`
                                 : '<span style="color: #999; font-size: 12px;">N/A</span>';
                             
@@ -3934,6 +3970,10 @@
                                         <th style="padding: 10px; text-align: right; border: 1px solid #dee2e6; font-weight: 600;">Entry</th>
                                         <th style="padding: 10px; text-align: right; border: 1px solid #dee2e6; font-weight: 600;">Target</th>
                                         <th style="padding: 10px; text-align: right; border: 1px solid #dee2e6; font-weight: 600;">Stop Loss</th>
+                                        <th style="padding: 10px; text-align: center; border: 1px solid #dee2e6; font-weight: 600;">Payoff</th>
+                                        <th style="padding: 10px; text-align: right; border: 1px solid #dee2e6; font-weight: 600;">R/R</th>
+                                        <th style="padding: 10px; text-align: center; border: 1px solid #dee2e6; font-weight: 600;">Prob %</th>
+                                        <th style="padding: 10px; text-align: right; border: 1px solid #dee2e6; font-weight: 600;">Breakeven</th>
                                         <th style="padding: 10px; text-align: right; border: 1px solid #dee2e6; font-weight: 600;">OI</th>
                                         <th style="padding: 10px; text-align: right; border: 1px solid #dee2e6; font-weight: 600;">Volume</th>
                                         <th style="padding: 10px; text-align: center; border: 1px solid #dee2e6; font-weight: 600;">Confidence</th>
@@ -3986,6 +4026,20 @@
                                     ${suggestion.stop_loss ? '₹' + suggestion.stop_loss.toFixed(2) : 
                                       suggestion.max_loss ? '₹' + Math.abs(suggestion.max_loss).toFixed(2) : 'N/A'}
                                 </td>
+                                <td style="padding: 10px; text-align: center; border: 1px solid #dee2e6;">
+                                    ${suggestion.payoff_sparkline ? 
+                                      `<img id="suggestion-payoff-sparkline-${index}" src="${suggestion.payoff_sparkline}" alt="Payoff" style="width: 60px; height: 30px; cursor: pointer;" title="Click to view full chart">` : 
+                                      '<span style="color: #999; font-size: 9px;">N/A</span>'}
+                                </td>
+                                <td style="padding: 10px; text-align: right; border: 1px solid #dee2e6; color: ${suggestion.risk_reward_ratio >= 2 ? '#28a745' : suggestion.risk_reward_ratio >= 1 ? '#ffc107' : '#dc3545'}; font-weight: bold;">
+                                    ${suggestion.risk_reward_ratio ? suggestion.risk_reward_ratio.toFixed(2) : 'N/A'}
+                                </td>
+                                <td style="padding: 10px; text-align: center; border: 1px solid #dee2e6; color: ${(suggestion.probability_of_profit || 0) >= 60 ? '#28a745' : (suggestion.probability_of_profit || 0) >= 40 ? '#ffc107' : '#dc3545'}; font-weight: bold;">
+                                    ${suggestion.probability_of_profit ? suggestion.probability_of_profit.toFixed(1) + '%' : 'N/A'}
+                                </td>
+                                <td style="padding: 10px; text-align: right; border: 1px solid #dee2e6;">
+                                    ${suggestion.breakeven ? '₹' + suggestion.breakeven.toFixed(2) : 'N/A'}
+                                </td>
                                 <td style="padding: 10px; text-align: right; border: 1px solid #dee2e6;">
                                     ${suggestion.oi ? suggestion.oi.toLocaleString() : 'N/A'}
                                 </td>
@@ -4011,6 +4065,22 @@
                     `;
                     
                     container.innerHTML = html;
+                    
+                    // Store suggestions data for chart display
+                    window.optionsSuggestions = allSuggestions;
+                    
+                    // Add click handlers for payoff sparklines
+                    allSuggestions.forEach((suggestion, index) => {
+                        if (suggestion.payoff_sparkline && suggestion.payoff_chart) {
+                            const sparklineId = `suggestion-payoff-sparkline-${index}`;
+                            const sparklineEl = document.getElementById(sparklineId);
+                            if (sparklineEl) {
+                                sparklineEl.addEventListener('click', function() {
+                                    showSuggestionPayoffChart(index, allSuggestions);
+                                });
+                            }
+                        }
+                    });
                 })
                 .catch(error => {
                     console.error('Error fetching intraday options suggestions:', error);
@@ -4306,6 +4376,65 @@
                     }
                 }
             });
+        }
+        
+        // Function to show full payoff chart in modal for suggestions
+        function showSuggestionPayoffChart(suggestionIndex, suggestions) {
+            const suggestion = suggestions && suggestions[suggestionIndex];
+            if (!suggestion || !suggestion.payoff_chart) {
+                alert('Payoff chart not available for this suggestion');
+                return;
+            }
+            
+            // Create modal
+            const modal = document.createElement('div');
+            modal.id = 'suggestionPayoffChartModal';
+            modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; align-items: center; justify-content: center;';
+            modal.onclick = function(e) {
+                if (e.target === modal) {
+                    if (modal.parentNode) {
+                        modal.parentNode.removeChild(modal);
+                    }
+                }
+            };
+            
+            const content = document.createElement('div');
+            content.style.cssText = 'background: white; padding: 20px; border-radius: 8px; max-width: 90%; max-height: 90%; overflow: auto; position: relative;';
+            content.onclick = function(e) { e.stopPropagation(); };
+            
+            content.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0; font-size: 18px;">Payoff Chart - ${suggestion.symbol || suggestion.option_type || 'Suggestion'}</h3>
+                    <button id="suggestionPayoffChartCloseBtn" style="background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-size: 14px;">Close</button>
+                </div>
+                <div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px; font-size: 12px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                        <div><strong>Max Profit:</strong> ₹${(suggestion.max_profit || 0).toFixed(2)}</div>
+                        <div><strong>Max Loss:</strong> ₹${(suggestion.max_loss || 0).toFixed(2)}</div>
+                        <div><strong>Risk/Reward:</strong> ${(suggestion.risk_reward_ratio || 0).toFixed(2)}</div>
+                        <div><strong>Prob of Profit:</strong> ${(suggestion.probability_of_profit || 0).toFixed(1)}%</div>
+                        <div><strong>Breakeven:</strong> ₹${(suggestion.breakeven || 0).toFixed(2)}</div>
+                        <div><strong>Entry Price:</strong> ₹${(suggestion.entry_price || 0).toFixed(2)}</div>
+                        <div><strong>Strike:</strong> ₹${(suggestion.strike_price || 0).toFixed(2)}</div>
+                        <div><strong>Type:</strong> ${suggestion.option_type || 'N/A'}</div>
+                    </div>
+                </div>
+                <img src="${suggestion.payoff_chart}" alt="Payoff Chart" style="max-width: 100%; height: auto;">
+            `;
+            
+            modal.appendChild(content);
+            document.body.appendChild(modal);
+            
+            // Attach close button event listener after modal is added to DOM
+            const closeBtn = document.getElementById('suggestionPayoffChartCloseBtn');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', function() {
+                    const modalEl = document.getElementById('suggestionPayoffChartModal');
+                    if (modalEl && modalEl.parentNode) {
+                        modalEl.parentNode.removeChild(modalEl);
+                    }
+                });
+            }
         }
         
         // Function to show full payoff chart in modal
@@ -7714,6 +7843,339 @@
         let allTopGainers = [];
         let topGainersCurrentPage = 1;
         let topGainersItemsPerPage = 10;
+        let sectoralAveragesData = [];
+        let selectedSectorFilter = null;
+        let sectorSortMode = 'none'; // 'none', 'alphabetical', 'avg_gain'
+        let sectorSortDirection = 'asc'; // 'asc', 'desc'
+        
+        // Load sectoral averages
+        function loadSectoralAverages() {
+            const predictionDays = parseInt(document.getElementById('predictionDaysSelect').value) || 30;
+            
+            fetch(`/api/prophet_predictions/sectoral_averages?prediction_days=${predictionDays}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        console.error('Error loading sectoral averages:', data.error);
+                        return;
+                    }
+                    
+                    sectoralAveragesData = data.sectoral_averages || [];
+                    renderSectoralAverages();
+                })
+                .catch(error => {
+                    console.error('Error loading sectoral averages:', error);
+                });
+        }
+        
+        // Render sectoral averages cards
+        function renderSectoralAverages() {
+            const container = document.getElementById('sectoralAveragesContainer');
+            if (!container) return;
+            
+            let html = '<div style="width: 100%; margin-bottom: 10px;"><strong style="font-size: 13px; color: #333;">Sectoral Averages:</strong></div>';
+            
+            // Add "All Sectors" card
+            const isAllSelected = selectedSectorFilter === null;
+            html += `
+                <div onclick="clearSectorFilter()" style="
+                    padding: 10px 15px;
+                    border: 2px solid ${isAllSelected ? '#28a745' : '#ddd'};
+                    border-radius: 6px;
+                    background-color: ${isAllSelected ? '#e8f5e9' : 'white'};
+                    cursor: pointer;
+                    min-width: 120px;
+                    text-align: center;
+                    transition: all 0.2s;
+                    box-shadow: ${isAllSelected ? '0 2px 4px rgba(40, 167, 69, 0.2)' : '0 1px 2px rgba(0,0,0,0.1)'};
+                " onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                    <div style="font-weight: bold; font-size: 13px; color: #333; margin-bottom: 5px;">All Sectors</div>
+                    <div style="font-size: 11px; color: #666;">Click to show all</div>
+                </div>
+            `;
+            
+            // Calculate min and max avg_gain_pct for gradient
+            let minGain = Infinity;
+            let maxGain = -Infinity;
+            sectoralAveragesData.forEach(sector => {
+                const avgGain = sector.avg_gain_pct || 0;
+                if (avgGain < minGain) minGain = avgGain;
+                if (avgGain > maxGain) maxGain = avgGain;
+            });
+            
+            // If all gains are the same, set a range to avoid division by zero
+            if (minGain === maxGain) {
+                if (minGain === Infinity || minGain === -Infinity) {
+                    minGain = 0;
+                    maxGain = 1;
+                } else {
+                    minGain = Math.max(0, minGain - 1);
+                    maxGain = maxGain + 1;
+                }
+            }
+            
+            // Add sector cards with gradient coloring
+            sectoralAveragesData.forEach(sector => {
+                const sectorCode = sector.sector_code || 'N/A';
+                const avgGain = sector.avg_gain_pct || 0;
+                const avgConfidence = sector.avg_confidence || 0;
+                const stockCount = sector.stock_count || 0;
+                const isSelected = selectedSectorFilter === sectorCode;
+                
+                // Calculate gradient position (0 = worst/red, 1 = best/green)
+                const gainRange = maxGain - minGain;
+                const normalizedGain = gainRange > 0 ? (avgGain - minGain) / gainRange : 0.5;
+                
+                // Interpolate between red (#dc3545) and green (#28a745)
+                // Red: rgb(220, 53, 69), Green: rgb(40, 167, 69)
+                const red = Math.round(220 - (220 - 40) * normalizedGain); // 220 -> 40
+                const green = Math.round(53 + (167 - 53) * normalizedGain); // 53 -> 167
+                const blue = 69; // Constant for both red and green
+                const gradientColor = `rgb(${red}, ${green}, ${blue})`;
+                
+                // Lighter background color for gradient effect
+                // Red bg: rgb(255, 245, 245), Green bg: rgb(232, 245, 233)
+                const bgRed = Math.round(255 - (255 - 232) * normalizedGain); // 255 -> 232
+                const bgGreen = 245; // Constant for both
+                const bgBlue = Math.round(245 - (245 - 233) * normalizedGain); // 245 -> 233
+                const bgGradientColor = `rgb(${bgRed}, ${bgGreen}, ${bgBlue})`;
+                
+                const confidenceColor = avgConfidence >= 70 ? '#28a745' : avgConfidence >= 50 ? '#ffc107' : '#dc3545';
+                
+                html += `
+                    <div onclick="filterBySector('${sectorCode}')" style="
+                        padding: 10px 15px;
+                        border: 2px solid ${isSelected ? gradientColor : '#ddd'};
+                        border-radius: 6px;
+                        background: linear-gradient(135deg, ${bgGradientColor} 0%, white 100%);
+                        cursor: pointer;
+                        min-width: 140px;
+                        text-align: center;
+                        transition: all 0.2s;
+                        box-shadow: ${isSelected ? `0 2px 4px ${gradientColor}40` : '0 1px 2px rgba(0,0,0,0.1)'};
+                    " onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 3px 6px ${gradientColor}60';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='${isSelected ? `0 2px 4px ${gradientColor}40` : '0 1px 2px rgba(0,0,0,0.1)'}';">
+                        <div style="font-weight: bold; font-size: 13px; color: #333; margin-bottom: 5px;">${sectorCode}</div>
+                        <div style="font-size: 11px; color: ${gradientColor}; margin-bottom: 3px; font-weight: bold;">Avg Gain: <strong>+${avgGain.toFixed(2)}%</strong></div>
+                        <div style="font-size: 11px; color: ${confidenceColor}; margin-bottom: 3px;">Avg Confidence: <strong>${avgConfidence.toFixed(0)}%</strong></div>
+                        <div style="font-size: 11px; color: #666;">Stocks: <strong>${stockCount}</strong></div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+        
+        // Filter by sector
+        function filterBySector(sectorCode) {
+            selectedSectorFilter = sectorCode;
+            topGainersCurrentPage = 1;
+            applyFiltersAndSorting();
+            renderSectoralAverages();
+            renderTopGainersTable();
+        }
+        
+        // Clear sector filter
+        function clearSectorFilter() {
+            selectedSectorFilter = null;
+            topGainersCurrentPage = 1;
+            applyFiltersAndSorting();
+            renderSectoralAverages();
+            renderTopGainersTable();
+        }
+        
+        // Apply sector search
+        function applySectorSearch() {
+            topGainersCurrentPage = 1;
+            applyFiltersAndSorting();
+            renderTopGainersTable();
+        }
+        
+        // Get filtered and sorted gainers
+        function getFilteredAndSortedGainers() {
+            let filtered = [...allTopGainers];
+            
+            // Apply sector filter
+            if (selectedSectorFilter) {
+                filtered = filtered.filter(gainer => {
+                    const sectorCode = gainer.sector_code || 'N/A';
+                    return sectorCode === selectedSectorFilter;
+                });
+            }
+            
+            // Apply search filter
+            const searchTerm = document.getElementById('sectorSearchInput').value.trim().toLowerCase();
+            if (searchTerm) {
+                filtered = filtered.filter(gainer => {
+                    const sectorCode = (gainer.sector_code || 'N/A').toLowerCase();
+                    return sectorCode.includes(searchTerm);
+                });
+            }
+            
+            // Apply sorting
+            if (sectorSortMode === 'alphabetical') {
+                filtered.sort((a, b) => {
+                    const sectorA = (a.sector_code || 'N/A').toLowerCase();
+                    const sectorB = (b.sector_code || 'N/A').toLowerCase();
+                    if (sectorSortDirection === 'asc') {
+                        return sectorA.localeCompare(sectorB);
+                    } else {
+                        return sectorB.localeCompare(sectorA);
+                    }
+                });
+            } else if (sectorSortMode === 'avg_gain') {
+                // Create a map of sector to avg gain
+                const sectorAvgGainMap = {};
+                sectoralAveragesData.forEach(sector => {
+                    sectorAvgGainMap[sector.sector_code] = sector.avg_gain_pct || 0;
+                });
+                
+                filtered.sort((a, b) => {
+                    const sectorA = a.sector_code || 'N/A';
+                    const sectorB = b.sector_code || 'N/A';
+                    const avgGainA = sectorAvgGainMap[sectorA] || 0;
+                    const avgGainB = sectorAvgGainMap[sectorB] || 0;
+                    
+                    if (sectorSortDirection === 'desc') {
+                        return avgGainB - avgGainA;
+                    } else {
+                        return avgGainA - avgGainB;
+                    }
+                });
+            }
+            
+            return filtered;
+        }
+        
+        // Apply filters and sorting
+        function applyFiltersAndSorting() {
+            // This function is called to update the display
+            // The actual filtering/sorting is done in getFilteredAndSortedGainers()
+        }
+        
+        // Render top gainers table
+        function renderTopGainersTable() {
+            const tbody = document.getElementById('topGainersTableBody');
+            const statusDiv = document.getElementById('topGainersStatus');
+            if (!tbody || !statusDiv) return;
+            
+            const filteredGainers = getFilteredAndSortedGainers();
+            const totalItems = filteredGainers.length;
+            const totalPages = Math.ceil(totalItems / topGainersItemsPerPage);
+            const startIndex = (topGainersCurrentPage - 1) * topGainersItemsPerPage;
+            const endIndex = Math.min(startIndex + topGainersItemsPerPage, totalItems);
+            const currentPageGainers = filteredGainers.slice(startIndex, endIndex);
+            
+            tbody.innerHTML = '';
+            const symbols = [];
+            
+            currentPageGainers.forEach((gainer, index) => {
+                const displayIndex = startIndex + index;
+                const symbol = gainer.scrip_id || '-';
+                const currentPrice = gainer.current_price || 0;
+                const predictedPrice = gainer.predicted_price_30d || gainer.predicted_price_60d || gainer.predicted_price_90d || gainer.predicted_price_180d || 0;
+                const predictedChangePct = gainer.predicted_price_change_pct || 0;
+                const confidence = gainer.prediction_confidence || 0;
+                const predictionDays = gainer.prediction_days || 30;
+                const daysInLeaderboard = gainer.days_in_leaderboard || 0;
+                const cvMape = gainer.cv_mape;
+                const cvRmse = gainer.cv_rmse;
+                const sectorCode = gainer.sector_code || 'N/A';
+                
+                symbols.push(symbol);
+                
+                const gainColor = predictedChangePct >= 15 ? '#28a745' : predictedChangePct >= 10 ? '#ffc107' : '#17a2b8';
+                const confidenceColor = confidence >= 70 ? '#28a745' : confidence >= 50 ? '#ffc107' : '#dc3545';
+                
+                const mapeDisplay = (cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity) 
+                    ? cvMape.toFixed(2) + '%' : 'N/A';
+                const rmseDisplay = (cvRmse !== null && cvRmse !== undefined && !isNaN(cvRmse) && cvRmse !== Infinity) 
+                    ? cvRmse.toFixed(2) : 'N/A';
+                
+                const row = `
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666; font-size: 12px;">${displayIndex + 1}</td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; font-size: 12px;">${sectorCode}</td>
+                        <td style="padding: 4px; border: 1px solid #ddd; text-align: center;">
+                            <canvas id="sparkline-gainer-${symbol}" width="100" height="35" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">₹${currentPrice.toFixed(2)}</td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; font-weight: bold;">₹${predictedPrice.toFixed(2)}</td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: ${gainColor}; font-size: 12px;">
+                            +${predictedChangePct.toFixed(2)}%
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${confidenceColor}; font-size: 12px;">
+                            ${confidence.toFixed(0)}%
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                            <span onclick="showPredictionHistory('${symbol}', ${predictionDays})" style="cursor: pointer; color: #17a2b8; font-weight: bold; text-decoration: underline;" title="Click to view prediction history chart">${daysInLeaderboard}</span>
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                            ${predictionDays} days
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; color: ${cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity && cvMape < 50 ? '#28a745' : cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity && cvMape < 100 ? '#ffc107' : '#999'};">
+                            ${mapeDisplay}
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; color: ${cvRmse !== null && cvRmse !== undefined && !isNaN(cvRmse) && cvRmse !== Infinity ? '#666' : '#999'};">
+                            ${rmseDisplay}
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+            
+            // Load sparklines after a delay
+            setTimeout(() => {
+                symbols.forEach(symbol => {
+                    if (symbol && symbol !== '-') {
+                        loadSparkline(`sparkline-gainer-${symbol}`);
+                    }
+                });
+            }, 100);
+            
+            updateTopGainersPagination(totalItems);
+            
+            const filterText = selectedSectorFilter ? ` (filtered by ${selectedSectorFilter})` : '';
+            const searchText = document.getElementById('sectorSearchInput').value ? ` (search: "${document.getElementById('sectorSearchInput').value}")` : '';
+            statusDiv.innerHTML = `<span style="color: #28a745;">✓ Showing ${totalItems} top gainers${filterText}${searchText} (showing ${startIndex + 1}-${endIndex} of ${totalItems})</span>`;
+        }
+        
+        // Sort by sector column
+        function sortBySectorColumn() {
+            if (sectorSortMode === 'none') {
+                sectorSortMode = 'alphabetical';
+                sectorSortDirection = 'asc';
+            } else if (sectorSortMode === 'alphabetical') {
+                if (sectorSortDirection === 'asc') {
+                    sectorSortDirection = 'desc';
+                } else {
+                    sectorSortMode = 'avg_gain';
+                    sectorSortDirection = 'desc';
+                }
+            } else if (sectorSortMode === 'avg_gain') {
+                if (sectorSortDirection === 'desc') {
+                    sectorSortDirection = 'asc';
+                } else {
+                    sectorSortMode = 'none';
+                    sectorSortDirection = 'asc';
+                }
+            }
+            
+            // Update sort indicator
+            const indicator = document.getElementById('sectorSortIndicator');
+            if (indicator) {
+                if (sectorSortMode === 'none') {
+                    indicator.innerHTML = '';
+                } else if (sectorSortMode === 'alphabetical') {
+                    indicator.innerHTML = sectorSortDirection === 'asc' ? '↑ A-Z' : '↓ Z-A';
+                } else if (sectorSortMode === 'avg_gain') {
+                    indicator.innerHTML = sectorSortDirection === 'desc' ? '↓ High-Low' : '↑ Low-High';
+                }
+            }
+            
+            topGainersCurrentPage = 1;
+            renderTopGainersTable();
+        }
         
         function loadTopGainers() {
             const tbody = document.getElementById('topGainersTableBody');
@@ -7727,14 +8189,14 @@
             }
             
             statusDiv.innerHTML = `<span style="color: #666;">⏳ Loading top gainers for ${predictionDays} days...</span>`;
-            tbody.innerHTML = '<tr><td colspan="11" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td></tr>';
             
             fetch(`/api/prophet_predictions/top_gainers?limit=20&prediction_days=${predictionDays}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
                         statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${data.error || 'Failed to load top gainers'}</span>`;
-                        tbody.innerHTML = '<tr><td colspan="11" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading top gainers</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="12" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading top gainers</td></tr>';
                         return;
                     }
                     
@@ -7748,11 +8210,16 @@
                     
                     if (topGainers.length === 0) {
                         statusDiv.innerHTML = '<span style="color: #ffc107;">⚠️ No predictions available. Click "Generate Predictions" button to create predictions.</span>';
-                        tbody.innerHTML = `<tr><td colspan="11" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">
+                        tbody.innerHTML = `<tr><td colspan="12" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">
                             No top gainers found. <button onclick="generateProphetPredictionsWithDays()" style="padding: 6px 12px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 8px; font-size: 11px;">⚡ Generate Predictions Now</button>
                         </td></tr>`;
                         allTopGainers = [];
                         topGainersCurrentPage = 1;
+                        selectedSectorFilter = null;
+                        sectorSortMode = 'none';
+                        sectorSortDirection = 'asc';
+                        document.getElementById('sectorSearchInput').value = '';
+                        document.getElementById('sectoralAveragesContainer').innerHTML = '';
                         updateTopGainersPagination(0);
                         return;
                     }
@@ -7761,96 +8228,16 @@
                     allTopGainers = topGainers;
                     topGainersCurrentPage = 1;
                     
-                    // Calculate pagination
-                    const totalItems = allTopGainers.length;
-                    const totalPages = Math.ceil(totalItems / topGainersItemsPerPage);
-                    const startIndex = (topGainersCurrentPage - 1) * topGainersItemsPerPage;
-                    const endIndex = Math.min(startIndex + topGainersItemsPerPage, totalItems);
-                    const currentPageGainers = allTopGainers.slice(startIndex, endIndex);
+                    // Load sectoral averages
+                    loadSectoralAverages();
                     
-                    tbody.innerHTML = '';
-                    const symbols = [];
-                    
-                    currentPageGainers.forEach((gainer, index) => {
-                        const displayIndex = startIndex + index;
-                        const symbol = gainer.scrip_id || '-';
-                        const currentPrice = gainer.current_price || 0;
-                        const predictedPrice = gainer.predicted_price_30d || gainer.predicted_price_60d || gainer.predicted_price_90d || gainer.predicted_price_180d || 0;
-                        const predictedChangePct = gainer.predicted_price_change_pct || 0;
-                        const confidence = gainer.prediction_confidence || 0;
-                        const predictionDays = gainer.prediction_days || 30;
-                        const daysInLeaderboard = gainer.days_in_leaderboard || 0;
-                        const cvMape = gainer.cv_mape;
-                        const cvRmse = gainer.cv_rmse;
-                        
-                        // Debug logging
-                        if (index === 0) {
-                            console.log('Sample gainer data:', gainer);
-                            console.log('cv_mape:', cvMape, 'type:', typeof cvMape);
-                            console.log('cv_rmse:', cvRmse, 'type:', typeof cvRmse);
-                        }
-                        
-                        symbols.push(symbol);
-                        
-                        const gainColor = predictedChangePct >= 15 ? '#28a745' : predictedChangePct >= 10 ? '#ffc107' : '#17a2b8';
-                        const confidenceColor = confidence >= 70 ? '#28a745' : confidence >= 50 ? '#ffc107' : '#dc3545';
-                        
-                        // Format MAPE and RMSE
-                        const mapeDisplay = (cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity) 
-                            ? cvMape.toFixed(2) + '%' : 'N/A';
-                        const rmseDisplay = (cvRmse !== null && cvRmse !== undefined && !isNaN(cvRmse) && cvRmse !== Infinity) 
-                            ? cvRmse.toFixed(2) : 'N/A';
-                        
-                        const row = `
-                            <tr style="border-bottom: 1px solid #eee;">
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666; font-size: 12px;">${displayIndex + 1}</td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
-                                <td style="padding: 4px; border: 1px solid #ddd; text-align: center;">
-                                    <canvas id="sparkline-gainer-${symbol}" width="100" height="35" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
-                                </td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">₹${currentPrice.toFixed(2)}</td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; font-weight: bold;">₹${predictedPrice.toFixed(2)}</td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: ${gainColor}; font-size: 12px;">
-                                    +${predictedChangePct.toFixed(2)}%
-                                </td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${confidenceColor}; font-size: 12px;">
-                                    ${confidence.toFixed(0)}%
-                                </td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
-                                    <span onclick="showPredictionHistory('${symbol}', ${predictionDays})" style="cursor: pointer; color: #17a2b8; font-weight: bold; text-decoration: underline;" title="Click to view prediction history chart">${daysInLeaderboard}</span>
-                                </td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
-                                    ${predictionDays} days
-                                </td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; color: ${cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity && cvMape < 50 ? '#28a745' : cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity && cvMape < 100 ? '#ffc107' : '#999'};">
-                                    ${mapeDisplay}
-                                </td>
-                                <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; color: ${cvRmse !== null && cvRmse !== undefined && !isNaN(cvRmse) && cvRmse !== Infinity ? '#666' : '#999'};">
-                                    ${rmseDisplay}
-                                </td>
-                            </tr>
-                        `;
-                        tbody.innerHTML += row;
-                    });
-                    
-                    // Load sparklines after a delay
-                    setTimeout(() => {
-                        symbols.forEach(symbol => {
-                            if (symbol && symbol !== '-') {
-                                loadSparkline(`sparkline-gainer-${symbol}`);
-                            }
-                        });
-                    }, 100);
-                    
-                    // Update pagination
-                    updateTopGainersPagination(totalItems);
-                    
-                    statusDiv.innerHTML = `<span style="color: #28a745;">✓ Loaded ${totalItems} top gainers (showing ${startIndex + 1}-${endIndex} of ${totalItems})</span>`;
+                    // Render table with filtering and sorting
+                    renderTopGainersTable();
                 })
                 .catch(error => {
                     console.error('Error loading top gainers:', error);
                     statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message || 'Failed to load top gainers'}</span>`;
-                    tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading top gainers</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading top gainers</td></tr>';
                 });
         }
         
@@ -7904,89 +8291,12 @@
         }
         
         function topGainersGoToPage(page) {
-            const totalItems = allTopGainers.length;
-            const totalPages = Math.ceil(totalItems / topGainersItemsPerPage);
+            const filteredGainers = getFilteredAndSortedGainers();
+            const totalPages = Math.ceil(filteredGainers.length / topGainersItemsPerPage);
             
             if (page >= 1 && page <= totalPages) {
                 topGainersCurrentPage = page;
-                
-                // Calculate pagination
-                const startIndex = (topGainersCurrentPage - 1) * topGainersItemsPerPage;
-                const endIndex = Math.min(startIndex + topGainersItemsPerPage, totalItems);
-                const currentPageGainers = allTopGainers.slice(startIndex, endIndex);
-                
-                const tbody = document.getElementById('topGainersTableBody');
-                if (!tbody) return;
-                
-                tbody.innerHTML = '';
-                const symbols = [];
-                
-                currentPageGainers.forEach((gainer, index) => {
-                    const displayIndex = startIndex + index;
-                    const symbol = gainer.scrip_id || '-';
-                    const currentPrice = gainer.current_price || 0;
-                    const predictedPrice = gainer.predicted_price_30d || gainer.predicted_price_60d || gainer.predicted_price_90d || gainer.predicted_price_180d || 0;
-                    const predictedChangePct = gainer.predicted_price_change_pct || 0;
-                    const confidence = gainer.prediction_confidence || 0;
-                    const predictionDays = gainer.prediction_days || 30;
-                    const daysInLeaderboard = gainer.days_in_leaderboard || 0;
-                    const cvMape = gainer.cv_mape;
-                    const cvRmse = gainer.cv_rmse;
-                    
-                    symbols.push(symbol);
-                    
-                    const gainColor = predictedChangePct >= 15 ? '#28a745' : predictedChangePct >= 10 ? '#ffc107' : '#17a2b8';
-                    const confidenceColor = confidence >= 70 ? '#28a745' : confidence >= 50 ? '#ffc107' : '#dc3545';
-                    
-                    // Format MAPE and RMSE
-                    const mapeDisplay = (cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity) 
-                        ? cvMape.toFixed(2) + '%' : 'N/A';
-                    const rmseDisplay = (cvRmse !== null && cvRmse !== undefined && !isNaN(cvRmse) && cvRmse !== Infinity) 
-                        ? cvRmse.toFixed(2) : 'N/A';
-                    
-                    const row = `
-                        <tr style="border-bottom: 1px solid #eee;">
-                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666; font-size: 12px;">${displayIndex + 1}</td>
-                            <td style="padding: 5px 8px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
-                            <td style="padding: 4px; border: 1px solid #ddd; text-align: center;">
-                                <canvas id="sparkline-gainer-${symbol}" width="100" height="35" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
-                            </td>
-                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">₹${currentPrice.toFixed(2)}</td>
-                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; font-weight: bold;">₹${predictedPrice.toFixed(2)}</td>
-                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: ${gainColor}; font-size: 12px;">
-                                +${predictedChangePct.toFixed(2)}%
-                            </td>
-                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${confidenceColor}; font-size: 12px;">
-                                ${confidence.toFixed(0)}%
-                            </td>
-                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
-                                <span onclick="showPredictionHistory('${symbol}', ${predictionDays})" style="cursor: pointer; color: #17a2b8; font-weight: bold; text-decoration: underline;" title="Click to view prediction history chart">${daysInLeaderboard}</span>
-                            </td>
-                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
-                                ${predictionDays} days
-                            </td>
-                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; color: ${cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity && cvMape < 50 ? '#28a745' : cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity && cvMape < 100 ? '#ffc107' : '#999'};">
-                                ${mapeDisplay}
-                            </td>
-                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; color: ${cvRmse !== null && cvRmse !== undefined && !isNaN(cvRmse) && cvRmse !== Infinity ? '#666' : '#999'};">
-                                ${rmseDisplay}
-                            </td>
-                        </tr>
-                    `;
-                    tbody.innerHTML += row;
-                });
-                
-                // Load sparklines after a delay
-                setTimeout(() => {
-                    symbols.forEach(symbol => {
-                        if (symbol && symbol !== '-') {
-                            loadSparkline(`sparkline-gainer-${symbol}`);
-                        }
-                    });
-                }, 100);
-                
-                // Update pagination
-                updateTopGainersPagination(totalItems);
+                renderTopGainersTable();
             }
         }
         
