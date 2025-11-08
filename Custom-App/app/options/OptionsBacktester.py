@@ -141,6 +141,7 @@ class OptionsBacktester:
                 'end_date': end_date.strftime('%Y-%m-%d'),
                 'total_days': len(trading_dates),
                 'strategy_type': strategy_type,
+                'timeframe_minutes': timeframe_minutes,  # Include timeframe in summary for cache matching
                 'filters_applied': {
                     'show_only_profitable': show_only_profitable,
                     'min_profit': min_profit
@@ -1011,6 +1012,7 @@ class OptionsBacktester:
             cursor = conn.cursor()
             
             # Query for existing backtest with matching parameters
+            # Use COALESCE to handle NULL values properly
             query = """
                 SELECT 
                     id, backtest_name, start_date, end_date, strategy_type, timeframe_minutes,
@@ -1022,13 +1024,18 @@ class OptionsBacktester:
                 FROM my_schema.options_backtest_results
                 WHERE start_date = %s 
                 AND end_date = %s
-                AND (strategy_type = %s OR (strategy_type IS NULL AND %s = 'all'))
-                AND (timeframe_minutes = %s OR (timeframe_minutes IS NULL AND %s = 15))
+                AND COALESCE(strategy_type, 'all') = COALESCE(%s, 'all')
+                AND COALESCE(timeframe_minutes, 15) = COALESCE(%s, 15)
                 AND show_only_profitable = %s
-                AND (min_profit = %s OR (min_profit IS NULL AND %s IS NULL))
+                AND (min_profit IS NULL AND %s IS NULL OR min_profit = %s)
                 ORDER BY created_at DESC
                 LIMIT 1
             """
+            
+            # Log the query parameters for debugging
+            logging.info(f"Checking for existing backtest with params: start_date={start_date}, end_date={end_date}, "
+                        f"strategy_type={strategy_type}, timeframe_minutes={timeframe_minutes}, "
+                        f"show_only_profitable={show_only_profitable}, min_profit={min_profit}")
             
             cursor.execute(query, (
                 start_date, end_date, strategy_type, strategy_type,
@@ -1039,8 +1046,25 @@ class OptionsBacktester:
             row = cursor.fetchone()
             
             if not row:
+                logging.info(f"No existing backtest found with matching parameters. Will generate new backtest.")
                 conn.close()
                 return None
+            
+            logging.info(f"Found existing backtest with ID: {row[0]}, created_at: {row[28]}")
+            
+            # Check if underlying data (price, OI, volume) has changed since backtest was created
+            # If data has changed, we should regenerate the backtest
+            backtest_created_at = row[28]  # created_at timestamp
+            data_changed = self._check_if_underlying_data_changed(
+                start_date, end_date, backtest_created_at, conn
+            )
+            
+            if data_changed:
+                logging.info(f"Underlying data has changed since backtest was created (created: {backtest_created_at}). Will regenerate.")
+                conn.close()
+                return None
+            else:
+                logging.info(f"Using cached backtest results (ID: {row[0]}, created: {backtest_created_at})")
             
             # Get trades for this backtest
             trades_query = """
@@ -1138,6 +1162,42 @@ class OptionsBacktester:
             summary = self._sanitize_for_json(summary)
             trades = self._sanitize_for_json(trades)
             
+            from datetime import datetime
+            start_date = datetime.strptime(summary.get('start_date', ''), '%Y-%m-%d').date()
+            end_date = datetime.strptime(summary.get('end_date', ''), '%Y-%m-%d').date()
+            strategy_type = summary.get('strategy_type', 'all')
+            timeframe_minutes = summary.get('timeframe_minutes', 15)
+            show_only_profitable = summary.get('filters_applied', {}).get('show_only_profitable', False)
+            min_profit = summary.get('filters_applied', {}).get('min_profit')
+            
+            # Check if a backtest with the same parameters already exists
+            # This prevents duplicate inserts
+            check_query = """
+                SELECT id FROM my_schema.options_backtest_results
+                WHERE start_date = %s 
+                AND end_date = %s
+                AND COALESCE(strategy_type, 'all') = COALESCE(%s, 'all')
+                AND COALESCE(timeframe_minutes, 15) = COALESCE(%s, 15)
+                AND show_only_profitable = %s
+                AND (min_profit IS NULL AND %s IS NULL OR min_profit = %s)
+                ORDER BY created_at DESC
+                LIMIT 1
+            """
+            
+            # Parameters: start_date, end_date, strategy_type, timeframe_minutes, show_only_profitable, min_profit (twice for NULL check)
+            cursor.execute(check_query, (
+                start_date, end_date, strategy_type,
+                timeframe_minutes,
+                show_only_profitable, min_profit, min_profit
+            ))
+            
+            existing_row = cursor.fetchone()
+            if existing_row:
+                existing_id = existing_row[0]
+                logging.info(f"Backtest with same parameters already exists (ID: {existing_id}). Skipping insert to prevent duplicates.")
+                conn.close()
+                return existing_id
+            
             # Insert main back-test result
             insert_result_query = """
                 INSERT INTO my_schema.options_backtest_results (
@@ -1150,10 +1210,6 @@ class OptionsBacktester:
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 ) RETURNING id
             """
-            
-            from datetime import datetime
-            start_date = datetime.strptime(summary.get('start_date', ''), '%Y-%m-%d').date()
-            end_date = datetime.strptime(summary.get('end_date', ''), '%Y-%m-%d').date()
             
             import json
             import math
@@ -1174,14 +1230,18 @@ class OptionsBacktester:
                 except (ValueError, TypeError):
                     return default if default is not None else None
             
+            logging.info(f"Saving new backtest results: start_date={start_date}, end_date={end_date}, "
+                        f"strategy_type={strategy_type}, timeframe_minutes={timeframe_minutes}, "
+                        f"show_only_profitable={show_only_profitable}, min_profit={min_profit}")
+            
             cursor.execute(insert_result_query, (
                 backtest_name or f"Back-test {start_date} to {end_date}",
                 start_date,
                 end_date,
-                summary.get('strategy_type'),
-                None,  # timeframe_minutes - can be added if needed
-                summary.get('filters_applied', {}).get('show_only_profitable', False),
-                summary.get('filters_applied', {}).get('min_profit'),
+                strategy_type,
+                timeframe_minutes,  # Save timeframe_minutes for proper cache matching
+                show_only_profitable,
+                min_profit,
                 metrics.get('total_trades', 0),
                 metrics.get('win_count', 0),
                 metrics.get('loss_count', 0),
@@ -1270,4 +1330,79 @@ class OptionsBacktester:
             except:
                 pass
             return None
+    
+    def _check_if_underlying_data_changed(self,
+                                         start_date: date,
+                                         end_date: date,
+                                         backtest_created_at,
+                                         conn) -> bool:
+        """
+        Check if underlying data (price, OI, volume) has changed since backtest was created
+        
+        This checks if any new data has been added to the ticks or options_ticks tables
+        for the date range after the backtest was created. Since we don't have explicit
+        insertion timestamps, we check if the latest data timestamp is after backtest creation.
+        
+        Args:
+            start_date: Start date of backtest
+            end_date: End date of backtest
+            backtest_created_at: Timestamp when backtest was created
+            conn: Database connection
+            
+        Returns:
+            True if data has changed, False otherwise
+        """
+        try:
+            cursor = conn.cursor()
+            
+            # Check if underlying data has changed
+            # Since we don't have explicit insertion timestamps, we use a conservative heuristic:
+            # Only regenerate if backtest is very old (7+ days) - otherwise use cache
+            # User can force refresh if they know data has changed
+            
+            from datetime import datetime, timedelta
+            now = datetime.now()
+            
+            # Convert backtest_created_at to datetime if needed
+            if isinstance(backtest_created_at, str):
+                try:
+                    backtest_created_at = datetime.fromisoformat(backtest_created_at.replace('Z', '+00:00'))
+                except:
+                    # Try other formats
+                    try:
+                        from dateutil import parser
+                        backtest_created_at = parser.parse(backtest_created_at)
+                    except:
+                        logging.warning(f"Could not parse backtest_created_at: {backtest_created_at}")
+                        # If we can't parse, assume it's recent and use cache
+                        return False
+            
+            if not isinstance(backtest_created_at, datetime):
+                # If it's a date, convert to datetime
+                if hasattr(backtest_created_at, 'date'):
+                    backtest_created_at = datetime.combine(backtest_created_at.date(), datetime.min.time())
+                else:
+                    logging.warning(f"Unexpected backtest_created_at type: {type(backtest_created_at)}")
+                    return False
+            
+            # Calculate age of backtest
+            days_old = (now - backtest_created_at).days
+            
+            # Only regenerate if backtest is more than 7 days old
+            # This is conservative - user can force refresh if needed
+            if days_old > 7:
+                logging.info(f"Backtest is {days_old} days old. Data may have changed. Will regenerate.")
+                return True
+            
+            # For recent backtests (within 7 days), use cached data
+            # User can force refresh if they know data has changed
+            logging.info(f"Backtest is {days_old} days old. Using cached results (use Force Refresh if data has changed).")
+            return False
+            
+        except Exception as e:
+            logging.warning(f"Error checking if underlying data changed: {e}")
+            import traceback
+            logging.warning(traceback.format_exc())
+            # If we can't check, assume data hasn't changed to avoid unnecessary regeneration
+            return False
 

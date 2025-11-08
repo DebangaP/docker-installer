@@ -7588,7 +7588,8 @@ async def api_options_backtest(
     show_only_profitable: bool = Query(False, description="Show only profitable trades"),
     min_profit: Optional[float] = Query(None, description="Minimum profit threshold"),
     timeframe_minutes: int = Query(15, description="Timeframe in minutes (default: 15)"),
-    save_results: bool = Query(False, description="Save results to database")
+    save_results: bool = Query(False, description="Save results to database"),
+    force_refresh: bool = Query(False, description="Force refresh - regenerate data even if cached")
 ):
     """
     API endpoint to run options back-testing for a date range
@@ -7617,19 +7618,25 @@ async def api_options_backtest(
         # Initialize back-tester
         backtester = OptionsBacktester()
         
-        # Check if results already exist in database
-        existing_results = backtester.get_existing_backtest(
-            start_date=start_date_obj,
-            end_date=end_date_obj,
-            strategy_type=strategy_type,
-            show_only_profitable=show_only_profitable,
-            min_profit=min_profit,
-            timeframe_minutes=timeframe_minutes
-        )
+        # Check if results already exist in database (unless force refresh is requested)
+        existing_results = None
+        if not force_refresh:
+            logging.info(f"Checking for cached backtest: start_date={start_date_obj}, end_date={end_date_obj}, "
+                        f"strategy_type={strategy_type}, timeframe_minutes={timeframe_minutes}, "
+                        f"show_only_profitable={show_only_profitable}, min_profit={min_profit}")
+            existing_results = backtester.get_existing_backtest(
+                start_date=start_date_obj,
+                end_date=end_date_obj,
+                strategy_type=strategy_type,
+                show_only_profitable=show_only_profitable,
+                min_profit=min_profit,
+                timeframe_minutes=timeframe_minutes
+            )
         
         if existing_results:
             # Return existing results from database
-            logging.info(f"Returning cached backtest results (ID: {existing_results.get('backtest_id')})")
+            logging.info(f"Returning cached backtest results (ID: {existing_results.get('backtest_id')}, "
+                        f"from_cache={existing_results.get('from_cache', False)})")
             return existing_results
         
         # Run new back-test if no existing results found
@@ -7671,14 +7678,20 @@ async def api_options_backtest(
             # Sanitize all float values
             results = sanitize_value(results)
         
-        # Save results to database if requested or if not from cache
-        # Always save new results to enable caching for future requests
+        # Always save new results to database to enable caching for future requests
+        # This ensures data is stored and can be retrieved without regeneration
         if results.get('success') and not results.get('from_cache'):
-            backtest_id = backtester.save_backtest_results(results=results)
-            if backtest_id:
-                results['backtest_id'] = backtest_id
-                results['saved'] = True
-                logging.info(f"Saved backtest results with ID: {backtest_id}")
+            try:
+                backtest_id = backtester.save_backtest_results(results=results)
+                if backtest_id:
+                    results['backtest_id'] = backtest_id
+                    results['saved'] = True
+                    logging.info(f"Saved backtest results with ID: {backtest_id} for caching")
+                else:
+                    logging.warning("Failed to save backtest results to database")
+            except Exception as e:
+                logging.error(f"Error saving backtest results: {e}")
+                # Continue even if save fails - results are still returned
         
         return results
         

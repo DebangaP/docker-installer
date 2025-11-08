@@ -16,6 +16,155 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: #f5f7fa;
             color: #333;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Fixed Sidebar Styles */
+        .main-layout {
+            display: flex;
+            min-height: calc(100vh - 80px);
+        }
+
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 80px;
+            width: 280px;
+            height: calc(100vh - 80px);
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+            overflow-x: hidden;
+            z-index: 1000;
+            border-right: 1px solid #e0e0e0;
+        }
+
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sidebar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .sidebar::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 3px;
+        }
+
+        .sidebar::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            font-size: 16px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .sidebar-tabs {
+            padding: 10px 0;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .sidebar-tab {
+            display: block;
+            width: 100%;
+            padding: 12px 20px;
+            background: transparent;
+            border: none;
+            text-align: left;
+            font-size: 15px;
+            font-weight: 600;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+        }
+
+        .sidebar-tab:hover {
+            background: #f8f9fa;
+            color: #667eea;
+        }
+
+        .sidebar-tab.active {
+            background: #f0f4ff;
+            color: #667eea;
+            border-left-color: #667eea;
+        }
+
+        .sidebar-sections {
+            padding: 10px 0;
+        }
+
+        .sidebar-section-group {
+            margin-bottom: 10px;
+        }
+
+        .sidebar-section-group-title {
+            padding: 8px 20px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .sidebar-section-link {
+            display: block;
+            padding: 10px 20px 10px 30px;
+            color: #666;
+            text-decoration: none;
+            font-size: 13px;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-section-link:hover {
+            background: #f8f9fa;
+            color: #667eea;
+            border-left-color: #667eea;
+        }
+
+        .sidebar-section-link.active {
+            background: #f0f4ff;
+            color: #667eea;
+            border-left-color: #667eea;
+            font-weight: 600;
+        }
+
+        .main-content {
+            margin-left: 280px;
+            flex: 1;
+            width: calc(100% - 280px);
+        }
+
+        @media (max-width: 1200px) {
+            .sidebar {
+                width: 240px;
+            }
+            .main-content {
+                margin-left: 240px;
+                width: calc(100% - 240px);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .main-content {
+                margin-left: 0;
+                width: 100%;
+            }
         }
 
         .header {
@@ -309,46 +458,17 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Tab Navigation Styles */
+        /* Tab Navigation Styles - Hidden, using sidebar instead */
         .tab-navigation {
-            background: white;
-            border-bottom: 2px solid #e0e0e0;
-            padding: 0;
-            margin: 0;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            display: none;
         }
 
         .tab-nav-container {
-            max-width: 80%;
-            width: 80%;
-            margin: 0 auto;
-            padding: 0 20px;
-            display: flex;
-            gap: 0;
+            display: none;
         }
 
         .tab-button {
-            padding: 15px 30px;
-            background: transparent;
-            border: none;
-            border-bottom: 3px solid transparent;
-            font-size: 16px;
-            font-weight: 600;
-            color: #666;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            position: relative;
-        }
-
-        .tab-button:hover {
-            color: #667eea;
-            background: #f8f9fa;
-        }
-
-        .tab-button.active {
-            color: #667eea;
-            border-bottom-color: #667eea;
-            background: #f8f9fa;
+            display: none;
         }
 
         .tab-content {
@@ -448,8 +568,30 @@
         </div>
     </div>
 
-    <!-- Tab Navigation -->
-    <div class="tab-navigation">
+    <!-- Fixed Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">📊 Navigation</div>
+        <div class="sidebar-tabs">
+            <button class="sidebar-tab active" onclick="switchTab('live-market')" data-tab="live-market">
+                📊 Live Market
+            </button>
+            <button class="sidebar-tab" onclick="switchTab('holdings')" data-tab="holdings">
+                💼 Holdings
+            </button>
+            <button class="sidebar-tab" onclick="switchTab('gainers-losers')" data-tab="gainers-losers">
+                📈 Stocks
+            </button>
+            <button class="sidebar-tab" onclick="switchTab('utilities')" data-tab="utilities">
+                🔧 Utilities
+            </button>
+        </div>
+        <div class="sidebar-sections" id="sidebarSections">
+            <!-- Sections will be populated dynamically -->
+        </div>
+    </div>
+
+    <!-- Tab Navigation (Hidden) -->
+    <div class="tab-navigation" style="display: none;">
         <div class="tab-nav-container">
             <button class="tab-button active" onclick="switchTab('live-market')">
                 📊 Live Market
@@ -466,6 +608,7 @@
         </div>
     </div>
 
+    <div class="main-content">
     <div class="container">
         <!-- Live Market Tab Content -->
         <div id="live-market-tab" class="tab-content active">
@@ -501,7 +644,7 @@
         </div>
 
         <!-- Market Bias Analysis Section -->
-        <div class="card" style="margin-bottom: 10px;">
+        <div class="card" id="section-market-bias" style="margin-bottom: 10px;">
             <div class="card-header" style="padding: 15px 25px;">
                 <h3 class="card-title" style="font-size: 16px;">🎯 Market Bias Analysis</h3>
                 <span class="card-icon" style="font-size: 20px;">📊</span>
@@ -560,7 +703,7 @@
         </div>
 
         <!-- TPO Charts Section (full width) -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-tpo-chart" style="margin-bottom: 20px;">
             <div class="card-header">
                 <h3 class="card-title">📈 TPO Market Profile</h3>
                 <span class="card-icon">📊</span>
@@ -571,7 +714,7 @@
         </div>
 
         <!-- 5-Day TPO Chart Section (full width) -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-5day-tpo" style="margin-bottom: 20px;">
             <div class="card-header">
                 <h3 class="card-title">📊 5-Day TPO Market Profile with Volume Profile</h3>
                 <span class="card-icon">📈</span>
@@ -585,7 +728,7 @@
         </div>
 
         <!-- Pre-market TPO Analysis Section -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-premarket" style="margin-bottom: 20px;">
             <div class="card-header" style="background-color: #007bff; color: white;">
                 <h3 class="card-title" style="color: white;">🌅 Pre-Market TPO Analysis (9:05 AM - 9:15 AM)</h3>
                 <button onclick="loadPremarketAnalysis()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #007bff; border: none; margin-left: 10px;">
@@ -600,7 +743,7 @@
         </div>
 
         <!-- Order Flow Analysis Section -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-order-flow" style="margin-bottom: 20px;">
             <div class="card-header" style="background-color: #17a2b8; color: white;">
                 <h3 class="card-title" style="color: white;">🌊 Order Flow Analysis</h3>
                 <button onclick="loadOrderFlowAnalysis()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #17a2b8; border: none; margin-left: 10px;">
@@ -615,7 +758,7 @@
         </div>
 
         <!-- Footprint Analysis Section -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-footprint" style="margin-bottom: 20px;">
             <div class="card-header" style="background-color: #28a745; color: white;">
                 <h3 class="card-title" style="color: white;">📊 Footprint Analysis</h3>
                 <button onclick="loadFootprintAnalysis()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #28a745; border: none; margin-left: 10px;">
@@ -630,7 +773,7 @@
         </div>
 
         <!-- Critical Micro Levels Section -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-micro-levels" style="margin-bottom: 20px;">
             <div class="card-header" style="background-color: #ffc107; color: #333;">
                 <h3 class="card-title" style="color: #333;">🎯 Critical Micro Levels</h3>
                 <button onclick="loadMicroLevels()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #333; color: #ffc107; border: none; margin-left: 10px;">
@@ -645,7 +788,7 @@
         </div>
 
         <!-- Options Chain Scanner Section -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-options-scanner" style="margin-bottom: 20px;">
             <div class="card-header" style="padding: 15px 25px; background-color: #6f42c1; color: white;">
                 <h3 class="card-title" style="font-size: 16px; color: white;">🔍 Options Chain Scanner</h3>
                 <button onclick="loadOptionsScanner()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #6f42c1; border: none; margin-left: 10px;">
@@ -832,8 +975,11 @@
                         <label style="font-size: 12px; margin-right: 5px;">Min Profit:</label>
                         <input type="number" id="backtestMinProfit" step="0.01" placeholder="Optional" style="padding: 6px 12px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px; width: 100px;">
                     </div>
-                    <button onclick="runBacktest()" class="btn btn-primary" style="padding: 6px 12px; font-size: 12px;">
+                    <button onclick="runBacktest(false)" class="btn btn-primary" style="padding: 6px 12px; font-size: 12px;">
                         ▶️ Run Back-test
+                    </button>
+                    <button onclick="runBacktest(true)" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;" title="Force refresh - regenerate data even if cached">
+                        🔄 Force Refresh
                     </button>
                 </div>
                 <div id="backtestDataQualityIndicator" style="margin-bottom: 10px; padding: 10px; background-color: #fff3cd; border-radius: 5px; display: none;">
@@ -928,7 +1074,7 @@
             <!-- Gainers and Losers Section - Side by Side -->
             <div style="margin-bottom: 20px; display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap;">
                 <!-- Top Gainers -->
-                <div class="card" style="flex: 1; min-width: 0;">
+                <div class="card" id="section-gainers" style="flex: 1; min-width: 0;">
                     <div class="card-header" style="justify-content: space-between; background-color: #28a745; color: white; padding: 10px 15px;">
                         <h3 class="card-title" style="color: white; margin: 0; font-size: 16px;">📈 Top 10 Gainers (Last Trading Day)</h3>
                     </div>
@@ -942,7 +1088,7 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Prev Price</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Curr Price</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Change %</th>
-                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Prophet Predicted Gain %</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Predicted Gain %</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prophet Confidence</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
                                 </tr>
@@ -957,7 +1103,7 @@
                 </div>
 
                 <!-- Top Losers -->
-                <div class="card" style="flex: 1; min-width: 0;">
+                <div class="card" id="section-losers" style="flex: 1; min-width: 0;">
                     <div class="card-header" style="justify-content: space-between; background-color: #dc3545; color: white; padding: 10px 15px;">
                         <h3 class="card-title" style="color: white; margin: 0; font-size: 16px;">📉 Top 10 Losers (Last Trading Day)</h3>
                     </div>
@@ -984,7 +1130,7 @@
             </div>
             
             <!-- Swing Trade Recommendations Section -->
-            <div class="card" style="margin-top: 20px;">
+            <div class="card" id="section-swing-trades" style="margin-top: 20px;">
                 <div class="card-header" style="background-color: #6f42c1; color: white;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <h3 class="card-title" style="color: white;">🎯 Swing Trade Recommendations </h3>
@@ -1078,7 +1224,7 @@
             </div>
             
             <!-- Top 20 Potential Gainers Section -->
-            <div class="card" style="margin-top: 20px;">
+            <div class="card" id="section-top-gainers" style="margin-top: 20px;">
                 <div class="card-header" style="background-color: #28a745; color: white;">
                     <h3 class="card-title" style="color: white;">🚀 Top 20 Potential Gainers</h3>
                     <div style="display: flex; gap: 10px; align-items: center;">
@@ -1128,7 +1274,7 @@
             </div>
             
             <!-- Stock Symbol Search Section -->
-            <div class="card" style="margin-top: 20px;">
+            <div class="card" id="section-stock-search" style="margin-top: 20px;">
                 <div class="card-header" style="background-color: #17a2b8; color: white;">
                     <h3 class="card-title" style="color: white;">🔍 Search Stock Prediction</h3>
                 </div>
@@ -1177,7 +1323,7 @@
         <div id="utilities-tab" class="tab-content">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
                 <!-- Export Data Section -->
-                <div class="card" style="margin-bottom: 20px;">
+                <div class="card" id="section-export" style="margin-bottom: 20px;">
                     <div class="card-header" style="background-color: #28a745; color: white;">
                         <h3 class="card-title" style="color: white;">📤 Export Data</h3>
                     </div>
@@ -1238,7 +1384,7 @@
                 </div>
                 
                 <!-- Import Data Section -->
-                <div class="card" style="margin-bottom: 20px;">
+                <div class="card" id="section-import" style="margin-bottom: 20px;">
                     <div class="card-header" style="background-color: #007bff; color: white;">
                         <h3 class="card-title" style="color: white;">📥 Import Data</h3>
                     </div>
@@ -1294,7 +1440,7 @@
             </div>
             
             <!-- Refresh Stock Price Data Section -->
-            <div class="card" style="margin-bottom: 20px; margin-top: 20px;">
+            <div class="card" id="section-refresh" style="margin-bottom: 20px; margin-top: 20px;">
                 <div class="card-header" style="background-color: #17a2b8; color: white;">
                     <h3 class="card-title" style="color: white;">🔄 Refresh Stock Price Data</h3>
                 </div>
@@ -1322,7 +1468,7 @@
                 </div>
                 
                 <!-- Add New Stock Section -->
-                <div class="card" style="margin-bottom: 20px;">
+                <div class="card" id="section-add-stock" style="margin-bottom: 20px;">
                     <div class="card-header" style="background-color: #17a2b8; color: white;">
                         <h3 class="card-title" style="color: white;">➕ Add New Stock</h3>
                     </div>
@@ -1375,7 +1521,7 @@
                 </div>
                 
                 <!-- Start KiteWS Section -->
-                <div class="card" style="margin-bottom: 20px; margin-top: 20px;">
+                <div class="card" id="section-kitews" style="margin-bottom: 20px; margin-top: 20px;">
                     <div class="card-header" style="background-color: #6f42c1; color: white;">
                         <h3 class="card-title" style="color: white;">📡 Start Kite WebSocket (KiteWS)</h3>
                     </div>
@@ -1405,7 +1551,7 @@
                 </div>
                 
                 <!-- Cron Utilities Section -->
-                <div class="card" style="margin-bottom: 20px; margin-top: 20px;">
+                <div class="card" id="section-cron" style="margin-bottom: 20px; margin-top: 20px;">
                     <div class="card-header" style="background-color: #fd7e14; color: white;">
                         <h3 class="card-title" style="color: white;">⚙️ Cron Utilities</h3>
                     </div>
@@ -1445,7 +1591,7 @@
         <div id="holdings-tab" class="tab-content">
         {% if show_holdings %}
         <!-- Today's P&L Summary Section -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-pnl-summary" style="margin-bottom: 20px;">
             <div class="card-header" style="justify-content: space-between;">
                 <h3 class="card-title">📊 P&L Summary</h3>
                 <div style="display: flex; gap: 10px;">
@@ -1477,7 +1623,7 @@
         </div>
 
         <!-- Total Portfolio Value Chart Section -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-portfolio-chart" style="margin-bottom: 20px;">
             <div class="card-header">
                 <h3 class="card-title">📈 Total Portfolio Value</h3>
                 <span class="card-icon">📊</span>
@@ -1499,7 +1645,7 @@
         </div>
 
         <!-- Portfolio Hedging Recommendations Section -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-portfolio-hedge" style="margin-bottom: 20px;">
             <div class="card-header" style="padding: 15px 25px;">
                 <h3 class="card-title" style="font-size: 16px;">🛡️ Portfolio Hedging Recommendations</h3>
                 <span class="card-icon" style="font-size: 20px;">🔒</span>
@@ -1528,7 +1674,7 @@
         </div>
 
         <!-- Current Holdings Section -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-holdings" style="margin-bottom: 20px;">
             <div class="card-header" style="justify-content: space-between;">
                 <h3 class="card-title">💼 Current Holdings</h3>
                 <div style="display: flex; gap: 10px;">
@@ -1727,7 +1873,7 @@
         </div>
 
         <!-- Mutual Fund Holdings Section -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-mf-holdings" style="margin-bottom: 20px;">
             <div class="card-header" style="justify-content: space-between;">
                 <h3 class="card-title">📊 Mutual Fund Holdings</h3>
                 <div style="display: flex; gap: 10px;">
@@ -1769,11 +1915,152 @@
         {% endif %}
 
     </div>  <!-- Close container div -->
+    </div>  <!-- Close main-content div -->
 
     <!-- Load TPO chart renderer -->
     <script src="/static/tpo-charts.js"></script>
     
     <script>
+        // Sidebar Navigation Configuration
+        const sidebarSections = {
+            'live-market': [
+                { id: 'section-market-bias', title: 'Market Bias Analysis' },
+                { id: 'section-tpo-chart', title: 'TPO Market Profile' },
+                { id: 'section-5day-tpo', title: '5-Day TPO Chart' },
+                { id: 'section-premarket', title: 'Pre-Market Analysis' },
+                { id: 'section-order-flow', title: 'Order Flow Analysis' },
+                { id: 'section-footprint', title: 'Footprint Analysis' },
+                { id: 'section-micro-levels', title: 'Critical Micro Levels' },
+                { id: 'section-options-scanner', title: 'Options Chain Scanner' }
+            ],
+            'holdings': [
+                { id: 'section-pnl-summary', title: 'P&L Summary' },
+                { id: 'section-portfolio-chart', title: 'Portfolio Chart' },
+                { id: 'section-portfolio-hedge', title: 'Portfolio Hedging' },
+                { id: 'section-holdings', title: 'Current Holdings' },
+                { id: 'section-mf-holdings', title: 'Mutual Fund Holdings' }
+            ],
+            'gainers-losers': [
+                { id: 'section-gainers', title: 'Top Gainers' },
+                { id: 'section-losers', title: 'Top Losers' },
+                { id: 'section-swing-trades', title: 'Swing Trade Recommendations' },
+                { id: 'section-top-gainers', title: 'Top 20 Potential Gainers' },
+                { id: 'section-stock-search', title: 'Search Stock Prediction' }
+            ],
+            'utilities': [
+                { id: 'section-export', title: 'Export Data' },
+                { id: 'section-import', title: 'Import Data' },
+                { id: 'section-refresh', title: 'Refresh Stock Data' },
+                { id: 'section-add-stock', title: 'Add New Stock' },
+                { id: 'section-kitews', title: 'Kite WebSocket' },
+                { id: 'section-cron', title: 'Cron Utilities' }
+            ]
+        };
+
+        // Function to populate sidebar sections
+        function populateSidebarSections(tabName) {
+            const sidebarSectionsEl = document.getElementById('sidebarSections');
+            if (!sidebarSectionsEl) return;
+
+            const sections = sidebarSections[tabName] || [];
+            
+            if (sections.length === 0) {
+                sidebarSectionsEl.innerHTML = '';
+                return;
+            }
+
+            let html = '<div class="sidebar-section-group">';
+            html += '<div class="sidebar-section-group-title">Sections</div>';
+            
+            sections.forEach(section => {
+                const sectionEl = document.getElementById(section.id);
+                if (sectionEl) {
+                    html += `<a href="#" class="sidebar-section-link" onclick="scrollToSection('${section.id}', event); return false;">${section.title}</a>`;
+                }
+            });
+            
+            html += '</div>';
+            sidebarSectionsEl.innerHTML = html;
+        }
+
+        // Function to scroll to section smoothly
+        function scrollToSection(sectionId, event) {
+            if (event) {
+                event.preventDefault();
+            }
+            const section = document.getElementById(sectionId);
+            if (section) {
+                const headerHeight = 80; // Header height
+                const offset = 20; // Additional offset
+                const sectionPosition = section.getBoundingClientRect().top + window.pageYOffset - headerHeight - offset;
+                
+                window.scrollTo({
+                    top: sectionPosition,
+                    behavior: 'smooth'
+                });
+
+                // Update active section link
+                document.querySelectorAll('.sidebar-section-link').forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('onclick') && link.getAttribute('onclick').includes(sectionId)) {
+                        link.classList.add('active');
+                    }
+                });
+            }
+        }
+
+        // Update active section on scroll
+        function updateActiveSection() {
+            const sections = document.querySelectorAll('[id^="section-"]');
+            const headerHeight = 80;
+            const scrollPosition = window.pageYOffset + headerHeight + 100;
+
+            let currentSection = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.offsetHeight;
+                
+                if (scrollPosition >= sectionTop && scrollPosition < sectionTop + sectionHeight) {
+                    currentSection = section.id;
+                }
+            });
+
+            // Update active link
+            document.querySelectorAll('.sidebar-section-link').forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('onclick') && link.getAttribute('onclick').includes(currentSection)) {
+                    link.classList.add('active');
+                }
+            });
+        }
+
+        // Update sidebar tab active state
+        function updateSidebarTab(tabName) {
+            document.querySelectorAll('.sidebar-tab').forEach(tab => {
+                tab.classList.remove('active');
+                if (tab.getAttribute('data-tab') === tabName) {
+                    tab.classList.add('active');
+                }
+            });
+        }
+
+        // Initialize sidebar on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Populate sidebar for initial tab (live-market)
+            populateSidebarSections('live-market');
+            updateSidebarTab('live-market');
+            
+            // Add scroll event listener to update active section
+            let scrollTimeout;
+            window.addEventListener('scroll', function() {
+                clearTimeout(scrollTimeout);
+                scrollTimeout = setTimeout(updateActiveSection, 100);
+            });
+            
+            // Initial update
+            updateActiveSection();
+        });
+
         // IST market-hours helpers
         function getISTNow() {
             try {
@@ -3731,7 +4018,7 @@
                 });
         }
         
-        function runBacktest() {
+        function runBacktest(forceRefresh = false) {
             const startDate = document.getElementById('backtestStartDate').value;
             const endDate = document.getElementById('backtestEndDate').value;
             const strategyType = document.getElementById('backtestStrategyType').value;
@@ -3744,29 +4031,72 @@
             }
             
             // Show loading
-            document.getElementById('backtestLoading').style.display = 'block';
-            document.getElementById('backtestResultsContainer').style.display = 'none';
-            document.getElementById('backtestDataQualityIndicator').style.display = 'none';
+            const loadingDiv = document.getElementById('backtestLoading');
+            const resultsContainer = document.getElementById('backtestResultsContainer');
+            const qualityIndicator = document.getElementById('backtestDataQualityIndicator');
+            
+            if (forceRefresh) {
+                loadingDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">🔄 Regenerating back-test data... This may take a few moments.</div>';
+            } else {
+                loadingDiv.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Running back-test... This may take a few moments.</div>';
+            }
+            
+            loadingDiv.style.display = 'block';
+            resultsContainer.style.display = 'none';
+            qualityIndicator.style.display = 'none';
             
             // Build API URL
             let url = `/api/options/backtest?start_date=${startDate}&end_date=${endDate}&strategy_type=${strategyType}&show_only_profitable=${showOnlyProfitable}`;
             if (minProfit) {
                 url += `&min_profit=${minProfit}`;
             }
+            if (forceRefresh) {
+                url += `&force_refresh=true`;
+            }
             
             fetch(url)
                 .then(response => response.json())
                 .then(data => {
-                    document.getElementById('backtestLoading').style.display = 'none';
+                    loadingDiv.style.display = 'none';
                     
                     if (data.error || !data.success) {
                         alert(`Error: ${data.error || 'Failed to run back-test'}`);
                         return;
                     }
                     
+                    // Show cache indicator if data is from cache
+                    if (data.from_cache && !forceRefresh) {
+                        const cacheIndicator = document.createElement('div');
+                        cacheIndicator.id = 'backtestCacheIndicator';
+                        cacheIndicator.style.cssText = 'margin-bottom: 10px; padding: 10px; background-color: #d1ecf1; border-radius: 5px; border-left: 4px solid #17a2b8; font-size: 12px;';
+                        cacheIndicator.innerHTML = `
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <strong>💾 Using cached data</strong> - Results were generated on ${data.created_at ? new Date(data.created_at).toLocaleString() : 'previously'}
+                                </div>
+                                <button onclick="runBacktest(true)" style="padding: 4px 8px; font-size: 11px; background-color: #17a2b8; color: white; border: none; border-radius: 3px; cursor: pointer;">
+                                    🔄 Refresh
+                                </button>
+                            </div>
+                        `;
+                        // Remove existing cache indicator if present
+                        const existingIndicator = document.getElementById('backtestCacheIndicator');
+                        if (existingIndicator) {
+                            existingIndicator.remove();
+                        }
+                        // Insert before results container
+                        resultsContainer.parentNode.insertBefore(cacheIndicator, resultsContainer);
+                    } else {
+                        // Remove cache indicator if present
+                        const existingIndicator = document.getElementById('backtestCacheIndicator');
+                        if (existingIndicator) {
+                            existingIndicator.remove();
+                        }
+                    }
+                    
                     // Display data quality indicator
                     const metrics = data.metrics || {};
-                    const dataQuality = metrics.data_quality || {};
+                    const dataQuality = data.data_quality || metrics.data_quality || {};
                     if (dataQuality.generated_percentage > 0) {
                         const qualityDiv = document.getElementById('backtestDataQualityIndicator');
                         const qualityContent = document.getElementById('dataQualityContent');
@@ -3791,10 +4121,10 @@
                     displayBacktestTrades(data.trades || []);
                     
                     // Show results
-                    document.getElementById('backtestResultsContainer').style.display = 'block';
+                    resultsContainer.style.display = 'block';
                 })
                 .catch(error => {
-                    document.getElementById('backtestLoading').style.display = 'none';
+                    loadingDiv.style.display = 'none';
                     console.error('Error running back-test:', error);
                     alert('Error running back-test. Please check console for details.');
                 });
@@ -3988,10 +4318,13 @@
             
             // Create modal
             const modal = document.createElement('div');
+            modal.id = 'payoffChartModal';
             modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; align-items: center; justify-content: center;';
             modal.onclick = function(e) {
                 if (e.target === modal) {
-                    document.body.removeChild(modal);
+                    if (modal.parentNode) {
+                        modal.parentNode.removeChild(modal);
+                    }
                 }
             };
             
@@ -4002,7 +4335,7 @@
             content.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                     <h3 style="margin: 0; font-size: 18px;">Payoff Chart - ${trade.symbol || 'Trade'}</h3>
-                    <button onclick="this.closest('div[style*=\"position: fixed\"]').remove()" style="background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-size: 14px;">Close</button>
+                    <button id="payoffChartCloseBtn" style="background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-size: 14px;">Close</button>
                 </div>
                 <div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px; font-size: 12px;">
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
@@ -4019,6 +4352,17 @@
             
             modal.appendChild(content);
             document.body.appendChild(modal);
+            
+            // Attach close button event listener after modal is added to DOM
+            const closeBtn = document.getElementById('payoffChartCloseBtn');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', function() {
+                    const modalEl = document.getElementById('payoffChartModal');
+                    if (modalEl && modalEl.parentNode) {
+                        modalEl.parentNode.removeChild(modalEl);
+                    }
+                });
+            }
         }
         
         function loadDerivativesSuggestions() {
@@ -6465,10 +6809,19 @@
                 btn.classList.remove('active');
             });
             
+            // Update sidebar tab
+            updateSidebarTab(tabName);
+            
+            // Populate sidebar sections for this tab
+            populateSidebarSections(tabName);
+            
             // Show selected tab content
             const selectedTab = document.getElementById(tabName + '-tab');
             if (selectedTab) {
                 selectedTab.classList.add('active');
+                
+                // Scroll to top of content
+                window.scrollTo({ top: 0, behavior: 'smooth' });
                 
                 // Start/stop polling based on tab
                 if (tabName === 'gainers-losers') {
