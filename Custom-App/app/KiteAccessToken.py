@@ -2948,6 +2948,8 @@ async def api_prophet_sectoral_averages(
         run_date = result['max_run_date']
         
         # Get sectoral averages
+        # Note: This counts ALL stocks that meet criteria, but the table may only show top N
+        # To ensure consistency, we could limit this to top stocks, but for now we show all
         cursor.execute("""
             SELECT 
                 ms.sector_code,

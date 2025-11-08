@@ -1247,9 +1247,12 @@
                 <div style="padding: 15px;">
                     <!-- Sectoral Averages Cards -->
                     <div id="sectoralAveragesContainer" style="margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px;"></div>
-                    <!-- Top 20 Potential Gainers Header -->
-                    <div style="margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 4px; border-left: 4px solid #28a745;">
-                        <h4 style="margin: 0; color: #333; font-size: 16px; font-weight: 600;">🚀 Top 20 Potential Gainers</h4>
+                    <!-- Top Potential Gainers Header -->
+                    <div style="margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 4px; border-left: 4px solid #28a745; display: flex; justify-content: space-between; align-items: center;">
+                        <h4 style="margin: 0; color: #333; font-size: 16px; font-weight: 600;">🚀 Top Potential Gainers (Confidence > 50%) <span id="topGainersTitleSuffix" style="font-size: 14px; color: #666; font-weight: normal;">(Top 20 by default)</span></h4>
+                        <button id="clearSectorFilterBtn" onclick="clearSectorFilter()" style="display: none; padding: 6px 12px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">
+                            ✕ Clear Sector Filter
+                        </button>
                     </div>
                     <div id="topGainersContainer" style="overflow-x: auto;">
                         <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
@@ -7972,15 +7975,33 @@
             applyFiltersAndSorting();
             renderSectoralAverages();
             renderTopGainersTable();
+            updateClearButtonVisibility();
         }
         
         // Clear sector filter
         function clearSectorFilter() {
             selectedSectorFilter = null;
             topGainersCurrentPage = 1;
+            document.getElementById('sectorSearchInput').value = '';
             applyFiltersAndSorting();
             renderSectoralAverages();
             renderTopGainersTable();
+            updateClearButtonVisibility();
+        }
+        
+        // Update clear button visibility
+        function updateClearButtonVisibility() {
+            const clearBtn = document.getElementById('clearSectorFilterBtn');
+            const titleSuffix = document.getElementById('topGainersTitleSuffix');
+            if (clearBtn && titleSuffix) {
+                if (selectedSectorFilter || document.getElementById('sectorSearchInput').value.trim()) {
+                    clearBtn.style.display = 'block';
+                    titleSuffix.textContent = '(Filtered by sector)';
+                } else {
+                    clearBtn.style.display = 'none';
+                    titleSuffix.textContent = '(Top 20 by default)';
+                }
+            }
         }
         
         // Apply sector search
@@ -7988,23 +8009,31 @@
             topGainersCurrentPage = 1;
             applyFiltersAndSorting();
             renderTopGainersTable();
+            updateClearButtonVisibility();
         }
         
         // Get filtered and sorted gainers
         function getFilteredAndSortedGainers() {
             let filtered = [...allTopGainers];
             
-            // Apply sector filter
-            if (selectedSectorFilter) {
+            // Check if we have any active filters
+            const hasSectorFilter = selectedSectorFilter !== null;
+            const searchTerm = document.getElementById('sectorSearchInput').value.trim().toLowerCase();
+            const hasSearch = searchTerm.length > 0;
+            
+            // Apply sector filter - if filtering by sector, show ALL stocks for that sector
+            if (hasSectorFilter) {
                 filtered = filtered.filter(gainer => {
                     const sectorCode = gainer.sector_code || 'N/A';
                     return sectorCode === selectedSectorFilter;
                 });
+            } else if (!hasSearch) {
+                // No filter and no search - show only top 20 by default
+                filtered = filtered.slice(0, 20);
             }
             
             // Apply search filter
-            const searchTerm = document.getElementById('sectorSearchInput').value.trim().toLowerCase();
-            if (searchTerm) {
+            if (hasSearch) {
                 filtered = filtered.filter(gainer => {
                     const sectorCode = (gainer.sector_code || 'N/A').toLowerCase();
                     return sectorCode.includes(searchTerm);
@@ -8134,10 +8163,12 @@
             }, 100);
             
             updateTopGainersPagination(totalItems);
+            updateClearButtonVisibility();
             
             const filterText = selectedSectorFilter ? ` (filtered by ${selectedSectorFilter})` : '';
             const searchText = document.getElementById('sectorSearchInput').value ? ` (search: "${document.getElementById('sectorSearchInput').value}")` : '';
-            statusDiv.innerHTML = `<span style="color: #28a745;">✓ Showing ${totalItems} top gainers${filterText}${searchText} (showing ${startIndex + 1}-${endIndex} of ${totalItems})</span>`;
+            const defaultText = (!selectedSectorFilter && !document.getElementById('sectorSearchInput').value) ? ' (Top 20 by default)' : '';
+            statusDiv.innerHTML = `<span style="color: #28a745;">✓ Showing ${totalItems} potential gainers${filterText}${searchText}${defaultText} (showing ${startIndex + 1}-${endIndex} of ${totalItems})</span>`;
         }
         
         // Sort by sector column
@@ -8191,7 +8222,7 @@
             statusDiv.innerHTML = `<span style="color: #666;">⏳ Loading top gainers for ${predictionDays} days...</span>`;
             tbody.innerHTML = '<tr><td colspan="12" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td></tr>';
             
-            fetch(`/api/prophet_predictions/top_gainers?limit=20&prediction_days=${predictionDays}`)
+            fetch(`/api/prophet_predictions/top_gainers?limit=500&prediction_days=${predictionDays}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
@@ -8221,6 +8252,7 @@
                         document.getElementById('sectorSearchInput').value = '';
                         document.getElementById('sectoralAveragesContainer').innerHTML = '';
                         updateTopGainersPagination(0);
+                        updateClearButtonVisibility();
                         return;
                     }
                     
@@ -8230,6 +8262,9 @@
                     
                     // Load sectoral averages
                     loadSectoralAverages();
+                    
+                    // Update clear button visibility
+                    updateClearButtonVisibility();
                     
                     // Render table with filtering and sorting
                     renderTopGainersTable();
