@@ -1090,6 +1090,194 @@ async def api_refresh_futures():
         logging.error(f"Error refreshing futures data: {e}")
         return {"success": False, "error": str(e)}
 
+@app.post("/api/start_kitews")
+async def api_start_kitews():
+    """API endpoint to start KiteWS and run it until 3:30 PM IST"""
+    try:
+        import subprocess
+        import os
+        from datetime import datetime
+        from pytz import timezone
+        
+        # Check if KiteWS is already running
+        try:
+            result = subprocess.run(
+                ['pgrep', '-f', 'KiteWS.py'],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return {
+                    "success": False,
+                    "message": "KiteWS is already running",
+                    "pid": result.stdout.strip().split('\n')[0]
+                }
+        except Exception as e:
+            # pgrep might not be available, try alternative method
+            logging.warning(f"Could not check if KiteWS is running: {e}")
+        
+        # Start KiteWS using the wrapper script
+        kitews_wrapper_path = os.path.join(os.path.dirname(__file__), 'kite', 'StartKiteWS.py')
+        
+        if not os.path.exists(kitews_wrapper_path):
+            return {
+                "success": False,
+                "error": f"StartKiteWS.py not found at {kitews_wrapper_path}"
+            }
+        
+        # Start the process in the background
+        import sys
+        process = subprocess.Popen(
+            [sys.executable, kitews_wrapper_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=os.path.dirname(os.path.dirname(kitews_wrapper_path)),
+            preexec_fn=os.setsid if hasattr(os, 'setsid') else None
+        )
+        
+        ist = timezone('Asia/Kolkata')
+        current_time = datetime.now(ist)
+        target_time = current_time.replace(hour=15, minute=30, second=0, microsecond=0)
+        
+        # If current time is past 3:30 PM, set target to next day
+        if current_time >= target_time:
+            from datetime import timedelta
+            target_time = target_time + timedelta(days=1)
+        
+        logging.info(f"Started KiteWS process (PID: {process.pid}) at {current_time.strftime('%Y-%m-%d %H:%M:%S IST')}")
+        logging.info(f"KiteWS will run until {target_time.strftime('%Y-%m-%d %H:%M:%S IST')}")
+        
+        return {
+            "success": True,
+            "message": f"KiteWS started successfully. Will run until {target_time.strftime('%Y-%m-%d %H:%M:%S IST')}",
+            "pid": process.pid,
+            "started_at": current_time.strftime('%Y-%m-%d %H:%M:%S IST'),
+            "will_run_until": target_time.strftime('%Y-%m-%d %H:%M:%S IST')
+        }
+    except Exception as e:
+        logging.error(f"Error starting KiteWS: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/refresh_holdings")
+async def api_refresh_holdings():
+    """API endpoint to refresh holdings from Kite API"""
+    try:
+        from holdings.RefreshHoldings import refresh_holdings
+        refresh_holdings()
+        return {"success": True, "message": "Holdings refreshed successfully"}
+    except Exception as e:
+        logging.error(f"Error refreshing holdings: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/calculate_tpo")
+async def api_calculate_tpo():
+    """API endpoint to calculate TPO profile"""
+    try:
+        import subprocess
+        import os
+        import sys
+        
+        # Run CalculateTPO.py as a background process
+        calculate_tpo_path = os.path.join(os.path.dirname(__file__), 'market', 'CalculateTPO.py')
+        
+        if not os.path.exists(calculate_tpo_path):
+            return {
+                "success": False,
+                "error": f"CalculateTPO.py not found at {calculate_tpo_path}"
+            }
+        
+        # Start the process in the background
+        process = subprocess.Popen(
+            [sys.executable, calculate_tpo_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=os.path.dirname(calculate_tpo_path),
+            preexec_fn=os.setsid if hasattr(os, 'setsid') else None
+        )
+        
+        logging.info(f"Started CalculateTPO process (PID: {process.pid})")
+        
+        return {
+            "success": True,
+            "message": "TPO calculation started successfully",
+            "pid": process.pid
+        }
+    except Exception as e:
+        logging.error(f"Error starting TPO calculation: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/fetch_options")
+async def api_fetch_options():
+    """API endpoint to fetch options data from Kite API"""
+    try:
+        from kite.KiteFetchOptions import fetch_and_save_options
+        result = fetch_and_save_options()
+        return {
+            "success": True,
+            "message": "Options data fetched successfully",
+            "options_fetched": result.get('options_fetched', 0) if isinstance(result, dict) else 0
+        }
+    except Exception as e:
+        logging.error(f"Error fetching options: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/insert_ohlc")
+async def api_insert_ohlc():
+    """API endpoint to insert OHLC price data"""
+    try:
+        from kite.InsertOHLC import refresh_stock_prices
+        result = refresh_stock_prices()
+        return {
+            "success": result.get('success', False),
+            "message": result.get('message', 'OHLC data updated'),
+            "stocks_processed": result.get('stocks_processed', 0),
+            "records_inserted": result.get('records_inserted', 0)
+        }
+    except Exception as e:
+        logging.error(f"Error inserting OHLC data: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/refresh_swing_trades")
+async def api_refresh_swing_trades():
+    """API endpoint to refresh swing trade recommendations"""
+    try:
+        from stocks.RefreshSwingTrades import refresh_swing_trades
+        refresh_swing_trades()
+        return {"success": True, "message": "Swing trade recommendations refreshed successfully"}
+    except Exception as e:
+        logging.error(f"Error refreshing swing trades: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/refresh_mf_nav")
+async def api_refresh_mf_nav():
+    """API endpoint to refresh MF NAV data"""
+    try:
+        from holdings.RefreshMFNAV import refresh_mf_nav
+        result = refresh_mf_nav()
+        return {
+            "success": result.get('success', False),
+            "message": result.get('message', 'MF NAV data refreshed'),
+            "mfs_processed": result.get('mfs_processed', 0),
+            "records_inserted": result.get('records_inserted', 0)
+        }
+    except Exception as e:
+        logging.error(f"Error refreshing MF NAV: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
 @app.get("/refresh_data")
 async def refresh_data():
     """Endpoint to refresh all data including futures"""
@@ -3310,6 +3498,65 @@ async def api_gainers():
                 logging.warning(f"Available keys: {list(row.keys()) if hasattr(row, 'keys') else 'N/A'}")
                 continue
         
+        # Get Prophet predictions for all gainers (60-day predictions)
+        try:
+            scrip_ids = [g['scrip_id'] for g in gainers_list if g.get('scrip_id')]
+            if scrip_ids:
+                # First try to get 60-day predictions
+                cursor.execute("""
+                    SELECT scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days, cv_mape, cv_rmse
+                    FROM my_schema.prophet_predictions
+                    WHERE run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE' AND prediction_days = 60)
+                    AND prediction_days = 60
+                    AND status = 'ACTIVE'
+                    AND scrip_id = ANY(%s)
+                """, (scrip_ids,))
+                
+                predictions_rows = cursor.fetchall()
+                
+                # If no 60-day predictions, try to get latest predictions regardless of prediction_days
+                if not predictions_rows:
+                    logging.warning("No 60-day Prophet predictions found for gainers, trying latest predictions")
+                    cursor.execute("""
+                        SELECT scrip_id, predicted_price_change_pct, prediction_confidence, prediction_days, cv_mape, cv_rmse
+                        FROM my_schema.prophet_predictions pp1
+                        WHERE status = 'ACTIVE'
+                        AND run_date = (SELECT MAX(run_date) FROM my_schema.prophet_predictions WHERE status = 'ACTIVE')
+                        AND scrip_id = ANY(%s)
+                    """, (scrip_ids,))
+                    predictions_rows = cursor.fetchall()
+                
+                predictions_map = {row['scrip_id'].upper(): dict(row) for row in predictions_rows}
+                logging.info(f"Loaded {len(predictions_map)} Prophet predictions for gainers enrichment")
+                
+                # Enrich gainers with Prophet predictions
+                for gainer in gainers_list:
+                    scrip_id_upper = gainer.get('scrip_id', '').upper()
+                    if scrip_id_upper in predictions_map:
+                        pred = predictions_map[scrip_id_upper]
+                        gainer['prophet_prediction_pct'] = pred.get('predicted_price_change_pct')
+                        gainer['prophet_confidence'] = pred.get('prediction_confidence')
+                        gainer['prediction_days'] = pred.get('prediction_days', 60)
+                        gainer['prophet_cv_mape'] = pred.get('cv_mape')
+                        gainer['prophet_cv_rmse'] = pred.get('cv_rmse')
+                    else:
+                        gainer['prophet_prediction_pct'] = None
+                        gainer['prophet_confidence'] = None
+                        gainer['prediction_days'] = None
+                        gainer['prophet_cv_mape'] = None
+                        gainer['prophet_cv_rmse'] = None
+        except Exception as e:
+            logging.error(f"Error loading Prophet predictions for gainers: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+            # Set None for all gainers if error occurs
+            for gainer in gainers_list:
+                gainer['prophet_prediction_pct'] = None
+                gainer['prophet_confidence'] = None
+                gainer['prediction_days'] = None
+                gainer['prophet_cv_mape'] = None
+                gainer['prophet_cv_rmse'] = None
+        
         conn.close()
         logging.info(f"Fetched {len(gainers_list)} gainers, returning response")
         logging.debug(f"Gainers list: {gainers_list}")
@@ -4903,6 +5150,239 @@ async def api_derivatives_suggestions(
             "success": False,
             "error": str(e),
             "suggestions": []
+        }
+
+@app.get("/api/intraday_options_suggestions")
+async def api_intraday_options_suggestions(
+    instrument_token: int = Query(256265, description="Instrument token (default: 256265 for Nifty 50)"),
+    analysis_date: str = Query(None, description="Analysis date in YYYY-MM-DD format (default: today)"),
+    timeframe_minutes: int = Query(15, description="Timeframe in minutes (default: 15, max: 240)"),
+    timeframe_days: int = Query(None, description="Timeframe in days (1, 3, or 5). If provided, this takes precedence over timeframe_minutes")
+):
+    """
+    API endpoint to get options trading suggestions based on:
+    - Intraday POC changes (for short-term)
+    - Daily POC trend analysis (for long-term)
+    - Futures and Options order flow
+    - Supports both minutes (5-240) and days (1, 3, 5) timeframes
+    """
+    try:
+        from options.IntradayOptionsSuggestions import IntradayOptionsSuggestions
+        from datetime import date
+        
+        # Parse analysis date
+        if analysis_date:
+            try:
+                analysis_date_obj = datetime.strptime(analysis_date, '%Y-%m-%d').date()
+            except ValueError:
+                return {
+                    "success": False,
+                    "error": f"Invalid date format. Use YYYY-MM-DD"
+                }
+        else:
+            analysis_date_obj = date.today()
+        
+        # Validate timeframe
+        if timeframe_days is not None:
+            # Days timeframe
+            if timeframe_days not in [1, 3, 5]:
+                return {
+                    "success": False,
+                    "error": "Timeframe days must be 1, 3, or 5"
+                }
+            # Use default minutes for intraday POC calculation, but generate long-term suggestions
+            timeframe_minutes_for_calc = 15
+        else:
+            # Minutes timeframe
+            if timeframe_minutes < 5 or timeframe_minutes > 240:
+                return {
+                    "success": False,
+                    "error": "Timeframe minutes must be between 5 and 240 minutes"
+                }
+            timeframe_minutes_for_calc = timeframe_minutes
+        
+        # Get database configuration
+        db_config = {
+            'host': os.getenv('PG_HOST', 'postgres'),
+            'database': os.getenv('PG_DATABASE', 'mydb'),
+            'user': os.getenv('PG_USER', 'postgres'),
+            'password': os.getenv('PG_PASSWORD', 'postgres'),
+            'port': int(os.getenv('PG_PORT', 5432))
+        }
+        
+        # Get active futures token dynamically from database
+        # Futures contracts expire monthly, so we need to fetch the active contract
+        futures_token = None
+        try:
+            from common.Boilerplate import get_db_connection
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Try to find the active futures contract token for today
+            cursor.execute("""
+                SELECT instrument_token
+                FROM (
+                    SELECT instrument_token, timestamp
+                    FROM my_schema.futures_ticks
+                    WHERE run_date = %s
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                ) AS subquery
+            """, (analysis_date_obj,))
+            futures_result = cursor.fetchone()
+            if futures_result:
+                futures_token = futures_result[0]
+                logging.info(f"Found active futures contract token: {futures_token} for date {analysis_date_obj}")
+            else:
+                # Fallback to default if no data found
+                futures_token = 12683010
+                logging.warning(f"No futures data found for {analysis_date_obj}, using default token {futures_token}")
+            
+            conn.close()
+        except Exception as e:
+            logging.warning(f"Could not fetch active futures token: {e}, using default 12683010")
+            futures_token = 12683010  # Fallback to default
+        
+        # Initialize options suggestions engine
+        suggestions_engine = IntradayOptionsSuggestions(
+            instrument_token=instrument_token,
+            futures_token=futures_token,  # Dynamically fetched active futures token
+            tick_size=5.0,
+            timeframe_minutes=timeframe_minutes_for_calc,
+            db_config=db_config
+        )
+        
+        # Generate suggestions
+        result = suggestions_engine.generate_suggestions(
+            analysis_date=analysis_date_obj,
+            current_time=None  # Will use current time
+        )
+        
+        # If timeframe_days is specified, regenerate long-term suggestions with specific days
+        if timeframe_days is not None and result.get('success'):
+            # Get the options chain and other data needed for long-term suggestions
+            current_price = result.get('current_price', 0)
+            current_poc = result.get('current_poc', 0)
+            poc_change = result.get('poc_change', {})
+            order_flow = {'overall_sentiment': result.get('order_flow_sentiment', 'Neutral')}
+            
+            # Get options chain (we need to fetch it again or use the one from the engine)
+            options_chain = suggestions_engine._get_relevant_options(current_price, current_poc)
+            
+            # Regenerate long-term suggestions with the specific timeframe_days
+            long_term_suggestions = suggestions_engine._generate_long_term_suggestions(
+                current_price=current_price,
+                current_poc=current_poc,
+                poc_change=poc_change,
+                order_flow=order_flow,
+                options_chain=options_chain,
+                analysis_date=analysis_date_obj,
+                timeframe_days=timeframe_days
+            )
+            
+            result['long_term_suggestions'] = long_term_suggestions
+            result['short_term_suggestions'] = []  # Hide short-term when days are selected
+            result['timeframe_days'] = timeframe_days
+        
+        return result
+        
+    except Exception as e:
+        logging.error(f"Error generating intraday options suggestions: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "suggestions": []
+        }
+
+@app.post("/api/options_payoff_chart")
+async def api_options_payoff_chart(body: dict):
+    """
+    API endpoint to generate payoff chart with Greeks for an options strategy
+    
+    Request body should contain:
+    - strategy_legs: List of strategy legs, each with:
+        - action: 'BUY' or 'SELL'
+        - quantity: Number of lots
+        - option_type: 'CE' or 'PE'
+        - strike: Strike price
+        - premium: Premium paid/received
+        - expiry: Expiry date (YYYY-MM-DD)
+    - current_price: Current underlying price
+    - expiry_date: Expiry date (YYYY-MM-DD)
+    - implied_volatility: Implied volatility as percentage (default: 20)
+    - lot_size: Lot size (default: 50)
+    """
+    try:
+        from options.OptionsStrategies import OptionsStrategies
+        from datetime import date
+        
+        strategy_legs = body.get('strategy_legs', [])
+        current_price = float(body.get('current_price', 0))
+        expiry_date_str = body.get('expiry_date')
+        implied_volatility_pct = float(body.get('implied_volatility', 20))
+        lot_size = int(body.get('lot_size', 50))
+        
+        if not strategy_legs:
+            return {
+                "success": False,
+                "error": "strategy_legs is required"
+            }
+        
+        if current_price <= 0:
+            return {
+                "success": False,
+                "error": "current_price must be greater than 0"
+            }
+        
+        # Parse expiry date
+        try:
+            expiry_date = datetime.strptime(expiry_date_str, '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            # Try to get expiry from first leg
+            if strategy_legs and 'expiry' in strategy_legs[0]:
+                try:
+                    expiry_date = datetime.strptime(strategy_legs[0]['expiry'], '%Y-%m-%d').date()
+                except:
+                    return {
+                        "success": False,
+                        "error": "Invalid expiry_date format. Use YYYY-MM-DD"
+                    }
+            else:
+                return {
+                    "success": False,
+                    "error": "expiry_date is required"
+                }
+        
+        # Convert IV from percentage to decimal
+        implied_volatility = implied_volatility_pct / 100.0
+        
+        # Initialize strategies generator
+        strategies_generator = OptionsStrategies(risk_free_rate=0.065)
+        
+        # Generate payoff chart with Greeks
+        result = strategies_generator.generate_payoff_chart_with_greeks(
+            strategy_legs=strategy_legs,
+            current_price=current_price,
+            expiry_date=expiry_date,
+            implied_volatility=implied_volatility,
+            lot_size=lot_size,
+            current_date=date.today()
+        )
+        
+        return {
+            "success": True,
+            **result
+        }
+        
+    except Exception as e:
+        logging.error(f"Error generating payoff chart: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
         }
 
 @app.get("/api/futures_order_flow")
@@ -6819,6 +7299,183 @@ async def api_options_latest(
             "error": str(e)
         }, "/api/options_latest")
 
+@app.get("/api/options_oi_history")
+async def api_options_oi_history(
+    tradingsymbol: str = Query(..., description="Trading symbol of the option"),
+    strike_price: float = Query(..., description="Strike price"),
+    option_type: str = Query(..., description="Option type: 'CE' or 'PE'"),
+    expiry: str = Query(None, description="Expiry date in YYYY-MM-DD format"),
+    days: int = Query(7, description="Number of days of history to fetch (default: 7)")
+):
+    """
+    API endpoint to get historical OI data for a specific option
+    Returns OI values over time for the specified trading symbol and strike
+    """
+    try:
+        from datetime import datetime, date, timedelta
+        from common.Boilerplate import get_db_connection
+        
+        # Parse expiry date
+        expiry_date = None
+        if expiry:
+            try:
+                expiry_date = datetime.strptime(expiry, '%Y-%m-%d').date()
+            except ValueError:
+                return {
+                    "success": False,
+                    "error": f"Invalid expiry date format. Use YYYY-MM-DD"
+                }
+        
+        # Calculate date range
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days)
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Build query to get historical OI data for this specific option
+        where_conditions = [
+            "tradingsymbol = %s",
+            "strike_price = %s",
+            "option_type = %s",
+            "run_date >= %s",
+            "run_date <= %s"
+        ]
+        params = [tradingsymbol, strike_price, option_type, start_date, end_date]
+        
+        if expiry_date:
+            where_conditions.append("expiry = %s")
+            params.append(expiry_date)
+        
+        where_clause = " AND ".join(where_conditions)
+        
+        query = f"""
+            SELECT 
+                run_date,
+                timestamp,
+                oi,
+                oi_day_high,
+                oi_day_low,
+                volume,
+                last_price
+            FROM my_schema.options_ticks
+            WHERE {where_clause}
+            ORDER BY run_date ASC, timestamp ASC
+        """
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows:
+            return {
+                "success": False,
+                "error": "No historical OI data found for this option",
+                "oi_history": []
+            }
+        
+        # Convert to list of dicts
+        oi_history = []
+        for row in rows:
+            oi_history.append({
+                "run_date": row[0].isoformat() if isinstance(row[0], date) else str(row[0]),
+                "timestamp": row[1].isoformat() if hasattr(row[1], 'isoformat') else str(row[1]),
+                "oi": int(row[2]) if row[2] else 0,
+                "oi_day_high": int(row[3]) if row[3] else 0,
+                "oi_day_low": int(row[4]) if row[4] else 0,
+                "volume": int(row[5]) if row[5] else 0,
+                "last_price": float(row[6]) if row[6] else 0
+            })
+        
+        return {
+            "success": True,
+            "tradingsymbol": tradingsymbol,
+            "strike_price": strike_price,
+            "option_type": option_type,
+            "expiry": expiry_date.isoformat() if expiry_date else None,
+            "oi_history": oi_history,
+            "total_records": len(oi_history)
+        }
+        
+    except Exception as e:
+        logging.error(f"Error fetching OI history: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "oi_history": []
+        }
+
+@app.get("/api/options_oi_chart_for_strike")
+async def api_options_oi_chart_for_strike(
+    tradingsymbol: str = Query(..., description="Trading symbol of the option"),
+    strike_price: float = Query(..., description="Strike price"),
+    option_type: str = Query(..., description="Option type: 'CE' or 'PE'"),
+    expiry: str = Query(None, description="Expiry date in YYYY-MM-DD format"),
+    days: int = Query(7, description="Number of days of history to show (default: 7)")
+):
+    """
+    API endpoint to generate OI change over time chart for a specific strike price
+    """
+    try:
+        from options.OptionsOIAnalyzer import OptionsOIAnalyzer
+        from datetime import datetime, date
+        
+        analyzer = OptionsOIAnalyzer()
+        
+        # Parse expiry date
+        expiry_date = None
+        if expiry:
+            try:
+                expiry_date = datetime.strptime(expiry, '%Y-%m-%d').date()
+            except ValueError:
+                return {
+                    "success": False,
+                    "error": f"Invalid expiry date format. Use YYYY-MM-DD"
+                }
+        
+        # Validate option_type
+        if option_type not in ['CE', 'PE']:
+            return {
+                "success": False,
+                "error": "option_type must be 'CE' or 'PE'"
+            }
+        
+        # Generate chart
+        chart_image = analyzer.plot_oi_history_for_strike(
+            tradingsymbol=tradingsymbol,
+            strike_price=strike_price,
+            option_type=option_type,
+            expiry=expiry_date,
+            days=days
+        )
+        
+        if not chart_image:
+            return {
+                "success": False,
+                "error": "Failed to generate chart"
+            }
+        
+        return {
+            "success": True,
+            "tradingsymbol": tradingsymbol,
+            "strike_price": strike_price,
+            "option_type": option_type,
+            "expiry": expiry_date.isoformat() if expiry_date else None,
+            "days": days,
+            "chart_image": f"data:image/png;base64,{chart_image}"
+        }
+        
+    except Exception as e:
+        logging.error(f"Error generating OI chart for strike: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 @app.get("/api/options_oi_analysis")
 async def api_options_oi_analysis(
     expiry: str = Query(None, description="Expiry date in YYYY-MM-DD format (default: latest expiry)"),
@@ -6916,6 +7573,611 @@ async def api_options_oi_analysis(
         
     except Exception as e:
         logging.error(f"Error generating OI analysis: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/api/options/backtest")
+async def api_options_backtest(
+    start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
+    end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
+    strategy_type: str = Query("all", description="Strategy type: 'all', 'single', 'spread', 'multi_leg'"),
+    show_only_profitable: bool = Query(False, description="Show only profitable trades"),
+    min_profit: Optional[float] = Query(None, description="Minimum profit threshold"),
+    timeframe_minutes: int = Query(15, description="Timeframe in minutes (default: 15)"),
+    save_results: bool = Query(False, description="Save results to database")
+):
+    """
+    API endpoint to run options back-testing for a date range
+    """
+    try:
+        from options.OptionsBacktester import OptionsBacktester
+        from datetime import datetime
+        
+        # Parse dates
+        try:
+            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+        except ValueError:
+            return {
+                "success": False,
+                "error": "Invalid date format. Use YYYY-MM-DD"
+            }
+        
+        # Validate date range
+        if start_date_obj > end_date_obj:
+            return {
+                "success": False,
+                "error": "Start date must be before end date"
+            }
+        
+        # Initialize back-tester
+        backtester = OptionsBacktester()
+        
+        # Check if results already exist in database
+        existing_results = backtester.get_existing_backtest(
+            start_date=start_date_obj,
+            end_date=end_date_obj,
+            strategy_type=strategy_type,
+            show_only_profitable=show_only_profitable,
+            min_profit=min_profit,
+            timeframe_minutes=timeframe_minutes
+        )
+        
+        if existing_results:
+            # Return existing results from database
+            logging.info(f"Returning cached backtest results (ID: {existing_results.get('backtest_id')})")
+            return existing_results
+        
+        # Run new back-test if no existing results found
+        logging.info(f"Running new backtest for {start_date_obj} to {end_date_obj}")
+        results = backtester.run_backtest(
+            start_date=start_date_obj,
+            end_date=end_date_obj,
+            strategy_type=strategy_type,
+            show_only_profitable=show_only_profitable,
+            min_profit=min_profit,
+            timeframe_minutes=timeframe_minutes
+        )
+        
+        # Convert date objects to strings in trades and sanitize for JSON
+        from datetime import date
+        import math
+        
+        def sanitize_value(val):
+            """Sanitize a value for JSON serialization"""
+            if val is None:
+                return None
+            if isinstance(val, float):
+                if math.isnan(val) or math.isinf(val):
+                    return None
+                return val
+            if isinstance(val, dict):
+                return {k: sanitize_value(v) for k, v in val.items()}
+            if isinstance(val, (list, tuple)):
+                return [sanitize_value(item) for item in val]
+            return val
+        
+        # Sanitize results before returning
+        if results.get('success'):
+            # Convert dates to strings
+            for trade in results.get('trades', []):
+                if 'expiry' in trade and isinstance(trade['expiry'], date):
+                    trade['expiry'] = trade['expiry'].strftime('%Y-%m-%d')
+            
+            # Sanitize all float values
+            results = sanitize_value(results)
+        
+        # Save results to database if requested or if not from cache
+        # Always save new results to enable caching for future requests
+        if results.get('success') and not results.get('from_cache'):
+            backtest_id = backtester.save_backtest_results(results=results)
+            if backtest_id:
+                results['backtest_id'] = backtest_id
+                results['saved'] = True
+                logging.info(f"Saved backtest results with ID: {backtest_id}")
+        
+        return results
+        
+    except Exception as e:
+        logging.error(f"Error running options back-test: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/api/options/backtest/results")
+async def api_options_backtest_results(
+    start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
+    end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
+    show_only_profitable: bool = Query(False, description="Show only profitable trades"),
+    min_profit: Optional[float] = Query(None, description="Minimum profit threshold")
+):
+    """
+    API endpoint to get back-testing results with detailed metrics
+    """
+    try:
+        from options.OptionsBacktester import OptionsBacktester
+        from datetime import datetime
+        
+        # Parse dates
+        try:
+            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+        except ValueError:
+            return {
+                "success": False,
+                "error": "Invalid date format. Use YYYY-MM-DD"
+            }
+        
+        # Initialize back-tester
+        backtester = OptionsBacktester()
+        
+        # Run back-test
+        results = backtester.run_backtest(
+            start_date=start_date_obj,
+            end_date=end_date_obj,
+            show_only_profitable=show_only_profitable,
+            min_profit=min_profit
+        )
+        
+        if not results.get('success'):
+            return results
+        
+        # Convert date objects to strings and sanitize for JSON
+        from datetime import date
+        import math
+        
+        def sanitize_value(val):
+            """Sanitize a value for JSON serialization"""
+            if val is None:
+                return None
+            if isinstance(val, float):
+                if math.isnan(val) or math.isinf(val):
+                    return None
+                return val
+            if isinstance(val, dict):
+                return {k: sanitize_value(v) for k, v in val.items()}
+            if isinstance(val, (list, tuple)):
+                return [sanitize_value(item) for item in val]
+            return val
+        
+        # Convert dates and sanitize
+        for trade in results.get('trades', []):
+            if 'expiry' in trade and isinstance(trade['expiry'], date):
+                trade['expiry'] = trade['expiry'].strftime('%Y-%m-%d')
+        
+        # Sanitize all results
+        sanitized_results = sanitize_value({
+            "success": True,
+            "trades": results.get('trades', []),
+            "metrics": results.get('metrics', {}),
+            "summary": results.get('summary', {})
+        })
+        
+        return sanitized_results
+        
+    except Exception as e:
+        logging.error(f"Error getting back-testing results: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/api/options/backtest/payoff_chart")
+async def api_options_backtest_payoff_chart(
+    entry_date: str = Query(..., description="Entry date in YYYY-MM-DD format"),
+    exit_date: str = Query(..., description="Exit date in YYYY-MM-DD format"),
+    strike: float = Query(..., description="Strike price"),
+    option_type: str = Query(..., description="Option type: 'CE' or 'PE'"),
+    entry_price: float = Query(..., description="Entry price"),
+    exit_price: float = Query(..., description="Exit price"),
+    expiry: str = Query(None, description="Expiry date in YYYY-MM-DD format")
+):
+    """
+    API endpoint to generate payoff chart for a back-tested trade
+    """
+    try:
+        from options.OptionsStrategies import OptionsStrategies
+        from datetime import datetime
+        
+        # Parse dates
+        try:
+            entry_date_obj = datetime.strptime(entry_date, '%Y-%m-%d').date()
+            exit_date_obj = datetime.strptime(exit_date, '%Y-%m-%d').date()
+            expiry_date_obj = None
+            if expiry:
+                expiry_date_obj = datetime.strptime(expiry, '%Y-%m-%d').date()
+        except ValueError:
+            return {
+                "success": False,
+                "error": "Invalid date format. Use YYYY-MM-DD"
+            }
+        
+        # Validate option type
+        if option_type not in ['CE', 'PE']:
+            return {
+                "success": False,
+                "error": "option_type must be 'CE' or 'PE'"
+            }
+        
+        # Create strategy legs
+        strategy_legs = [{
+            'action': 'BUY',
+            'quantity': 1,
+            'option_type': option_type,
+            'strike': strike,
+            'premium': entry_price,
+            'expiry': expiry_date_obj or exit_date_obj
+        }]
+        
+        # Initialize strategies generator
+        strategies = OptionsStrategies()
+        
+        # Get underlying prices
+        from options.HistoricalOptionsGenerator import HistoricalOptionsGenerator
+        generator = HistoricalOptionsGenerator()
+        entry_underlying = generator._get_underlying_price(entry_date_obj)
+        exit_underlying = generator._get_underlying_price(exit_date_obj)
+        
+        if entry_underlying is None or exit_underlying is None:
+            return {
+                "success": False,
+                "error": "Could not fetch underlying prices for the dates"
+            }
+        
+        # Generate chart
+        chart_image = strategies.generate_historical_payoff_chart(
+            strategy_legs=strategy_legs,
+            entry_date=entry_date_obj,
+            exit_date=exit_date_obj,
+            entry_underlying_price=entry_underlying,
+            exit_underlying_price=exit_underlying
+        )
+        
+        if not chart_image:
+            return {
+                "success": False,
+                "error": "Failed to generate chart"
+            }
+        
+        return {
+            "success": True,
+            "chart_image": chart_image
+        }
+        
+    except Exception as e:
+        logging.error(f"Error generating payoff chart: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/api/options/historical_chain")
+async def api_options_historical_chain(
+    analysis_date: str = Query(..., description="Analysis date in YYYY-MM-DD format"),
+    expiry: str = Query(None, description="Expiry date in YYYY-MM-DD format"),
+    strike_min: Optional[float] = Query(None, description="Minimum strike price"),
+    strike_max: Optional[float] = Query(None, description="Maximum strike price"),
+    option_type: str = Query(None, description="Option type: 'CE' or 'PE'")
+):
+    """
+    API endpoint to get historical options chain for a specific date
+    """
+    try:
+        from options.HistoricalOptionsGenerator import HistoricalOptionsGenerator
+        from datetime import datetime
+        import pandas as pd
+        
+        # Parse dates
+        try:
+            analysis_date_obj = datetime.strptime(analysis_date, '%Y-%m-%d').date()
+            expiry_date_obj = None
+            if expiry:
+                expiry_date_obj = datetime.strptime(expiry, '%Y-%m-%d').date()
+        except ValueError:
+            return {
+                "success": False,
+                "error": "Invalid date format. Use YYYY-MM-DD"
+            }
+        
+        # Validate option type
+        if option_type and option_type not in ['CE', 'PE']:
+            return {
+                "success": False,
+                "error": "option_type must be 'CE' or 'PE'"
+            }
+        
+        # Initialize generator
+        generator = HistoricalOptionsGenerator()
+        
+        # Determine strike range
+        strike_range = None
+        if strike_min is not None and strike_max is not None:
+            strike_range = (strike_min, strike_max)
+        
+        # Get historical options chain
+        chain_df = generator.get_historical_options_chain(
+            analysis_date=analysis_date_obj,
+            expiry_date=expiry_date_obj,
+            strike_range=strike_range,
+            option_type=option_type
+        )
+        
+        if chain_df.empty:
+            return {
+                "success": True,
+                "options_chain": [],
+                "total_options": 0,
+                "data_source": "No data available"
+            }
+        
+        # Convert to list of dictionaries
+        options_list = []
+        for _, row in chain_df.iterrows():
+            option_dict = {
+                'instrument_token': int(row.get('instrument_token', 0)),
+                'tradingsymbol': str(row.get('tradingsymbol', '')),
+                'strike_price': float(row.get('strike_price', 0)),
+                'option_type': str(row.get('option_type', '')),
+                'expiry': row.get('expiry').strftime('%Y-%m-%d') if pd.notna(row.get('expiry')) else None,
+                'last_price': float(row.get('last_price', 0)),
+                'volume': int(row.get('volume', 0)),
+                'oi': int(row.get('oi', 0)),
+                'average_price': float(row.get('average_price', 0)),
+                'is_generated': bool(row.get('is_generated', False)),
+                'data_source': str(row.get('data_source', 'unknown'))
+            }
+            options_list.append(option_dict)
+        
+        # Count data sources
+        generated_count = chain_df['is_generated'].sum() if 'is_generated' in chain_df.columns else 0
+        historical_count = len(chain_df) - generated_count
+        
+        return {
+            "success": True,
+            "options_chain": options_list,
+            "total_options": len(options_list),
+            "data_source": {
+                "generated_count": int(generated_count),
+                "historical_count": int(historical_count),
+                "generated_percentage": round((generated_count / len(chain_df) * 100) if len(chain_df) > 0 else 0, 2),
+                "historical_percentage": round((historical_count / len(chain_df) * 100) if len(chain_df) > 0 else 0, 2)
+            },
+            "analysis_date": analysis_date
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting historical options chain: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/api/options/backtest/saved")
+async def api_options_backtest_saved(
+    limit: int = Query(10, ge=1, le=100, description="Number of results to return"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    start_date: Optional[str] = Query(None, description="Filter by start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Filter by end date (YYYY-MM-DD)"),
+    strategy_type: Optional[str] = Query(None, description="Filter by strategy type")
+):
+    """
+    API endpoint to retrieve saved back-testing results
+    """
+    try:
+        from common.Boilerplate import get_db_connection
+        from datetime import datetime
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Build WHERE clause
+        where_conditions = []
+        params = []
+        
+        if start_date:
+            try:
+                start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+                where_conditions.append("start_date >= %s")
+                params.append(start_date_obj)
+            except ValueError:
+                pass
+        
+        if end_date:
+            try:
+                end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+                where_conditions.append("end_date <= %s")
+                params.append(end_date_obj)
+            except ValueError:
+                pass
+        
+        if strategy_type:
+            where_conditions.append("strategy_type = %s")
+            params.append(strategy_type)
+        
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        
+        # Get total count
+        count_query = f"SELECT COUNT(*) FROM my_schema.options_backtest_results WHERE {where_clause}"
+        cursor.execute(count_query, params)
+        total_count = cursor.fetchone()[0]
+        
+        # Get results
+        query = f"""
+            SELECT 
+                id, backtest_name, start_date, end_date, strategy_type,
+                total_trades, win_rate, total_profit_loss, sharpe_ratio,
+                confidence_score, created_at
+            FROM my_schema.options_backtest_results
+            WHERE {where_clause}
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
+        """
+        
+        params.extend([limit, offset])
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        results = []
+        for row in rows:
+            results.append({
+                'id': row[0],
+                'backtest_name': row[1],
+                'start_date': row[2].strftime('%Y-%m-%d') if row[2] else None,
+                'end_date': row[3].strftime('%Y-%m-%d') if row[3] else None,
+                'strategy_type': row[4],
+                'total_trades': row[5],
+                'win_rate': float(row[6]) if row[6] else 0.0,
+                'total_profit_loss': float(row[7]) if row[7] else 0.0,
+                'sharpe_ratio': float(row[8]) if row[8] else 0.0,
+                'confidence_score': float(row[9]) if row[9] else 0.0,
+                'created_at': row[10].isoformat() if row[10] else None
+            })
+        
+        return {
+            "success": True,
+            "results": results,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset
+        }
+        
+    except Exception as e:
+        logging.error(f"Error retrieving saved back-test results: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/api/options/backtest/saved/{backtest_id}")
+async def api_options_backtest_saved_detail(backtest_id: int):
+    """
+    API endpoint to get detailed saved back-testing result by ID
+    """
+    try:
+        from common.Boilerplate import get_db_connection
+        import json
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get main result
+        query = """
+            SELECT 
+                id, backtest_name, start_date, end_date, strategy_type, timeframe_minutes,
+                show_only_profitable, min_profit, total_trades, win_count, loss_count,
+                win_rate, total_profit_loss, avg_profit_loss, gross_profit, gross_loss,
+                avg_win, avg_loss, max_profit, max_loss, profit_factor, sharpe_ratio,
+                max_drawdown, avg_holding_period, confidence_score, data_quality, metrics, summary,
+                created_at
+            FROM my_schema.options_backtest_results
+            WHERE id = %s
+        """
+        
+        cursor.execute(query, (backtest_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            conn.close()
+            return {
+                "success": False,
+                "error": f"Back-test result with ID {backtest_id} not found"
+            }
+        
+        # Get trades
+        trades_query = """
+            SELECT 
+                entry_date, exit_date, symbol, option_type, strike_price, expiry,
+                entry_price, exit_price, profit_loss, exit_reason, holding_period,
+                is_generated, data_source, trade_details
+            FROM my_schema.options_backtest_trades
+            WHERE backtest_result_id = %s
+            ORDER BY entry_date, exit_date
+        """
+        
+        cursor.execute(trades_query, (backtest_id,))
+        trade_rows = cursor.fetchall()
+        conn.close()
+        
+        trades = []
+        for trade_row in trade_rows:
+            trade_details = json.loads(trade_row[13]) if trade_row[13] else {}
+            trades.append({
+                'entry_date': trade_row[0].strftime('%Y-%m-%d') if trade_row[0] else None,
+                'exit_date': trade_row[1].strftime('%Y-%m-%d') if trade_row[1] else None,
+                'symbol': trade_row[2],
+                'option_type': trade_row[3],
+                'strike_price': float(trade_row[4]) if trade_row[4] else None,
+                'expiry': trade_row[5].strftime('%Y-%m-%d') if trade_row[5] else None,
+                'entry_price': float(trade_row[6]) if trade_row[6] else None,
+                'exit_price': float(trade_row[7]) if trade_row[7] else None,
+                'profit_loss': float(trade_row[8]) if trade_row[8] else None,
+                'exit_reason': trade_row[9],
+                'holding_period': trade_row[10],
+                'is_generated': trade_row[11],
+                'data_source': trade_row[12],
+                **trade_details
+            })
+        
+        # Parse JSON fields
+        data_quality = json.loads(row[25]) if row[25] else {}
+        metrics = json.loads(row[26]) if row[26] else {}
+        summary = json.loads(row[27]) if row[27] else {}
+        
+        return {
+            "success": True,
+            "id": row[0],
+            "backtest_name": row[1],
+            "start_date": row[2].strftime('%Y-%m-%d') if row[2] else None,
+            "end_date": row[3].strftime('%Y-%m-%d') if row[3] else None,
+            "strategy_type": row[4],
+            "timeframe_minutes": row[5],
+            "filters": {
+                "show_only_profitable": row[6],
+                "min_profit": float(row[7]) if row[7] else None
+            },
+            "metrics": {
+                "total_trades": row[8],
+                "win_count": row[9],
+                "loss_count": row[10],
+                "win_rate": float(row[11]) if row[11] else 0.0,
+                "total_profit_loss": float(row[12]) if row[12] else 0.0,
+                "avg_profit_loss": float(row[13]) if row[13] else 0.0,
+                "gross_profit": float(row[14]) if row[14] else 0.0,
+                "gross_loss": float(row[15]) if row[15] else 0.0,
+                "avg_win": float(row[16]) if row[16] else 0.0,
+                "avg_loss": float(row[17]) if row[17] else 0.0,
+                "max_profit": float(row[18]) if row[18] else 0.0,
+                "max_loss": float(row[19]) if row[19] else 0.0,
+                "profit_factor": float(row[20]) if row[20] else None,
+                "sharpe_ratio": float(row[21]) if row[21] else 0.0,
+                "max_drawdown": float(row[22]) if row[22] else 0.0,
+                "avg_holding_period": float(row[23]) if row[23] else 0.0,
+                "confidence_score": float(row[24]) if row[24] else 0.0,
+                "data_quality": data_quality
+            },
+            "summary": summary,
+            "trades": trades,
+            "created_at": row[28].isoformat() if row[28] else None
+        }
+        
+    except Exception as e:
+        logging.error(f"Error retrieving back-test result detail: {e}")
         import traceback
         logging.error(traceback.format_exc())
         return {

@@ -266,6 +266,11 @@ class MarketBiasAnalyzer:
             direction = "Bullish" if control_location_score > 0 else "Bearish"
             bias_factors.append(f"Control Location ({direction}): {control_location_score:.1f}")
         
+        # Rule 5: Bear Trap Detection
+        bear_trap_analysis = self._detect_bear_traps(trading_days, daily_profiles)
+        if bear_trap_analysis['potential_bear_traps']:
+            bias_factors.append(f"Bear Trap Detection: {len(bear_trap_analysis['potential_bear_traps'])} potential trap(s) found")
+        
         # Determine bias direction and strength
         bias_direction = "Neutral"
         bias_strength = "Weak"
@@ -283,7 +288,8 @@ class MarketBiasAnalyzer:
             'bias_strength': bias_strength,
             'bias_factors': bias_factors,
             'num_days_analyzed': len(daily_profiles),
-            'analysis_quality': 'Good' if len(daily_profiles) >= 10 else 'Fair'
+            'analysis_quality': 'Good' if len(daily_profiles) >= 10 else 'Fair',
+            'bear_trap_analysis': bear_trap_analysis
         }
     
     def _analyze_poc_movement(self, daily_profiles: List[Dict]) -> float:
@@ -508,6 +514,178 @@ class MarketBiasAnalyzer:
             score = (above_pct - below_pct) * 20
         
         return np.clip(score, -30, 30)
+    
+    def _detect_bear_traps(self, trading_days: List[Tuple], daily_profiles: List[Dict]) -> Dict:
+        """
+        Detect potential bear traps using Nifty tick data
+        
+        Logic:
+        1. If price breaks below known support level
+        2. If breakdown occurs on high volume
+        3. Watch subsequent candles (1-3 bars later)
+        4. If price quickly returns above support, especially with a bullish candle
+        5. If overall trend is still bullish (higher highs/lows intact)
+        6. Flag as potential bear trap
+        
+        Args:
+            trading_days: List of (date, tick_data) tuples
+            daily_profiles: List of daily TPO profiles
+            
+        Returns:
+            Dictionary containing bear trap analysis
+        """
+        try:
+            potential_bear_traps = []
+            
+            if len(trading_days) < 5 or len(daily_profiles) < 5:
+                return {
+                    'potential_bear_traps': [],
+                    'total_traps_detected': 0,
+                    'analysis_quality': 'Insufficient Data'
+                }
+            
+            # Convert tick data to daily OHLC bars
+            daily_bars = []
+            for trading_date, day_data in trading_days:
+                if day_data.empty:
+                    continue
+                
+                # Calculate daily OHLC from tick data
+                daily_open = day_data['last_price'].iloc[0] if not day_data.empty else None
+                daily_high = day_data['last_price'].max() if not day_data.empty else None
+                daily_low = day_data['last_price'].min() if not day_data.empty else None
+                daily_close = day_data['last_price'].iloc[-1] if not day_data.empty else None
+                
+                # Calculate volume (sum of all volume if available)
+                daily_volume = 0
+                if 'volume' in day_data.columns:
+                    daily_volume = day_data['volume'].sum() if day_data['volume'].notna().any() else 0
+                elif 'last_quantity' in day_data.columns:
+                    daily_volume = day_data['last_quantity'].sum() if day_data['last_quantity'].notna().any() else 0
+                
+                if daily_open and daily_high and daily_low and daily_close:
+                    daily_bars.append({
+                        'date': trading_date,
+                        'open': daily_open,
+                        'high': daily_high,
+                        'low': daily_low,
+                        'close': daily_close,
+                        'volume': daily_volume
+                    })
+            
+            if len(daily_bars) < 5:
+                return {
+                    'potential_bear_traps': [],
+                    'total_traps_detected': 0,
+                    'analysis_quality': 'Insufficient Data'
+                }
+            
+            # Identify support levels from TPO profiles (value_area_low, poc_low, etc.)
+            support_levels = []
+            for profile_data in daily_profiles:
+                if profile_data.get('value_area_low'):
+                    support_levels.append({
+                        'level': profile_data['value_area_low'],
+                        'type': 'Value Area Low',
+                        'date': profile_data['date']
+                    })
+                if profile_data.get('poc_low'):
+                    support_levels.append({
+                        'level': profile_data['poc_low'],
+                        'type': 'POC Low',
+                        'date': profile_data['date']
+                    })
+            
+            # Sort support levels by price (ascending)
+            support_levels.sort(key=lambda x: x['level'])
+            
+            # Calculate average volume for volume comparison
+            volumes = [bar['volume'] for bar in daily_bars if bar['volume'] > 0]
+            avg_volume = np.mean(volumes) if volumes else 0
+            
+            # Check for bear traps
+            for i in range(len(daily_bars) - 3):  # Need at least 3 bars ahead
+                current_bar = daily_bars[i]
+                current_date = current_bar['date']
+                
+                # Find relevant support levels (from previous days)
+                relevant_supports = [s for s in support_levels 
+                                  if s['date'] < current_date and s['level'] is not None]
+                
+                if not relevant_supports:
+                    continue
+                
+                # Get the most recent support level
+                most_recent_support = max(relevant_supports, key=lambda x: x['date'])
+                support_level = most_recent_support['level']
+                
+                # Check if price breaks below support
+                if current_bar['low'] < support_level:
+                    # Check if breakdown occurs on high volume
+                    breakdown_volume = current_bar['volume']
+                    is_high_volume = breakdown_volume > (avg_volume * 1.2) if avg_volume > 0 else False
+                    
+                    if is_high_volume:
+                        # Watch subsequent candles (1-3 bars later)
+                        for j in range(1, min(4, len(daily_bars) - i)):  # Check next 1-3 bars
+                            future_bar = daily_bars[i + j]
+                            
+                            # Check if price quickly returns above support
+                            if future_bar['close'] > support_level:
+                                # Check if it's a bullish candle (close > open)
+                                is_bullish_candle = future_bar['close'] > future_bar['open']
+                                
+                                # Check if overall trend is still bullish (higher highs/lows intact)
+                                # Look at the last 5-10 bars before the breakdown
+                                lookback_start = max(0, i - 10)
+                                lookback_bars = daily_bars[lookback_start:i]
+                                
+                                if len(lookback_bars) >= 3:
+                                    # Check for higher highs and higher lows
+                                    recent_highs = [b['high'] for b in lookback_bars[-5:]]
+                                    recent_lows = [b['low'] for b in lookback_bars[-5:]]
+                                    
+                                    # Simple trend check: recent highs and lows are generally increasing
+                                    if len(recent_highs) >= 3:
+                                        # Check if trend is bullish (more highs than lows in recent period)
+                                        high_trend = recent_highs[-1] > recent_highs[0] if len(recent_highs) >= 2 else False
+                                        low_trend = recent_lows[-1] > recent_lows[0] if len(recent_lows) >= 2 else False
+                                        
+                                        is_bullish_trend = high_trend or low_trend
+                                        
+                                        # Flag as potential bear trap
+                                        if is_bullish_trend:
+                                            trap_details = {
+                                                'date': current_date,
+                                                'support_level': support_level,
+                                                'support_type': most_recent_support['type'],
+                                                'breakdown_low': current_bar['low'],
+                                                'breakdown_volume': breakdown_volume,
+                                                'recovery_date': future_bar['date'],
+                                                'recovery_close': future_bar['close'],
+                                                'recovery_bars_later': j,
+                                                'is_bullish_candle': is_bullish_candle,
+                                                'confidence': 'High' if is_bullish_candle and j <= 2 else 'Medium'
+                                            }
+                                            potential_bear_traps.append(trap_details)
+                                            break  # Found a trap, move to next bar
+            
+            return {
+                'potential_bear_traps': potential_bear_traps,
+                'total_traps_detected': len(potential_bear_traps),
+                'analysis_quality': 'Good' if len(daily_bars) >= 10 else 'Fair'
+            }
+            
+        except Exception as e:
+            logging.error(f"Error detecting bear traps: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+            return {
+                'potential_bear_traps': [],
+                'total_traps_detected': 0,
+                'analysis_quality': 'Error',
+                'error': str(e)
+            }
     
     def generate_comprehensive_analysis(self, analysis_date: str = None) -> Dict:
         """

@@ -136,6 +136,72 @@ CREATE INDEX IF NOT EXISTS idx_deriv_sugg_generated_at ON my_schema.derivative_s
 CREATE INDEX IF NOT EXISTS idx_deriv_sugg_strategy ON my_schema.derivative_suggestions(strategy_type);
 CREATE INDEX IF NOT EXISTS idx_deriv_sugg_instrument ON my_schema.derivative_suggestions(instrument);
 
+-- Options Back-testing Results (store back-testing runs and their results)
+CREATE TABLE IF NOT EXISTS my_schema.options_backtest_results (
+    id SERIAL PRIMARY KEY,
+    backtest_name VARCHAR(255),
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    strategy_type VARCHAR(50),
+    timeframe_minutes INTEGER,
+    show_only_profitable BOOLEAN DEFAULT FALSE,
+    min_profit DOUBLE PRECISION,
+    total_trades INTEGER,
+    win_count INTEGER,
+    loss_count INTEGER,
+    win_rate DOUBLE PRECISION,
+    total_profit_loss DOUBLE PRECISION,
+    avg_profit_loss DOUBLE PRECISION,
+    gross_profit DOUBLE PRECISION,
+    gross_loss DOUBLE PRECISION,
+    avg_win DOUBLE PRECISION,
+    avg_loss DOUBLE PRECISION,
+    max_profit DOUBLE PRECISION,
+    max_loss DOUBLE PRECISION,
+    profit_factor DOUBLE PRECISION,
+    sharpe_ratio DOUBLE PRECISION,
+    max_drawdown DOUBLE PRECISION,
+    avg_holding_period DOUBLE PRECISION,
+    confidence_score DOUBLE PRECISION,
+    data_quality JSONB,
+    metrics JSONB,
+    summary JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    run_date DATE DEFAULT CURRENT_DATE
+);
+
+CREATE INDEX IF NOT EXISTS idx_backtest_start_date ON my_schema.options_backtest_results(start_date);
+CREATE INDEX IF NOT EXISTS idx_backtest_end_date ON my_schema.options_backtest_results(end_date);
+CREATE INDEX IF NOT EXISTS idx_backtest_created_at ON my_schema.options_backtest_results(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_backtest_strategy ON my_schema.options_backtest_results(strategy_type);
+
+-- Options Back-testing Trades (individual trades from back-testing runs)
+CREATE TABLE IF NOT EXISTS my_schema.options_backtest_trades (
+    id SERIAL PRIMARY KEY,
+    backtest_result_id INTEGER REFERENCES my_schema.options_backtest_results(id) ON DELETE CASCADE,
+    entry_date DATE NOT NULL,
+    exit_date DATE NOT NULL,
+    symbol VARCHAR(100),
+    option_type VARCHAR(2),
+    strike_price DOUBLE PRECISION,
+    expiry DATE,
+    entry_price DOUBLE PRECISION,
+    exit_price DOUBLE PRECISION,
+    profit_loss DOUBLE PRECISION,
+    exit_reason VARCHAR(50),
+    holding_period INTEGER,
+    is_generated BOOLEAN DEFAULT FALSE,
+    data_source VARCHAR(20),
+    trade_details JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_backtest_trades_result_id ON my_schema.options_backtest_trades(backtest_result_id);
+CREATE INDEX IF NOT EXISTS idx_backtest_trades_entry_date ON my_schema.options_backtest_trades(entry_date);
+CREATE INDEX IF NOT EXISTS idx_backtest_trades_exit_date ON my_schema.options_backtest_trades(exit_date);
+CREATE INDEX IF NOT EXISTS idx_backtest_trades_profit_loss ON my_schema.options_backtest_trades(profit_loss);
+CREATE INDEX IF NOT EXISTS idx_backtest_trades_is_generated ON my_schema.options_backtest_trades(is_generated);
+
 CREATE TABLE my_schema.orders (
     order_id VARCHAR(50) NOT NULL, -- Adjust length based on actual data
     parent_order_id VARCHAR(50),   -- Nullable, as it can be None

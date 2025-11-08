@@ -332,8 +332,11 @@ class OptionsOIAnalyzer:
                    transform=ax.transAxes)
             ax.set_title('Options Open Interest Distribution', fontsize=18, fontweight='bold')
         else:
-            # Take top N strikes
-            top_df = df.head(top_n).copy()
+            # Take top N strikes by OI first, then sort by strike price
+            top_df = df.nlargest(top_n, 'total_oi').copy()
+            
+            # Sort by strike price (ascending)
+            top_df = top_df.sort_values('strike_price', ascending=True)
             
             # Create strike labels
             top_df['strike_label'] = top_df.apply(
@@ -345,15 +348,15 @@ class OptionsOIAnalyzer:
             # height_ratios: 3:1 means top chart gets 75% of height, bottom chart gets 25%
             fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 14), height_ratios=[3, 1])
             
-            # Plot 1: Bar chart of OI by strike (bigger chart)
+            # Plot 1: Bar chart of OI by strike (bigger chart) - sorted by strike price
             colors = top_df['option_type'].map({'CE': 'green', 'PE': 'red'})
             ax1.barh(range(len(top_df)), top_df['total_oi'], color=colors, alpha=0.7)
             ax1.set_yticks(range(len(top_df)))
             ax1.set_yticklabels(top_df['strike_label'], fontsize=11)
             ax1.set_xlabel('Open Interest', fontsize=13, fontweight='bold')
-            ax1.set_title(f'Top {top_n} Strikes by Open Interest', fontsize=16, fontweight='bold')
+            ax1.set_title(f'Top {top_n} Strikes by Open Interest (Sorted by Strike Price)', fontsize=16, fontweight='bold')
             ax1.grid(True, alpha=0.3, axis='x')
-            ax1.invert_yaxis()  # Highest OI at top
+            ax1.invert_yaxis()  # Lowest strike at top (since sorted ascending)
             
             # Add value labels on bars
             for i, (idx, row) in enumerate(top_df.iterrows()):
@@ -411,6 +414,184 @@ class OptionsOIAnalyzer:
         plt.close()
         
         return f"data:image/png;base64,{image_base64}"
+    
+    def plot_oi_history_for_strike(self,
+                                  tradingsymbol: str,
+                                  strike_price: float,
+                                  option_type: str,
+                                  expiry: Optional[date] = None,
+                                  days: int = 7,
+                                  save_path: Optional[str] = None) -> str:
+        """
+        Generate OI change over time chart for a specific strike price
+        
+        Args:
+            tradingsymbol: Trading symbol of the option
+            strike_price: Strike price
+            option_type: 'CE' or 'PE'
+            expiry: Expiry date (optional)
+            days: Number of days of history to show (default: 7)
+            save_path: Path to save the chart (optional)
+            
+        Returns:
+            Base64 encoded image string
+        """
+        try:
+            from datetime import timedelta
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Calculate date range
+            end_date = date.today()
+            start_date = end_date - timedelta(days=days)
+            
+            # Build query to get historical OI data for this specific option
+            where_conditions = [
+                "tradingsymbol = %s",
+                "strike_price = %s",
+                "option_type = %s",
+                "run_date >= %s",
+                "run_date <= %s"
+            ]
+            params = [tradingsymbol, strike_price, option_type, start_date, end_date]
+            
+            if expiry:
+                where_conditions.append("expiry = %s")
+                params.append(expiry)
+            
+            where_clause = " AND ".join(where_conditions)
+            
+            query = f"""
+                SELECT 
+                    run_date,
+                    timestamp,
+                    oi,
+                    oi_day_high,
+                    oi_day_low,
+                    volume,
+                    last_price
+                FROM my_schema.options_ticks
+                WHERE {where_clause}
+                ORDER BY run_date ASC, timestamp ASC
+            """
+            
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            conn.close()
+            
+            if not rows:
+                # Create empty chart
+                fig, ax = plt.subplots(figsize=(14, 8))
+                ax.text(0.5, 0.5, 'No OI history data available', 
+                       ha='center', va='center', fontsize=16,
+                       transform=ax.transAxes)
+                ax.set_title(f'OI Change Over Time - {tradingsymbol} ({strike_price:.0f} {option_type})', 
+                           fontsize=16, fontweight='bold')
+            else:
+                # Convert to DataFrame
+                df = pd.DataFrame(rows, columns=[
+                    'run_date', 'timestamp', 'oi', 'oi_day_high', 
+                    'oi_day_low', 'volume', 'last_price'
+                ])
+                
+                # Convert timestamps to datetime for plotting
+                df['datetime'] = pd.to_datetime(df['timestamp'])
+                
+                # Create figure
+                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), height_ratios=[3, 1])
+                
+                # Plot 1: OI change over time (main chart)
+                color = 'green' if option_type == 'CE' else 'red'
+                ax1.plot(df['datetime'], df['oi'], marker='o', linewidth=2, 
+                        markersize=4, color=color, label='OI')
+                
+                # Fill area under the line
+                ax1.fill_between(df['datetime'], df['oi'], alpha=0.3, color=color)
+                
+                # Add OI day high/low bands
+                if 'oi_day_high' in df.columns and df['oi_day_high'].notna().any():
+                    ax1.plot(df['datetime'], df['oi_day_high'], '--', 
+                            linewidth=1, color=color, alpha=0.5, label='OI Day High')
+                if 'oi_day_low' in df.columns and df['oi_day_low'].notna().any():
+                    ax1.plot(df['datetime'], df['oi_day_low'], '--', 
+                            linewidth=1, color=color, alpha=0.5, label='OI Day Low')
+                
+                ax1.set_xlabel('Time', fontsize=12, fontweight='bold')
+                ax1.set_ylabel('Open Interest', fontsize=12, fontweight='bold')
+                ax1.set_title(f'OI Change Over Time - {tradingsymbol} ({strike_price:.0f} {option_type})', 
+                            fontsize=14, fontweight='bold')
+                ax1.grid(True, alpha=0.3)
+                ax1.legend(fontsize=10)
+                
+                # Format x-axis dates
+                fig.autofmt_xdate()
+                
+                # Add value labels on key points
+                if len(df) > 0:
+                    # Label first and last points
+                    first_oi = df['oi'].iloc[0]
+                    last_oi = df['oi'].iloc[-1]
+                    first_time = df['datetime'].iloc[0]
+                    last_time = df['datetime'].iloc[-1]
+                    
+                    ax1.annotate(f'{int(first_oi):,}', 
+                               xy=(first_time, first_oi),
+                               xytext=(10, 10), textcoords='offset points',
+                               fontsize=9, fontweight='bold',
+                               bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
+                    
+                    ax1.annotate(f'{int(last_oi):,}', 
+                               xy=(last_time, last_oi),
+                               xytext=(10, -20), textcoords='offset points',
+                               fontsize=9, fontweight='bold',
+                               bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
+                    
+                    # Calculate OI change
+                    oi_change = last_oi - first_oi
+                    oi_change_pct = ((last_oi - first_oi) / first_oi * 100) if first_oi > 0 else 0
+                    
+                    # Add change annotation
+                    change_color = 'green' if oi_change >= 0 else 'red'
+                    ax1.text(0.02, 0.98, 
+                            f'OI Change: {oi_change:+,.0f} ({oi_change_pct:+.2f}%)',
+                            transform=ax1.transAxes,
+                            fontsize=11, fontweight='bold',
+                            color=change_color,
+                            verticalalignment='top',
+                            bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8))
+                
+                # Plot 2: Volume over time (smaller chart)
+                ax2.plot(df['datetime'], df['volume'], marker='s', linewidth=1.5,
+                        markersize=3, color='blue', alpha=0.7, label='Volume')
+                ax2.fill_between(df['datetime'], df['volume'], alpha=0.2, color='blue')
+                ax2.set_xlabel('Time', fontsize=10, fontweight='bold')
+                ax2.set_ylabel('Volume', fontsize=10, fontweight='bold')
+                ax2.set_title('Volume Over Time', fontsize=11, fontweight='bold')
+                ax2.grid(True, alpha=0.3)
+                ax2.legend(fontsize=9)
+                fig.autofmt_xdate()
+            
+            plt.tight_layout()
+            
+            # Save to buffer
+            buffer = io.BytesIO()
+            plt.savefig(buffer, format='png', dpi=100, bbox_inches='tight')
+            buffer.seek(0)
+            plt.close()
+            
+            if save_path:
+                with open(save_path, 'wb') as f:
+                    f.write(buffer.getvalue())
+                buffer.seek(0)
+            
+            return base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        except Exception as e:
+            logging.error(f"Error generating OI history chart: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+            return None
     
     def generate_oi_analysis_report(self,
                                    expiry: Optional[date] = None,

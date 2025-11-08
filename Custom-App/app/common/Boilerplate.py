@@ -54,5 +54,18 @@ def get_db_connection():
         password="postgres"
     )
 
+def get_access_token():
+    """
+    Get access token from Redis
+    Returns the access token string or None if not found
+    """
+    token = redis_client.get("kite_access_token")
+    if token:
+        # Handle both string and bytes from Redis
+        if isinstance(token, bytes):
+            token = token.decode('utf-8')
+        return token
+    return None
+
 conn = get_db_connection()
 cursor = conn.cursor()

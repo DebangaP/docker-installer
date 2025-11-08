@@ -1,12 +1,17 @@
 """
 Derivatives Trade Suggestion Engine
-Analyzes TPO levels to suggest futures and options trades
+Analyzes TPO levels, order flow, market bias, options data, and tick data to suggest futures and options trades
 """
 
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional
+from datetime import datetime, date
+from typing import Dict, List, Optional, Tuple
 from options.DerivativesTPOAnalyzer import DerivativesTPOAnalyzer
+from market.OrderFlowAnalyzer import OrderFlowAnalyzer
+from options.OptionsDataFetcher import OptionsDataFetcher
+from market.CalculateTPO import PostgresDataFetcher
+import pandas as pd
+import numpy as np
 
 def calculate_futures_margin(entry_price: float, lot_size: int = 50) -> Dict:
     """
@@ -162,17 +167,28 @@ def calculate_straddle_profit(entry_price: float, exit_price: float, strike_pric
 
 class DerivativesSuggestionEngine:
     """
-    Generates derivatives trading suggestions based on TPO analysis
+    Generates derivatives trading suggestions based on TPO analysis, order flow, market bias, options data, and tick data
     """
     
-    def __init__(self, tpo_analyzer: DerivativesTPOAnalyzer):
+    def __init__(self, tpo_analyzer: DerivativesTPOAnalyzer, 
+                 instrument_token: int = 256265,
+                 futures_instrument_token: int = 12683010):
         """
         Initialize suggestion engine
         
         Args:
             tpo_analyzer: DerivativesTPOAnalyzer instance
+            instrument_token: Nifty spot instrument token (default: 256265)
+            futures_instrument_token: Nifty futures instrument token (default: 12683010)
         """
         self.tpo_analyzer = tpo_analyzer
+        self.instrument_token = instrument_token
+        self.futures_instrument_token = futures_instrument_token
+        
+        # Initialize analyzers
+        self.order_flow_analyzer = OrderFlowAnalyzer(instrument_token=futures_instrument_token)
+        self.options_fetcher = OptionsDataFetcher()
+        self.db_fetcher = tpo_analyzer.db_fetcher if hasattr(tpo_analyzer, 'db_fetcher') else None
     
     def generate_suggestions(self, analysis_date: str = None, current_price: float = None) -> List[Dict]:
         """
@@ -233,13 +249,32 @@ class DerivativesSuggestionEngine:
         logging.info(
             f"TPO metrics for suggestions - POC={tpo_data.get('poc')}, VAH={tpo_data.get('value_area_high')}, VAL={tpo_data.get('value_area_low')}, current_price={current_price}"
         )
+        
+        # Fetch additional data sources
+        order_flow_data = self._fetch_order_flow_data(analysis_date)
+        market_bias_data = self._fetch_market_bias_data(analysis_date)
+        options_data = self._fetch_options_data(analysis_date, current_price)
+        futures_data = self._fetch_futures_data(analysis_date)
+        tick_momentum = self._analyze_tick_momentum(analysis_date)
+        
+        # Combine all signals into a unified context
+        market_context = {
+            'tpo_data': tpo_data,
+            'pre_market_tpo': pre_market_tpo,
+            'order_flow': order_flow_data,
+            'market_bias': market_bias_data,
+            'options_data': options_data,
+            'futures_data': futures_data,
+            'tick_momentum': tick_momentum,
+            'current_price': current_price
+        }
 
-        # Generate futures suggestions
-        futures_suggestions = self._generate_futures_suggestions(tpo_data, current_price, pre_market_tpo)
+        # Generate futures suggestions with enhanced context
+        futures_suggestions = self._generate_futures_suggestions_enhanced(market_context)
         suggestions.extend(futures_suggestions)
         
-        # Generate options suggestions
-        options_suggestions = self._generate_options_suggestions(tpo_data, current_price, pre_market_tpo)
+        # Generate options suggestions with enhanced context
+        options_suggestions = self._generate_options_suggestions_enhanced(market_context)
         suggestions.extend(options_suggestions)
         
         logging.info(f"Suggestions generated: futures={len(futures_suggestions)}, options={len(options_suggestions)}, total={len(suggestions)}")
@@ -628,3 +663,422 @@ class DerivativesSuggestionEngine:
                 suggestions.append(suggestion)
         
         return suggestions
+    
+    def _fetch_order_flow_data(self, analysis_date: str) -> Dict:
+        """Fetch order flow analysis data"""
+        try:
+            from datetime import date as date_type
+            analysis_date_obj = datetime.strptime(analysis_date, '%Y-%m-%d').date() if isinstance(analysis_date, str) else analysis_date
+            
+            # Analyze order flow for the current session
+            order_flow = self.order_flow_analyzer.analyze_order_flow(
+                start_time="09:15:00",
+                end_time="15:30:00",
+                analysis_date=analysis_date_obj,
+                lookback_periods=20
+            )
+            return order_flow if order_flow.get('success') else {}
+        except Exception as e:
+            logging.warning(f"Error fetching order flow data: {e}")
+            return {}
+    
+    def _fetch_market_bias_data(self, analysis_date: str) -> Dict:
+        """Fetch market bias analysis data"""
+        try:
+            if hasattr(self.tpo_analyzer, 'market_bias_analyzer'):
+                bias_analyzer = self.tpo_analyzer.market_bias_analyzer
+                # Get combined bias analysis
+                pre_market_bias = bias_analyzer.analyze_pre_market_bias(analysis_date)
+                real_time_bias = bias_analyzer.analyze_real_time_bias(analysis_date)
+                
+                return {
+                    'pre_market_bias': pre_market_bias,
+                    'real_time_bias': real_time_bias,
+                    'combined_bias': bias_analyzer._combine_bias_analyses(pre_market_bias, real_time_bias) if hasattr(bias_analyzer, '_combine_bias_analyses') else {}
+                }
+            return {}
+        except Exception as e:
+            logging.warning(f"Error fetching market bias data: {e}")
+            return {}
+    
+    def _fetch_options_data(self, analysis_date: str, current_price: float) -> Dict:
+        """Fetch options chain data for analysis"""
+        try:
+            # Get options chain around current price (±5% range)
+            strike_range = (current_price * 0.95, current_price * 1.05)
+            options_chain = self.options_fetcher.get_options_chain(
+                expiry=None,  # Get all expiries
+                strike_range=strike_range,
+                option_type=None,  # Both CE and PE
+                min_volume=100,
+                min_oi=1000
+            )
+            
+            if options_chain.empty:
+                return {}
+            
+            # Analyze options data
+            call_oi = options_chain[options_chain['option_type'] == 'CE']['oi'].sum() if 'option_type' in options_chain.columns else 0
+            put_oi = options_chain[options_chain['option_type'] == 'PE']['oi'].sum() if 'option_type' in options_chain.columns else 0
+            pcr = put_oi / call_oi if call_oi > 0 else 0  # Put-Call Ratio
+            
+            # Find max OI strikes
+            max_oi_call = options_chain[options_chain['option_type'] == 'CE'].nlargest(1, 'oi') if 'option_type' in options_chain.columns else pd.DataFrame()
+            max_oi_put = options_chain[options_chain['option_type'] == 'PE'].nlargest(1, 'oi') if 'option_type' in options_chain.columns else pd.DataFrame()
+            
+            return {
+                'options_chain': options_chain,
+                'put_call_ratio': pcr,
+                'call_oi': call_oi,
+                'put_oi': put_oi,
+                'max_oi_call_strike': float(max_oi_call['strike_price'].iloc[0]) if not max_oi_call.empty else None,
+                'max_oi_put_strike': float(max_oi_put['strike_price'].iloc[0]) if not max_oi_put.empty else None,
+                'total_options': len(options_chain)
+            }
+        except Exception as e:
+            logging.warning(f"Error fetching options data: {e}")
+            return {}
+    
+    def _fetch_futures_data(self, analysis_date: str) -> Dict:
+        """Fetch futures tick data for momentum analysis"""
+        try:
+            if not self.db_fetcher:
+                return {}
+            
+            # Fetch recent futures data (last 30 minutes)
+            futures_df = self.db_fetcher.fetch_tick_data(
+                table_name='futures_ticks',
+                instrument_token=self.futures_instrument_token,
+                start_time=f'{analysis_date} 09:15:00.000',
+                end_time=f'{analysis_date} 15:30:00.000'
+            )
+            
+            if futures_df.empty:
+                return {}
+            
+            # Calculate momentum indicators
+            if 'last_price' in futures_df.columns and len(futures_df) > 1:
+                prices = futures_df['last_price'].values
+                recent_prices = prices[-20:] if len(prices) >= 20 else prices
+                
+                price_change = (recent_prices[-1] - recent_prices[0]) / recent_prices[0] * 100 if len(recent_prices) > 0 else 0
+                volatility = np.std(recent_prices) / np.mean(recent_prices) * 100 if len(recent_prices) > 1 else 0
+                
+                # Volume analysis
+                if 'volume' in futures_df.columns:
+                    recent_volume = futures_df['volume'].tail(20).sum() if len(futures_df) >= 20 else futures_df['volume'].sum()
+                    avg_volume = futures_df['volume'].mean() if 'volume' in futures_df.columns else 0
+                    volume_ratio = recent_volume / (avg_volume * 20) if avg_volume > 0 else 1.0
+                else:
+                    volume_ratio = 1.0
+                
+                return {
+                    'current_price': float(prices[-1]) if len(prices) > 0 else None,
+                    'price_change_pct': float(price_change),
+                    'volatility_pct': float(volatility),
+                    'volume_ratio': float(volume_ratio),
+                    'trend': 'Bullish' if price_change > 0.1 else 'Bearish' if price_change < -0.1 else 'Neutral'
+                }
+            
+            return {}
+        except Exception as e:
+            logging.warning(f"Error fetching futures data: {e}")
+            return {}
+    
+    def _analyze_tick_momentum(self, analysis_date: str) -> Dict:
+        """Analyze Nifty tick data for momentum and trend strength"""
+        try:
+            if not self.db_fetcher:
+                return {}
+            
+            # Fetch recent tick data (last hour)
+            tick_df = self.db_fetcher.fetch_tick_data(
+                table_name='ticks',
+                instrument_token=self.instrument_token,
+                start_time=f'{analysis_date} 09:15:00.000',
+                end_time=f'{analysis_date} 15:30:00.000'
+            )
+            
+            if tick_df.empty or 'last_price' not in tick_df.columns:
+                return {}
+            
+            prices = tick_df['last_price'].values
+            if len(prices) < 10:
+                return {}
+            
+            # Calculate momentum indicators
+            recent_prices = prices[-30:] if len(prices) >= 30 else prices
+            
+            # Price momentum
+            short_ma = np.mean(recent_prices[-5:]) if len(recent_prices) >= 5 else recent_prices[-1]
+            long_ma = np.mean(recent_prices[-20:]) if len(recent_prices) >= 20 else np.mean(recent_prices)
+            momentum = (short_ma - long_ma) / long_ma * 100 if long_ma > 0 else 0
+            
+            # Trend strength
+            price_changes = np.diff(recent_prices)
+            up_moves = np.sum(price_changes > 0)
+            down_moves = np.sum(price_changes < 0)
+            trend_strength = abs(up_moves - down_moves) / len(price_changes) * 100 if len(price_changes) > 0 else 0
+            
+            # Volatility
+            volatility = np.std(recent_prices) / np.mean(recent_prices) * 100 if len(recent_prices) > 1 else 0
+            
+            return {
+                'momentum_pct': float(momentum),
+                'trend_strength': float(trend_strength),
+                'volatility_pct': float(volatility),
+                'trend_direction': 'Bullish' if momentum > 0.05 else 'Bearish' if momentum < -0.05 else 'Neutral',
+                'current_price': float(prices[-1])
+            }
+        except Exception as e:
+            logging.warning(f"Error analyzing tick momentum: {e}")
+            return {}
+    
+    def _calculate_enhanced_confidence(self, market_context: Dict, base_confidence: float, direction: str) -> float:
+        """
+        Calculate enhanced confidence score by combining multiple signals
+        
+        Args:
+            market_context: Dictionary containing all market data
+            base_confidence: Base confidence from TPO (0-100)
+            direction: 'Bullish' or 'Bearish'
+            
+        Returns:
+            Enhanced confidence score (0-100)
+        """
+        confidence = base_confidence
+        
+        # Order flow signals (max +15 points)
+        order_flow = market_context.get('order_flow', {})
+        if order_flow.get('success'):
+            sentiment = order_flow.get('overall_sentiment', {})
+            sentiment_type = sentiment.get('sentiment', 'Neutral')
+            
+            if direction == 'Bullish' and sentiment_type == 'Bullish':
+                confidence += 10
+            elif direction == 'Bearish' and sentiment_type == 'Bearish':
+                confidence += 10
+            elif direction == 'Bullish' and sentiment_type == 'Bearish':
+                confidence -= 5
+            elif direction == 'Bearish' and sentiment_type == 'Bullish':
+                confidence -= 5
+            
+            # Trapped traders signal
+            trapped = order_flow.get('trapped_traders', {})
+            if direction == 'Bullish' and trapped.get('trapped_sellers', 0) > 0:
+                confidence += 5
+            elif direction == 'Bearish' and trapped.get('trapped_buyers', 0) > 0:
+                confidence += 5
+        
+        # Market bias signals (max +20 points)
+        market_bias = market_context.get('market_bias', {})
+        combined_bias = market_bias.get('combined_bias', {})
+        bias_score = combined_bias.get('bias_score', 0)
+        bias_direction = combined_bias.get('bias_direction', 'Neutral')
+        
+        if direction == 'Bullish' and bias_direction == 'Bullish':
+            confidence += min(20, abs(bias_score) * 0.5)
+        elif direction == 'Bearish' and bias_direction == 'Bearish':
+            confidence += min(20, abs(bias_score) * 0.5)
+        elif direction == 'Bullish' and bias_direction == 'Bearish':
+            confidence -= min(10, abs(bias_score) * 0.3)
+        elif direction == 'Bearish' and bias_direction == 'Bullish':
+            confidence -= min(10, abs(bias_score) * 0.3)
+        
+        # Options data signals (max +15 points)
+        options_data = market_context.get('options_data', {})
+        pcr = options_data.get('put_call_ratio', 1.0)
+        
+        if direction == 'Bullish':
+            # High PCR (>1.2) suggests bearish sentiment, which could mean bullish reversal
+            if pcr > 1.2:
+                confidence += 5
+            elif pcr < 0.8:
+                confidence -= 5
+        elif direction == 'Bearish':
+            # Low PCR (<0.8) suggests bullish sentiment, which could mean bearish reversal
+            if pcr < 0.8:
+                confidence += 5
+            elif pcr > 1.2:
+                confidence -= 5
+        
+        # Futures momentum signals (max +10 points)
+        futures_data = market_context.get('futures_data', {})
+        futures_trend = futures_data.get('trend', 'Neutral')
+        futures_change = futures_data.get('price_change_pct', 0)
+        
+        if direction == 'Bullish' and futures_trend == 'Bullish' and futures_change > 0.2:
+            confidence += 10
+        elif direction == 'Bearish' and futures_trend == 'Bearish' and futures_change < -0.2:
+            confidence += 10
+        elif direction == 'Bullish' and futures_trend == 'Bearish':
+            confidence -= 5
+        elif direction == 'Bearish' and futures_trend == 'Bullish':
+            confidence -= 5
+        
+        # Tick momentum signals (max +10 points)
+        tick_momentum = market_context.get('tick_momentum', {})
+        tick_direction = tick_momentum.get('trend_direction', 'Neutral')
+        momentum_pct = tick_momentum.get('momentum_pct', 0)
+        
+        if direction == 'Bullish' and tick_direction == 'Bullish' and momentum_pct > 0.1:
+            confidence += 10
+        elif direction == 'Bearish' and tick_direction == 'Bearish' and momentum_pct < -0.1:
+            confidence += 10
+        elif direction == 'Bullish' and tick_direction == 'Bearish':
+            confidence -= 5
+        elif direction == 'Bearish' and tick_direction == 'Bullish':
+            confidence -= 5
+        
+        return max(0, min(100, confidence))
+    
+    def _generate_futures_suggestions_enhanced(self, market_context: Dict) -> List[Dict]:
+        """
+        Generate futures trading suggestions with enhanced context from all data sources
+        """
+        tpo_data = market_context.get('tpo_data', {})
+        current_price = market_context.get('current_price')
+        pre_market_tpo = market_context.get('pre_market_tpo')
+        
+        if not tpo_data or not current_price:
+            return []
+        
+        # Use existing logic but with enhanced confidence and rationale
+        suggestions = self._generate_futures_suggestions(tpo_data, current_price, pre_market_tpo)
+        
+        # Enhance each suggestion with additional signals
+        for suggestion in suggestions:
+            direction = 'Bullish' if suggestion.get('action') == 'BUY' else 'Bearish' if suggestion.get('action') == 'SELL' else 'Neutral'
+            
+            # Update confidence with enhanced calculation
+            base_confidence = suggestion.get('confidence_score', 0)
+            enhanced_confidence = self._calculate_enhanced_confidence(market_context, base_confidence, direction)
+            suggestion['confidence_score'] = round(enhanced_confidence, 2)
+            
+            # Enhance rationale with insights from all sources
+            rationale = suggestion.get('rationale', '')
+            enhanced_rationale = self._build_enhanced_rationale(market_context, rationale, direction)
+            suggestion['rationale'] = enhanced_rationale
+            
+            # Add additional context
+            suggestion['market_signals'] = {
+                'order_flow_sentiment': market_context.get('order_flow', {}).get('overall_sentiment', {}).get('sentiment', 'Neutral'),
+                'market_bias': market_context.get('market_bias', {}).get('combined_bias', {}).get('bias_direction', 'Neutral'),
+                'put_call_ratio': market_context.get('options_data', {}).get('put_call_ratio', 1.0),
+                'futures_trend': market_context.get('futures_data', {}).get('trend', 'Neutral'),
+                'tick_momentum': market_context.get('tick_momentum', {}).get('trend_direction', 'Neutral')
+            }
+        
+        return suggestions
+    
+    def _generate_options_suggestions_enhanced(self, market_context: Dict) -> List[Dict]:
+        """
+        Generate options trading suggestions with enhanced context from all data sources
+        """
+        tpo_data = market_context.get('tpo_data', {})
+        current_price = market_context.get('current_price')
+        pre_market_tpo = market_context.get('pre_market_tpo')
+        options_data = market_context.get('options_data', {})
+        
+        if not tpo_data or not current_price:
+            return []
+        
+        # Use existing logic but with enhanced strike selection and confidence
+        suggestions = self._generate_options_suggestions(tpo_data, current_price, pre_market_tpo)
+        
+        # Enhance strike selection using options data
+        if options_data.get('options_chain') is not None and not options_data['options_chain'].empty:
+            for suggestion in suggestions:
+                # Use max OI strikes if available
+                if suggestion.get('derivative_type') == 'CALL':
+                    max_oi_strike = options_data.get('max_oi_call_strike')
+                    if max_oi_strike and abs(max_oi_strike - suggestion.get('strike_price', 0)) < 100:
+                        suggestion['strike_price'] = max_oi_strike
+                        suggestion['rationale'] += f" Strike adjusted to max OI level ({max_oi_strike})."
+                elif suggestion.get('derivative_type') == 'PUT':
+                    max_oi_strike = options_data.get('max_oi_put_strike')
+                    if max_oi_strike and abs(max_oi_strike - suggestion.get('strike_price', 0)) < 100:
+                        suggestion['strike_price'] = max_oi_strike
+                        suggestion['rationale'] += f" Strike adjusted to max OI level ({max_oi_strike})."
+        
+        # Enhance each suggestion with additional signals
+        for suggestion in suggestions:
+            option_type = suggestion.get('derivative_type', '')
+            direction = 'Bullish' if option_type == 'CALL' else 'Bearish' if option_type == 'PUT' else 'Neutral'
+            
+            # Update confidence with enhanced calculation
+            base_confidence = suggestion.get('confidence_score', 0)
+            enhanced_confidence = self._calculate_enhanced_confidence(market_context, base_confidence, direction)
+            suggestion['confidence_score'] = round(enhanced_confidence, 2)
+            
+            # Enhance rationale
+            rationale = suggestion.get('rationale', '')
+            enhanced_rationale = self._build_enhanced_rationale(market_context, rationale, direction)
+            suggestion['rationale'] = enhanced_rationale
+            
+            # Add additional context
+            suggestion['market_signals'] = {
+                'order_flow_sentiment': market_context.get('order_flow', {}).get('overall_sentiment', {}).get('sentiment', 'Neutral'),
+                'market_bias': market_context.get('market_bias', {}).get('combined_bias', {}).get('bias_direction', 'Neutral'),
+                'put_call_ratio': market_context.get('options_data', {}).get('put_call_ratio', 1.0),
+                'futures_trend': market_context.get('futures_data', {}).get('trend', 'Neutral'),
+                'tick_momentum': market_context.get('tick_momentum', {}).get('trend_direction', 'Neutral')
+            }
+        
+        return suggestions
+    
+    def _build_enhanced_rationale(self, market_context: Dict, base_rationale: str, direction: str) -> str:
+        """
+        Build enhanced rationale by combining insights from all data sources
+        """
+        rationale_parts = [base_rationale]
+        
+        # Order flow insights
+        order_flow = market_context.get('order_flow', {})
+        if order_flow.get('success'):
+            sentiment = order_flow.get('overall_sentiment', {})
+            sentiment_type = sentiment.get('sentiment', 'Neutral')
+            
+            if sentiment_type == direction:
+                rationale_parts.append(f"Order flow confirms {direction.lower()} sentiment.")
+            
+            trapped = order_flow.get('trapped_traders', {})
+            if direction == 'Bullish' and trapped.get('trapped_sellers', 0) > 0:
+                rationale_parts.append(f"Trapped sellers detected ({trapped.get('trapped_sellers', 0)} instances) - potential bullish reversal.")
+            elif direction == 'Bearish' and trapped.get('trapped_buyers', 0) > 0:
+                rationale_parts.append(f"Trapped buyers detected ({trapped.get('trapped_buyers', 0)} instances) - potential bearish reversal.")
+        
+        # Market bias insights
+        market_bias = market_context.get('market_bias', {})
+        combined_bias = market_bias.get('combined_bias', {})
+        bias_direction = combined_bias.get('bias_direction', 'Neutral')
+        bias_strength = combined_bias.get('bias_strength', 'Weak')
+        
+        if bias_direction == direction:
+            rationale_parts.append(f"Market bias is {bias_strength.lower()} {bias_direction.lower()}.")
+        elif bias_direction != 'Neutral':
+            rationale_parts.append(f"Market bias is {bias_direction.lower()}, which may conflict with {direction.lower()} setup.")
+        
+        # Options data insights
+        options_data = market_context.get('options_data', {})
+        pcr = options_data.get('put_call_ratio', 1.0)
+        if pcr > 1.2:
+            rationale_parts.append(f"High Put-Call Ratio ({pcr:.2f}) suggests bearish sentiment - watch for reversal.")
+        elif pcr < 0.8:
+            rationale_parts.append(f"Low Put-Call Ratio ({pcr:.2f}) suggests bullish sentiment - watch for reversal.")
+        
+        # Futures momentum insights
+        futures_data = market_context.get('futures_data', {})
+        futures_trend = futures_data.get('trend', 'Neutral')
+        futures_change = futures_data.get('price_change_pct', 0)
+        if futures_trend == direction and abs(futures_change) > 0.2:
+            rationale_parts.append(f"Futures showing {futures_trend.lower()} momentum ({futures_change:+.2f}%).")
+        
+        # Tick momentum insights
+        tick_momentum = market_context.get('tick_momentum', {})
+        tick_direction = tick_momentum.get('trend_direction', 'Neutral')
+        momentum_pct = tick_momentum.get('momentum_pct', 0)
+        if tick_direction == direction and abs(momentum_pct) > 0.1:
+            rationale_parts.append(f"Tick momentum confirms {tick_direction.lower()} trend ({momentum_pct:+.2f}%).")
+        
+        return " ".join(rationale_parts)
