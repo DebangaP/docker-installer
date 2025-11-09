@@ -3747,6 +3747,132 @@ async def api_prophet_top_gainers(
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e), "top_gainers": []}
 
+@app.get("/api/prophet_predictions/index_projections")
+async def api_prophet_index_projections(
+    prediction_days: int = Query(60, description="Number of prediction days to filter by (default: 60)"),
+    force_refresh: bool = Query(False, description="Force refresh (ignore cache)")
+):
+    """API endpoint to get Prophet predictions for indices (scrip_group = 'index')"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get indices from master_scrips where scrip_group = 'INDEX' or sector_code = 'INDEX'
+        # Using UPPER() for case-insensitive comparison
+        cursor.execute("""
+            SELECT DISTINCT ms.scrip_id
+            FROM my_schema.master_scrips ms
+            WHERE UPPER(ms.scrip_group) = 'INDEX' 
+            ORDER BY ms.scrip_id
+        """)
+        indices = cursor.fetchall()
+        
+        logging.info(f"Found {len(indices)} indices with scrip_group or sector_code = 'INDEX'")
+        
+        if not indices:
+            conn.close()
+            return {"success": True, "indices": [], "message": "No indices found in master_scrips"}
+        
+        # Get predictions for each index
+        index_projections = []
+        indices_found = [idx['scrip_id'] for idx in indices]
+        logging.info(f"Indices found: {indices_found[:10]}...")  # Log first 10
+        
+        for idx in indices:
+            scrip_id = idx['scrip_id']
+            
+            # First try to get prediction with exact prediction_days (case-insensitive)
+            cursor.execute("""
+                SELECT 
+                    pp.scrip_id,
+                    pp.predicted_price_change_pct,
+                    pp.prediction_confidence,
+                    pp.prediction_days,
+                    pp.current_price,
+                    pp.predicted_price_30d,
+                    pp.run_date
+                FROM my_schema.prophet_predictions pp
+                WHERE UPPER(pp.scrip_id) = UPPER(%s)
+                AND pp.prediction_days = %s
+                AND pp.status = 'ACTIVE'
+                ORDER BY pp.run_date DESC
+                LIMIT 1
+            """, (scrip_id, prediction_days))
+            
+            prediction = cursor.fetchone()
+            
+            # If no prediction with exact prediction_days, try to get latest prediction regardless of prediction_days
+            if not prediction:
+                cursor.execute("""
+                    SELECT 
+                        pp.scrip_id,
+                        pp.predicted_price_change_pct,
+                        pp.prediction_confidence,
+                        pp.prediction_days,
+                        pp.current_price,
+                        pp.predicted_price_30d,
+                        pp.run_date
+                    FROM my_schema.prophet_predictions pp
+                    WHERE UPPER(pp.scrip_id) = UPPER(%s)
+                    AND pp.status = 'ACTIVE'
+                    ORDER BY pp.run_date DESC, pp.prediction_days DESC
+                    LIMIT 1
+                """, (scrip_id,))
+                
+                prediction = cursor.fetchone()
+                
+                if prediction:
+                    logging.info(f"Found prediction for {scrip_id} with prediction_days={prediction['prediction_days']} (requested {prediction_days})")
+                else:
+                    logging.debug(f"No prediction found for index {scrip_id}")
+            
+            if prediction:
+                # Get current price if not in prediction
+                current_price = prediction['current_price']
+                if not current_price:
+                    cursor.execute("""
+                        SELECT price_close
+                        FROM my_schema.rt_intraday_price
+                        WHERE scrip_id = %s
+                        ORDER BY price_date DESC
+                        LIMIT 1
+                    """, (scrip_id,))
+                    price_result = cursor.fetchone()
+                    if price_result:
+                        current_price = float(price_result['price_close'])
+                
+                # Calculate predicted price from current price and predicted change percentage
+                predicted_price = None
+                if current_price and prediction['predicted_price_change_pct']:
+                    predicted_price = current_price * (1 + (prediction['predicted_price_change_pct'] / 100))
+                
+                index_projections.append({
+                    "scrip_id": scrip_id,
+                    "predicted_price_change_pct": float(prediction['predicted_price_change_pct']) if prediction['predicted_price_change_pct'] else 0.0,
+                    "prediction_confidence": float(prediction['prediction_confidence']) if prediction['prediction_confidence'] else 0.0,
+                    "prediction_days": int(prediction['prediction_days']) if prediction['prediction_days'] else prediction_days,
+                    "current_price": float(current_price) if current_price else None,
+                    "predicted_price": float(predicted_price) if predicted_price else None,
+                    "run_date": str(prediction['run_date']) if prediction['run_date'] else None
+                })
+        
+        conn.close()
+        
+        # Sort by predicted price change percentage (descending)
+        index_projections.sort(key=lambda x: x['predicted_price_change_pct'], reverse=True)
+        
+        return {
+            "success": True,
+            "prediction_days": prediction_days,
+            "indices": index_projections
+        }
+        
+    except Exception as e:
+        logging.error(f"Error fetching index projections: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "indices": []}
+
 @app.get("/api/prophet_predictions/sectoral_averages")
 async def api_prophet_sectoral_averages(
     prediction_days: int = Query(30, description="Number of prediction days to filter by (default: 30)"),
@@ -5883,11 +6009,35 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
                 "supertrend_direction": int(supertrend_direction[i]) if not np.isnan(supertrend_direction[i]) else None
             })
         
+        # Get fundamental data (P/E, ROCE, Market Cap)
+        fundamental_data = {}
+        try:
+            cursor.execute("""
+                SELECT 
+                    pe_ratio,
+                    roce,
+                    market_cap
+                FROM my_schema.fundamental_data fd
+                WHERE fd.scrip_id = %s
+                ORDER BY fd.fetch_date DESC
+                LIMIT 1
+            """, (trading_symbol,))
+            fundamental_result = cursor.fetchone()
+            if fundamental_result:
+                fundamental_data = {
+                    "pe_ratio": float(fundamental_result['pe_ratio']) if fundamental_result['pe_ratio'] else None,
+                    "roce": float(fundamental_result['roce']) if fundamental_result['roce'] else None,
+                    "market_cap": float(fundamental_result['market_cap']) if fundamental_result['market_cap'] else None
+                }
+        except Exception as e:
+            logging.debug(f"Could not fetch fundamental data for {trading_symbol}: {e}")
+        
         conn.close()
         
         return {
             "trading_symbol": trading_symbol,
-            "data": data
+            "data": data,
+            "fundamental_data": fundamental_data
         }
     except Exception as e:
         logging.error(f"Error fetching candlestick data: {e}")

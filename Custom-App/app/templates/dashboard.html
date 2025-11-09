@@ -1356,6 +1356,30 @@
                 </div>
             </div>
             
+            <!-- Index Projections Section -->
+            <div class="card" id="section-index-projections" style="margin-top: 20px;">
+                <div class="card-header" style="background-color: #6f42c1; color: white;">
+                    <h3 class="card-title" style="color: white;">📈 Index Projections</h3>
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <label style="color: white; font-size: 12px; margin-right: 5px;">Prediction Days:</label>
+                        <select id="indexPredictionDaysSelect" onchange="loadIndexProjections()" style="padding: 4px 8px; font-size: 12px; border: none; border-radius: 4px;">
+                            <option value="30">30 Days</option>
+                            <option value="60" selected>60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="180">180 Days</option>
+                        </select>
+                        <button onclick="loadIndexProjections()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #6f42c1; border: none;">
+                            🔄 Refresh
+                        </button>
+                    </div>
+                </div>
+                <div style="padding: 15px;">
+                    <div id="indexProjectionsContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px;">
+                        <div style="text-align: center; padding: 20px; color: #666;">Loading index projections...</div>
+                    </div>
+                </div>
+            </div>
+            
             <!-- Sectoral Predictions Section -->
             <div class="card" id="section-top-gainers" style="margin-top: 20px;">
                 <div class="card-header" style="background-color: #28a745; color: white;">
@@ -7714,11 +7738,16 @@
                         if (daysSelect) {
                             daysSelect.value = '60';
                         }
+                        // Load index projections
+                        loadIndexProjections();
                         // Load top gainers when Stocks tab is active (with 60 days)
                         loadTopGainers();
                         // Check if predictions exist, show warning if not
                         checkProphetPredictionsExist();
                         TabLoadTracker.markLoaded(tabName);
+                    } else {
+                        // Reload index projections when tab is switched to (refresh existing data)
+                        loadIndexProjections();
                     }
                 } else if (tabName === 'holdings') {
                     if (!TabLoadTracker.isLoaded(tabName)) {
@@ -7801,15 +7830,28 @@
                 <h2 id="modalStockSymbol" style="margin: 0; font-size: 1.5em;">Stock Chart</h2>
                 <button onclick="closeCandlestickModal()" style="background-color: #dc3545; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 5px; font-size: 14px;">Close</button>
             </div>
-            <div style="margin-bottom: 15px; flex-shrink: 0;">
-                <label for="chartDays">Days to display:</label>
-                <select id="chartDays" onchange="updateCandlestickChart()" style="padding: 5px 10px; margin-left: 10px;">
-                    <option value="7">7 days</option>
-                    <option value="15">15 days</option>
-                    <option value="30">30 days</option>
-                    <option value="60">60 days</option>
-                    <option value="90" selected>90 days</option>
-                </select>
+            <div style="margin-bottom: 15px; flex-shrink: 0; display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                <div>
+                    <label for="chartDays">Days to display:</label>
+                    <select id="chartDays" onchange="updateCandlestickChart()" style="padding: 5px 10px; margin-left: 10px;">
+                        <option value="7">7 days</option>
+                        <option value="15">15 days</option>
+                        <option value="30">30 days</option>
+                        <option value="60">60 days</option>
+                        <option value="90" selected>90 days</option>
+                    </select>
+                </div>
+                <div id="fundamentalDataContainer" style="display: flex; gap: 20px; align-items: center; font-size: 13px; color: #333;">
+                    <div id="peRatio" style="display: none;">
+                        <strong>P/E:</strong> <span id="peRatioValue">-</span>
+                    </div>
+                    <div id="roce" style="display: none;">
+                        <strong>ROCE:</strong> <span id="roceValue">-</span>%
+                    </div>
+                    <div id="marketCap" style="display: none;">
+                        <strong>Market Cap:</strong> <span id="marketCapValue">-</span>
+                    </div>
+                </div>
             </div>
             <div style="flex: 1; overflow: hidden; position: relative;">
                 <canvas id="candlestickChartCanvas" style="width: 100%; height: 100%;"></canvas>
@@ -8580,6 +8622,170 @@
                         tbody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error generating predictions</td></tr>';
                     }
                 });
+        }
+        
+        // Load index projections with gauge charts
+        function loadIndexProjections() {
+            const container = document.getElementById('indexProjectionsContainer');
+            if (!container) return;
+            
+            const predictionDays = document.getElementById('indexPredictionDaysSelect')?.value || 60;
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading index projections...</div>';
+            
+            fetch(`/api/prophet_predictions/index_projections?prediction_days=${predictionDays}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success) {
+                        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'Failed to load index projections'}</div>`;
+                        return;
+                    }
+                    
+                    if (!data.indices || data.indices.length === 0) {
+                        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #666;">No index projections available. Generate predictions first.</div>`;
+                        return;
+                    }
+                    
+                    let html = '';
+                    data.indices.forEach(index => {
+                        const predictedChange = index.predicted_price_change_pct || 0;
+                        const confidence = index.prediction_confidence || 0;
+                        const indexSymbol = index.scrip_id;
+                        
+                        // Determine gauge color based on predicted change
+                        let gaugeColor = '#dc3545'; // Red for negative
+                        if (predictedChange > 5) {
+                            gaugeColor = '#28a745'; // Green for high positive
+                        } else if (predictedChange > 0) {
+                            gaugeColor = '#ffc107'; // Yellow for low positive
+                        } else if (predictedChange > -5) {
+                            gaugeColor = '#ff9800'; // Orange for small negative
+                        }
+                        
+                        // Confidence color
+                        const confidenceColor = confidence >= 70 ? '#28a745' : confidence >= 50 ? '#ffc107' : '#dc3545';
+                        
+                        // Calculate gauge percentage (normalize to 0-100 for display)
+                        // For gauge, we'll show predicted change, but normalize it
+                        // Assume range of -20% to +20% maps to 0-100%
+                        const normalizedValue = Math.max(0, Math.min(100, ((predictedChange + 20) / 40) * 100));
+                        
+                        html += `
+                            <div style="
+                                background: white;
+                                border: 2px solid #e0e0e0;
+                                border-radius: 8px;
+                                padding: 10px;
+                                text-align: center;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                                transition: transform 0.2s;
+                                cursor: pointer;
+                            " onclick="showCandlestick('${indexSymbol}')" 
+                               onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.2)';" 
+                               onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.1)';">
+                                <div style="font-weight: bold; font-size: 14px; color: #333; margin-bottom: 8px;">${indexSymbol}</div>
+                                <div style="position: relative; width: 150px; height: 150px; margin: 0 auto;">
+                                    <canvas id="gauge-${indexSymbol}" width="150" height="150" style="max-width: 100%; height: auto; pointer-events: none;"></canvas>
+                                </div>
+                                <div style="margin-top: 8px;">
+                                    <div style="font-size: 14px; font-weight: bold; color: ${gaugeColor};">
+                                        ${predictedChange >= 0 ? '+' : ''}${predictedChange.toFixed(2)}%
+                                    </div>
+                                    <div style="font-size: 10px; color: #666; margin-top: 4px;">
+                                        Confidence: <span style="color: ${confidenceColor}; font-weight: bold;">${confidence.toFixed(0)}%</span>
+                                    </div>
+                                    ${index.current_price ? `
+                                        <div style="font-size: 9px; color: #999; margin-top: 3px;">
+                                            Current: ₹${index.current_price.toFixed(2)}
+                                        </div>
+                                    ` : ''}
+                                    ${index.predicted_price ? `
+                                        <div style="font-size: 9px; color: #999; margin-top: 2px;">
+                                            Target: ₹${index.predicted_price.toFixed(2)}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    container.innerHTML = html;
+                    
+                    // Draw gauge charts after a small delay to ensure DOM is ready
+                    setTimeout(() => {
+                        data.indices.forEach(index => {
+                            drawGaugeChart(`gauge-${index.scrip_id}`, index.predicted_price_change_pct || 0, index.prediction_confidence || 0);
+                        });
+                    }, 100);
+                })
+                .catch(error => {
+                    console.error('Error loading index projections:', error);
+                    container.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading index projections: ${error.message}</div>`;
+                });
+        }
+        
+        // Draw gauge chart
+        function drawGaugeChart(canvasId, predictedChange, confidence) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = 60;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw background arc (full circle)
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, Math.PI, 0, false);
+            ctx.lineWidth = 15;
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.stroke();
+            
+            // Calculate angle for predicted change
+            // Map -20% to +20% to 180 degrees (full semicircle)
+            // -20% = 180° (left), 0% = 90° (top), +20% = 0° (right)
+            const normalizedValue = Math.max(-20, Math.min(20, predictedChange));
+            const angle = Math.PI - ((normalizedValue + 20) / 40) * Math.PI;
+            
+            // Determine color
+            let gaugeColor = '#dc3545';
+            if (predictedChange > 5) {
+                gaugeColor = '#28a745';
+            } else if (predictedChange > 0) {
+                gaugeColor = '#ffc107';
+            } else if (predictedChange > -5) {
+                gaugeColor = '#ff9800';
+            }
+            
+            // Draw value arc
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, Math.PI, angle, false);
+            ctx.lineWidth = 15;
+            ctx.strokeStyle = gaugeColor;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+            
+            // Draw confidence indicator (smaller arc)
+            const confidenceAngle = Math.PI - ((confidence / 100) * Math.PI);
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius - 12, Math.PI, confidenceAngle, false);
+            ctx.lineWidth = 6;
+            ctx.strokeStyle = confidence >= 70 ? '#28a745' : confidence >= 50 ? '#ffc107' : '#dc3545';
+            ctx.lineCap = 'round';
+            ctx.stroke();
+            
+            // Draw center text
+            ctx.fillStyle = '#333';
+            ctx.font = 'bold 12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`${predictedChange >= 0 ? '+' : ''}${predictedChange.toFixed(1)}%`, centerX, centerY - 8);
+            
+            ctx.fillStyle = '#666';
+            ctx.font = '10px Arial';
+            ctx.fillText(`${confidence.toFixed(0)}%`, centerX, centerY + 12);
         }
         
         // Check if Prophet predictions exist for today
@@ -9450,6 +9656,49 @@
                     if (data.error) {
                         console.error('Error loading candlestick data:', data.error);
                         return;
+                    }
+                    
+                    // Display fundamental data
+                    if (data.fundamental_data) {
+                        const fd = data.fundamental_data;
+                        
+                        // P/E Ratio
+                        if (fd.pe_ratio !== null && fd.pe_ratio !== undefined) {
+                            document.getElementById('peRatio').style.display = 'block';
+                            document.getElementById('peRatioValue').textContent = fd.pe_ratio.toFixed(2);
+                        } else {
+                            document.getElementById('peRatio').style.display = 'none';
+                        }
+                        
+                        // ROCE
+                        if (fd.roce !== null && fd.roce !== undefined) {
+                            document.getElementById('roce').style.display = 'block';
+                            document.getElementById('roceValue').textContent = fd.roce.toFixed(2);
+                        } else {
+                            document.getElementById('roce').style.display = 'none';
+                        }
+                        
+                        // Market Cap
+                        if (fd.market_cap !== null && fd.market_cap !== undefined) {
+                            document.getElementById('marketCap').style.display = 'block';
+                            let marketCapValue = fd.market_cap;
+                            let marketCapText = '';
+                            if (marketCapValue >= 100000) {
+                                marketCapText = (marketCapValue / 100000).toFixed(2) + ' Lakh Cr';
+                            } else if (marketCapValue >= 1000) {
+                                marketCapText = (marketCapValue / 1000).toFixed(2) + ' K Cr';
+                            } else {
+                                marketCapText = marketCapValue.toFixed(2) + ' Cr';
+                            }
+                            document.getElementById('marketCapValue').textContent = marketCapText;
+                        } else {
+                            document.getElementById('marketCap').style.display = 'none';
+                        }
+                    } else {
+                        // Hide all fundamental data if not available
+                        document.getElementById('peRatio').style.display = 'none';
+                        document.getElementById('roce').style.display = 'none';
+                        document.getElementById('marketCap').style.display = 'none';
                     }
                     
                     console.log('Candlestick data received:', data);
