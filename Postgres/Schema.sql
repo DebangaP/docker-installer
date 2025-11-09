@@ -311,6 +311,63 @@ CREATE TABLE IF NOT EXISTS my_schema.mf_holdings (
 -- Indexes for MF holdings table
 CREATE INDEX IF NOT EXISTS idx_mf_holdings_run_date ON my_schema.mf_holdings(run_date);
 CREATE INDEX IF NOT EXISTS idx_mf_holdings_tradingsymbol ON my_schema.mf_holdings(tradingsymbol);
+
+-- Irrational gains/losses analysis table
+CREATE TABLE IF NOT EXISTS my_schema.holdings_irrational_analysis (
+    id SERIAL PRIMARY KEY,
+    trading_symbol VARCHAR(50) NOT NULL,
+    instrument_token INTEGER,
+    analysis_date DATE DEFAULT CURRENT_DATE,
+    run_date DATE DEFAULT CURRENT_DATE,
+    
+    -- Current metrics
+    pnl_pct_change FLOAT,
+    today_pnl_pct FLOAT,
+    current_price FLOAT,
+    average_price FLOAT,
+    
+    -- Analysis flags
+    is_statistical_outlier BOOLEAN DEFAULT FALSE,
+    z_score FLOAT,
+    portfolio_avg_pnl FLOAT,
+    portfolio_std_dev FLOAT,
+    
+    is_market_mismatch BOOLEAN DEFAULT FALSE,
+    market_change_pct FLOAT,
+    correlation_score FLOAT,
+    
+    is_technical_mismatch BOOLEAN DEFAULT FALSE,
+    rsi FLOAT,
+    macd_divergence BOOLEAN DEFAULT FALSE,
+    volume_anomaly BOOLEAN DEFAULT FALSE,
+    volume_ratio FLOAT,
+    
+    is_time_anomaly BOOLEAN DEFAULT FALSE,
+    days_since_large_move INTEGER,
+    move_velocity FLOAT, -- % change per day
+    
+    is_fundamental_mismatch BOOLEAN DEFAULT FALSE,
+    pe_ratio FLOAT,
+    prophet_prediction_diff FLOAT,
+    news_sentiment_diff FLOAT,
+    
+    -- Overall assessment
+    irrational_score FLOAT, -- 0-100, higher = more irrational
+    irrational_type VARCHAR(50), -- 'gain' or 'loss'
+    exit_recommendation VARCHAR(20), -- 'STRONG', 'MODERATE', 'WEAK', 'NONE'
+    exit_reason TEXT,
+    
+    -- Metadata
+    analysis_details JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT holdings_irrational_unique UNIQUE (trading_symbol, analysis_date)
+);
+
+-- Indexes for irrational analysis table
+CREATE INDEX IF NOT EXISTS idx_irrational_analysis_date ON my_schema.holdings_irrational_analysis(analysis_date);
+CREATE INDEX IF NOT EXISTS idx_irrational_score ON my_schema.holdings_irrational_analysis(irrational_score DESC);
+CREATE INDEX IF NOT EXISTS idx_irrational_exit_recommendation ON my_schema.holdings_irrational_analysis(exit_recommendation);
 CREATE INDEX IF NOT EXISTS idx_mf_holdings_folio ON my_schema.mf_holdings(folio);
 
 -- Comments on MF holdings table

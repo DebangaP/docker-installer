@@ -354,7 +354,7 @@ def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, so
         total_count = cursor.fetchone()['total_count']
 
         # Validate and set sort column
-        valid_sort_columns = ['trading_symbol', 'invested_amount', 'current_amount', 'pnl', 'today_pnl', 'prophet_prediction_pct']
+        valid_sort_columns = ['trading_symbol', 'invested_amount', 'current_amount', 'pnl', 'today_pnl', 'prophet_prediction_pct', 'irrational_score']
         if sort_by not in valid_sort_columns:
             sort_by = 'trading_symbol'
         
@@ -2768,7 +2768,9 @@ async def api_list_fundamentals(
     scrip_id: Optional[str] = Query(None, description="Specific stock symbol to get (default: all holdings and Nifty50)"),
     include_holdings: bool = Query(True, description="Include fundamentals for all holdings"),
     include_nifty50: bool = Query(True, description="Include fundamentals for Nifty50 stocks"),
-    max_days_old: int = Query(30, description="Maximum age of data in days (default: 30)")
+    max_days_old: int = Query(30, description="Maximum age of data in days (default: 30)"),
+    sort_by: Optional[str] = Query(None, description="Sort by column: sector_code, pe_ratio, roce, market_cap"),
+    sort_dir: str = Query("asc", description="Sort direction: asc or desc (default: asc)")
 ):
     """API endpoint to get existing fundamental data from database (less than max_days_old)"""
     try:
@@ -2889,6 +2891,49 @@ async def api_list_fundamentals(
         
         cursor.close()
         conn.close()
+        
+        # Apply sorting if requested
+        if sort_by and results:
+            # Validate sort_by column
+            valid_sort_columns = ['sector_code', 'pe_ratio', 'roce', 'market_cap']
+            if sort_by.lower() in valid_sort_columns:
+                # Validate sort direction
+                sort_dir_lower = sort_dir.lower() if sort_dir else 'asc'
+                reverse = sort_dir_lower == 'desc'
+                
+                # Sort the results
+                # Separate items with None values from items with valid values
+                items_with_values = []
+                items_with_none = []
+                
+                for item in results:
+                    value = item.get(sort_by.lower())
+                    if value is None:
+                        items_with_none.append(item)
+                    else:
+                        items_with_values.append(item)
+                
+                # Sort items with valid values
+                if items_with_values:
+                    def sort_key(item):
+                        value = item.get(sort_by.lower())
+                        # For numeric values, ensure proper numeric sorting
+                        if sort_by.lower() in ['pe_ratio', 'roce', 'market_cap']:
+                            try:
+                                num_value = float(value) if value is not None else None
+                                # Handle None or invalid numeric values - put them at end
+                                if num_value is None or (isinstance(num_value, float) and (num_value != num_value)):  # Check for NaN
+                                    return float('inf') if not reverse else float('-inf')
+                                return num_value
+                            except (ValueError, TypeError):
+                                return float('inf') if not reverse else float('-inf')
+                        # For string values (sector_code)
+                        return str(value).lower() if value else ''
+                    
+                    items_with_values.sort(key=sort_key, reverse=reverse)
+                
+                # Combine: valid values first, then None values
+                results = items_with_values + items_with_none
         
         return {
             "success": True,
@@ -3292,6 +3337,7 @@ async def api_list_news_sentiment(
             
             # Get for Nifty50
             if include_nifty50:
+                # Note: In psycopg2, literal % characters must be escaped as %%
                 cursor.execute("""
                     SELECT DISTINCT ON (cs.scrip_id)
                         cs.scrip_id, cs.calculation_date, 
@@ -3303,7 +3349,7 @@ async def api_list_news_sentiment(
                     JOIN my_schema.master_scrips ms ON ms.scrip_id = cs.scrip_id
                     LEFT JOIN my_schema.news_sentiment ns ON ns.scrip_id = cs.scrip_id 
                         AND ns.article_date >= cs.calculation_date - INTERVAL '7 days'
-                    WHERE (ms.scrip_group LIKE '%NIFTY50%' OR ms.scrip_group LIKE '%NIFTY_50%' OR ms.scrip_group = 'NIFTY50')
+                    WHERE (ms.scrip_group LIKE '%%NIFTY50%%' OR ms.scrip_group LIKE '%%NIFTY_50%%' OR ms.scrip_group = 'NIFTY50')
                     AND cs.scrip_id NOT IN ('NIFTY50', 'Nifty_50', 'Nifty5')
                     AND CURRENT_DATE - cs.calculation_date <= %s::integer
                     GROUP BY cs.scrip_id, cs.calculation_date, cs.news_sentiment_score, 
@@ -3366,10 +3412,11 @@ async def api_fetch_news_sentiment(
             holdings = [row[0] for row in cursor.fetchall()]
             
             # Get Nifty50 stocks
+            # Note: In psycopg2, literal % characters must be escaped as %%
             cursor.execute("""
                 SELECT DISTINCT scrip_id
                 FROM my_schema.master_scrips
-                WHERE (scrip_group LIKE '%NIFTY50%' OR scrip_group LIKE '%NIFTY_50%' OR scrip_group = 'NIFTY50')
+                WHERE (scrip_group LIKE '%%NIFTY50%%' OR scrip_group LIKE '%%NIFTY_50%%' OR scrip_group = 'NIFTY50')
                 AND scrip_id NOT IN ('NIFTY50', 'Nifty_50', 'Nifty5')
             """)
             nifty50_stocks = [row[0] for row in cursor.fetchall()]
@@ -3441,10 +3488,11 @@ async def api_calculate_fundamental_sentiment(
             holdings = [row[0] for row in cursor.fetchall()]
             
             # Get Nifty50 stocks
+            # Note: In psycopg2, literal % characters must be escaped as %%
             cursor.execute("""
                 SELECT DISTINCT scrip_id
                 FROM my_schema.master_scrips
-                WHERE (scrip_group LIKE '%NIFTY50%' OR scrip_group LIKE '%NIFTY_50%' OR scrip_group = 'NIFTY50')
+                WHERE (scrip_group LIKE '%%NIFTY50%%' OR scrip_group LIKE '%%NIFTY_50%%' OR scrip_group = 'NIFTY50')
                 AND scrip_id NOT IN ('NIFTY50', 'Nifty_50', 'Nifty5')
             """)
             nifty50_stocks = [row[0] for row in cursor.fetchall()]
@@ -4678,8 +4726,8 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
             cached = cache_get_json(cache_key)
             if cached:
                 return cached
-        # If sorting by today_pnl or prophet_prediction_pct, we need to get all holdings, enrich them, sort, then paginate
-        if sort_by == 'today_pnl' or sort_by == 'prophet_prediction_pct':
+        # If sorting by today_pnl, prophet_prediction_pct, or irrational_score, we need to get all holdings, enrich them, sort, then paginate
+        if sort_by == 'today_pnl' or sort_by == 'prophet_prediction_pct' or sort_by == 'irrational_score':
             # Get all holdings without pagination
             holdings_info = get_holdings_data(page=1, per_page=10000, sort_by='trading_symbol', sort_dir='asc', search=search)
         else:
@@ -4932,6 +4980,28 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                     prophet_cv_mape = None
                     prophet_cv_rmse = None
             
+            # Get irrational analysis data
+            irrational_data = None
+            try:
+                cursor.execute("""
+                    SELECT irrational_score, exit_recommendation, exit_reason, irrational_type
+                    FROM my_schema.holdings_irrational_analysis
+                    WHERE trading_symbol = %s
+                    AND analysis_date = CURRENT_DATE
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """, (symbol,))
+                irrational_result = cursor.fetchone()
+                if irrational_result:
+                    irrational_data = {
+                        "irrational_score": float(irrational_result['irrational_score']) if irrational_result['irrational_score'] else None,
+                        "exit_recommendation": irrational_result['exit_recommendation'],
+                        "exit_reason": irrational_result['exit_reason'],
+                        "irrational_type": irrational_result['irrational_type']
+                    }
+            except Exception as e:
+                logging.debug(f"Could not fetch irrational analysis for {symbol}: {e}")
+            
             holdings_list.append({
                 "trading_symbol": symbol,
                 "instrument_token": instrument_token,
@@ -4951,10 +5021,14 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                 "prophet_confidence": prophet_conf,
                 "prediction_days": prophet_pred_days,
                 "prophet_cv_mape": prophet_cv_mape,
-                "prophet_cv_rmse": prophet_cv_rmse
+                "prophet_cv_rmse": prophet_cv_rmse,
+                "irrational_score": irrational_data['irrational_score'] if irrational_data else None,
+                "exit_recommendation": irrational_data['exit_recommendation'] if irrational_data else None,
+                "exit_reason": irrational_data['exit_reason'] if irrational_data else None,
+                "irrational_type": irrational_data['irrational_type'] if irrational_data else None
             })
         
-        # If sorting by today_pnl or prophet_prediction_pct, sort the enriched list and then paginate
+        # If sorting by today_pnl, prophet_prediction_pct, or irrational_score, sort the enriched list and then paginate
         if sort_by == 'today_pnl':
             sort_reverse = sort_dir.lower() == 'desc'
             holdings_list.sort(key=lambda x: x['today_pnl'], reverse=sort_reverse)
@@ -4968,6 +5042,16 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
             sort_reverse = sort_dir.lower() == 'desc'
             # Sort by prophet_prediction_pct, handling None values
             holdings_list.sort(key=lambda x: x['prophet_prediction_pct'] if x['prophet_prediction_pct'] is not None else (float('-inf') if sort_reverse else float('inf')), reverse=sort_reverse)
+            
+            # Apply pagination after sorting
+            total_count = len(holdings_list)
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            holdings_list = holdings_list[start_idx:end_idx]
+        elif sort_by == 'irrational_score':
+            sort_reverse = sort_dir.lower() == 'desc'
+            # Sort by irrational_score, handling None values (put None at end)
+            holdings_list.sort(key=lambda x: x['irrational_score'] if x['irrational_score'] is not None else (float('-inf') if sort_reverse else float('inf')), reverse=sort_reverse)
             
             # Apply pagination after sorting
             total_count = len(holdings_list)
@@ -5042,6 +5126,54 @@ async def api_positions():
     except Exception as e:
         logging.error(f"Error fetching positions: {e}")
         return cached_json_response({"error": str(e), "positions": []}, "/api/positions")
+
+@app.get("/api/holdings/irrational-analysis")
+async def api_irrational_analysis(
+    min_score: float = Query(50.0, description="Minimum irrational score (default: 50)"),
+    exit_recommendation: Optional[str] = Query(None, description="Filter by exit recommendation: STRONG, MODERATE, WEAK, NONE"),
+    irrational_type: Optional[str] = Query(None, description="Filter by type: gain or loss")
+):
+    """API endpoint to get holdings with irrational moves"""
+    try:
+        from holdings.IrrationalMoveAnalyzer import IrrationalMoveAnalyzer
+        
+        analyzer = IrrationalMoveAnalyzer()
+        result = analyzer.analyze_all_holdings()
+        
+        if not result.get('success'):
+            return {"success": False, "error": result.get('error', 'Analysis failed')}
+        
+        # Filter results
+        filtered_results = result.get('results', [])
+        
+        if min_score:
+            filtered_results = [r for r in filtered_results if r.get('irrational_score', 0) >= min_score]
+        
+        if exit_recommendation:
+            filtered_results = [r for r in filtered_results if r.get('exit_recommendation') == exit_recommendation.upper()]
+        
+        if irrational_type:
+            filtered_results = [r for r in filtered_results if r.get('irrational_type') == irrational_type.lower()]
+        
+        # Sort by irrational score descending
+        filtered_results.sort(key=lambda x: x.get('irrational_score', 0), reverse=True)
+        
+        analyzer.close()
+        
+        return {
+            "success": True,
+            "analysis_date": result.get('analysis_date'),
+            "total_holdings": result.get('total_holdings'),
+            "analyzed": result.get('analyzed'),
+            "filtered_count": len(filtered_results),
+            "results": filtered_results
+        }
+        
+    except Exception as e:
+        logging.error(f"Error in irrational analysis: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
 
 @app.get("/api/mf_holdings")
 async def api_mf_holdings():

@@ -44,3 +44,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # Monthly Yahoo fundamentals fetch: Fetch actions, income statements, insider transactions from Yahoo Finance
 # Runs on the 1st of every month at 8:30 PM (after market cap update)
 30 20 1 * * root cd /app && python -c "from fundamentals.FetchFundamentals import YahooFundamentalsFetcher; fetcher = YahooFundamentalsFetcher(); result = fetcher.fetch_fundamentals_for_missing_stocks(fetch_holdings=True, fetch_nifty50=True, batch_size=5, delay_between_batches=3.45); print(f'Yahoo fundamentals fetch result: {result}')" >> /app/logs/yahoo_fundamentals_fetch.log 2>&1 &
+
+# Daily irrational analysis: Analyze holdings for irrational gains/losses
+# Runs daily at 4:00 PM IST (after market close) to analyze all holdings
+0 16 * * 1-5 root cd /app && python /app/scheduled_jobs/IrrationalAnalysisScheduler.py >> /app/logs/irrational_analysis.log 2>&1 &
