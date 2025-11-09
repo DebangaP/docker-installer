@@ -581,6 +581,12 @@
             <button class="sidebar-tab" onclick="switchTab('gainers-losers')" data-tab="gainers-losers">
                 📈 Stocks
             </button>
+            <button class="sidebar-tab" onclick="switchTab('options')" data-tab="options">
+                📊 Options
+            </button>
+            <button class="sidebar-tab" onclick="switchTab('sentiment')" data-tab="sentiment">
+                📊 Fundamental Data
+            </button>
             <button class="sidebar-tab" onclick="switchTab('utilities')" data-tab="utilities">
                 🔧 Utilities
             </button>
@@ -601,6 +607,12 @@
             </button>
             <button class="tab-button" onclick="switchTab('gainers-losers')">
                 📈 Stocks
+            </button>
+            <button class="tab-button" onclick="switchTab('options')">
+                📊 Options
+            </button>
+            <button class="tab-button" onclick="switchTab('sentiment')">
+                📊 Fundamental Data
             </button>
             <button class="tab-button" onclick="switchTab('utilities')">
                 🔧 Utilities
@@ -787,6 +799,81 @@
             </div>
         </div>
 
+        <!-- TPO-Based Derivatives Suggestions Section -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header" style="padding: 15px 25px;">
+                <h3 class="card-title" style="font-size: 16px;">🎯 TPO-Based Derivatives Suggestions</h3>
+                <span class="card-icon" style="font-size: 20px;">💡</span>
+                <button onclick="loadDerivativesSuggestions()" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; margin-left: 10px;">
+                    🔄 Refresh Suggestions
+                </button>
+            </div>
+            <div id="derivativesSuggestionsContainer" style="padding: 15px;">
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    Click "Refresh Suggestions" to load TPO-based trading suggestions
+                </div>
+            </div>
+        </div>
+
+        <!-- Futures Order Flow Section -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header" style="padding: 15px 25px;">
+                <h3 class="card-title" style="font-size: 16px;">📊 Nifty 50 Futures Order Flow - latest 2 ticks (Last Trading Day)</h3>
+                <span class="card-icon" style="font-size: 20px;">📈</span>
+            </div>
+            <div class="tpo-chart-container" style="height: 200px; overflow-y: auto;">
+                <table id="futuresOrderFlowTable" style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <thead>
+                        <tr style="background-color: #f8f9fa; position: sticky; top: 0;">
+                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-size: 11px;">Time</th>
+                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-size: 11px;">Side</th>
+                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Price</th>
+                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Quantity</th>
+                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Orders</th>
+                        </tr>
+                    </thead>
+                    <tbody id="futuresOrderFlowBody">
+                        <tr>
+                            <td colspan="5" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading order flow data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Current Positions Section -->
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header">
+                <h3 class="card-title">📊 Active Positions</h3>
+                <span class="card-icon">📈</span>
+            </div>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <thead>
+                        <tr style="background-color: #f8f9fa;">
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Timestamp</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Type</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Symbol</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Product</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Exchange</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Avg. Price</th>
+                            <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">P&L</th>
+                        </tr>
+                    </thead>
+                    <tbody id="positionsTableBody">
+                        <tr>
+                            <td colspan="7" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading positions...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        </div>
+        <!-- End Live Market Tab Content -->
+
+        <!-- Options Tab Content -->
+        <div id="options-tab" class="tab-content">
         <!-- Options Chain Scanner Section -->
         <div class="card" id="section-options-scanner" style="margin-bottom: 20px;">
             <div class="card-header" style="padding: 15px 25px; background-color: #6f42c1; color: white;">
@@ -860,7 +947,7 @@
         </div>
 
         <!-- Options OI Analysis Section -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-top5-options" style="margin-bottom: 20px;">
             <div class="card-header" style="padding: 15px 25px; background-color: #17a2b8; color: white;">
                 <h3 class="card-title" style="font-size: 16px; color: white;">📊 Top 5 Options by Open Interest</h3>
                 <div style="display: flex; gap: 10px;">
@@ -910,7 +997,7 @@
         </div>
 
         <!-- Options Suggestions Section -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-options-suggestions" style="margin-bottom: 20px;">
             <div class="card-header" style="padding: 15px 25px;">
                 <h3 class="card-title" style="font-size: 16px;">📊 Options Suggestions</h3>
                 <span class="card-icon" style="font-size: 20px;">📊</span>
@@ -941,7 +1028,7 @@
         </div>
 
         <!-- Options Back-testing Section -->
-        <div class="card" style="margin-bottom: 20px;">
+        <div class="card" id="section-options-backtesting" style="margin-bottom: 20px;">
             <div class="card-header" style="padding: 15px 25px;">
                 <h3 class="card-title" style="font-size: 16px;">🔬 Options Back-testing</h3>
                 <span class="card-icon" style="font-size: 20px;">🔬</span>
@@ -995,79 +1082,112 @@
                 </div>
             </div>
         </div>
+        </div>
+        <!-- End Options Tab Content -->
 
-        <!-- TPO-Based Derivatives Suggestions Section -->
-        <div class="card" style="margin-bottom: 20px;">
-            <div class="card-header" style="padding: 15px 25px;">
-                <h3 class="card-title" style="font-size: 16px;">🎯 TPO-Based Derivatives Suggestions</h3>
-                <span class="card-icon" style="font-size: 20px;">💡</span>
-                <button onclick="loadDerivativesSuggestions()" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; margin-left: 10px;">
-                    🔄 Refresh Suggestions
+        <!-- Fundamental Data Tab Content -->
+        <div id="sentiment-tab" class="tab-content">
+        <!-- Fundamental Data Section -->
+        <div class="card" id="section-fundamental-data" style="margin-bottom: 20px;">
+            <div class="card-header" style="padding: 15px 25px; background-color: #28a745; color: white;">
+                <h3 class="card-title" style="font-size: 16px; color: white;">📊 Fundamental Data</h3>
+                <button id="fetchFundamentalsBtn" onclick="fetchFundamentalData()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #28a745; border: none; margin-left: 10px;">
+                    🔄 Fetch Fundamentals
+                </button>
+                <button id="stopFundamentalsBtn" onclick="stopFetchFundamentals()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #dc3545; color: white; border: none; margin-left: 10px; display: none;">
+                    ⏹️ Stop Fetch
                 </button>
             </div>
-            <div id="derivativesSuggestionsContainer" style="padding: 15px;">
-                <div style="text-align: center; padding: 20px; color: #666;">
-                    Click "Refresh Suggestions" to load TPO-based trading suggestions
+            <div style="padding: 15px;">
+                <div style="margin-bottom: 15px;">
+                    <label style="font-size: 12px; margin-right: 10px;">
+                        <input type="checkbox" id="fetchFundamentalsHoldings" checked style="margin-right: 5px;">
+                        Fetch for Holdings
+                    </label>
+                    <label style="font-size: 12px; margin-right: 10px;">
+                        <input type="checkbox" id="fetchFundamentalsNifty50" checked style="margin-right: 5px;">
+                        Fetch for Nifty50
+                    </label>
+                    <input type="text" id="fundamentalScripId" placeholder="Specific Stock Symbol (optional)" style="padding: 6px 12px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px; width: 200px; margin-left: 10px;">
+                </div>
+                <div id="fundamentalDataContainer" style="padding: 15px;">
+                    <div style="text-align: center; padding: 20px; color: #666;">
+                        Loading existing fundamental data...
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Futures Order Flow Section -->
-        <div class="card" style="margin-bottom: 20px;">
-            <div class="card-header" style="padding: 15px 25px;">
-                <h3 class="card-title" style="font-size: 16px;">📊 Nifty 50 Futures Order Flow - latest 2 ticks (Last Trading Day)</h3>
-                <span class="card-icon" style="font-size: 20px;">📈</span>
+        <!-- News Sentiment Analysis Section -->
+        <div class="card" id="section-news-sentiment" style="margin-bottom: 20px;">
+            <div class="card-header" style="padding: 15px 25px; background-color: #17a2b8; color: white;">
+                <h3 class="card-title" style="font-size: 16px; color: white;">📰 News Sentiment Analysis</h3>
+                <button id="fetchNewsSentimentBtn" onclick="fetchNewsSentiment()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #17a2b8; border: none; margin-left: 10px;">
+                    🔄 Analyze News
+                </button>
+                <button id="stopNewsSentimentBtn" onclick="stopFetchNewsSentiment()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #dc3545; color: white; border: none; margin-left: 10px; display: none;">
+                    ⏹️ Stop Fetch
+                </button>
             </div>
-            <div class="tpo-chart-container" style="height: 200px; overflow-y: auto;">
-                <table id="futuresOrderFlowTable" style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                    <thead>
-                        <tr style="background-color: #f8f9fa; position: sticky; top: 0;">
-                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-size: 11px;">Time</th>
-                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-size: 11px;">Side</th>
-                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Price</th>
-                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Quantity</th>
-                            <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-size: 11px;">Orders</th>
-                        </tr>
-                    </thead>
-                    <tbody id="futuresOrderFlowBody">
-                        <tr>
-                            <td colspan="5" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading order flow data...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Current Positions Section -->
-        <div class="card" style="margin-bottom: 20px;">
-            <div class="card-header">
-                <h3 class="card-title">📊 Active Positions</h3>
-                <span class="card-icon">📈</span>
-            </div>
-            <div style="overflow-x: auto;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                    <thead>
-                        <tr style="background-color: #f8f9fa;">
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Timestamp</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: 600;">Type</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Symbol</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Product</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: left; font-weight: 600;">Exchange</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">Avg. Price</th>
-                            <th style="padding: 10px; border: 1px solid #ddd; text-align: right; font-weight: 600;">P&L</th>
-                        </tr>
-                    </thead>
-                    <tbody id="positionsTableBody">
-                        <tr>
-                            <td colspan="7" style="padding: 15px; text-align: center; color: #666; font-size: 12px;">Loading positions...</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div style="padding: 15px;">
+                <div style="margin-bottom: 15px;">
+                    <label style="font-size: 12px; margin-right: 10px;">Days to look back:</label>
+                    <input type="number" id="newsSentimentDays" value="7" min="1" max="30" style="padding: 6px 12px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px; width: 80px;">
+                    <input type="text" id="newsSentimentScripId" placeholder="Specific Stock Symbol (optional)" style="padding: 6px 12px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px; width: 200px; margin-left: 10px;">
+                </div>
+                <div id="newsSentimentContainer" style="padding: 15px;">
+                    <div style="text-align: center; padding: 20px; color: #666;">
+                        Loading existing news sentiment data...
+                    </div>
+                </div>
             </div>
         </div>
 
+        <!-- Fundamental Sentiment Analysis Section -->
+        <div class="card" id="section-fundamental-sentiment" style="margin-bottom: 20px;">
+            <div class="card-header" style="padding: 15px 25px; background-color: #ffc107; color: #333;">
+                <h3 class="card-title" style="font-size: 16px; color: #333;">💹 Fundamental Sentiment Analysis</h3>
+                <button onclick="calculateFundamentalSentiment()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #333; color: #ffc107; border: none; margin-left: 10px;">
+                    🔄 Calculate Sentiment
+                </button>
+            </div>
+            <div style="padding: 15px;">
+                <div style="margin-bottom: 15px;">
+                    <input type="text" id="fundamentalSentimentScripId" placeholder="Specific Stock Symbol (optional)" style="padding: 6px 12px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px; width: 200px;">
+                </div>
+                <div id="fundamentalSentimentContainer" style="padding: 15px;">
+                    <div style="text-align: center; padding: 20px; color: #666;">
+                        Click "Calculate Sentiment" to analyze fundamental metrics and generate sentiment scores
+                    </div>
+                </div>
+            </div>
         </div>
-        <!-- End Live Market Tab Content -->
+
+        <!-- Combined Sentiment Section -->
+        <div class="card" id="section-combined-sentiment" style="margin-bottom: 20px;">
+            <div class="card-header" style="padding: 15px 25px; background-color: #6f42c1; color: white;">
+                <h3 class="card-title" style="font-size: 16px; color: white;">🎯 Combined Sentiment</h3>
+                <button onclick="calculateCombinedSentiment()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #6f42c1; border: none; margin-left: 10px;">
+                    🔄 Calculate Combined
+                </button>
+            </div>
+            <div style="padding: 15px;">
+                <div style="margin-bottom: 15px;">
+                    <label style="font-size: 12px; margin-right: 10px;">News Weight:</label>
+                    <input type="number" id="combinedNewsWeight" value="0.5" min="0" max="1" step="0.1" style="padding: 6px 12px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px; width: 80px;">
+                    <label style="font-size: 12px; margin-left: 10px; margin-right: 10px;">Fundamental Weight:</label>
+                    <input type="number" id="combinedFundamentalWeight" value="0.5" min="0" max="1" step="0.1" style="padding: 6px 12px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px; width: 80px;">
+                    <input type="text" id="combinedSentimentScripId" placeholder="Specific Stock Symbol (optional)" style="padding: 6px 12px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px; width: 200px; margin-left: 10px;">
+                </div>
+                <div id="combinedSentimentContainer" style="padding: 15px;">
+                    <div style="text-align: center; padding: 20px; color: #666;">
+                        Click "Calculate Combined" to combine news and fundamental sentiment scores
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+        <!-- End Sentiment Analysis Tab Content -->
 
         <!-- Stocks Tab Content -->
         <div id="gainers-losers-tab" class="tab-content">
@@ -1596,6 +1716,88 @@
                         <div id="cronUtilitiesStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
                     </div>
                 </div>
+                
+                <!-- Yahoo Finance Data Section -->
+                <div class="card" id="section-yahoo-data" style="margin-bottom: 20px; margin-top: 20px;">
+                    <div class="card-header" style="background-color: #6f42c1; color: white;">
+                        <h3 class="card-title" style="color: white;">📊 Yahoo Finance Data</h3>
+                    </div>
+                    <div style="padding: 15px;">
+                        <div style="margin-bottom: 15px;">
+                            <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+                                Update market cap and fetch Yahoo Finance fundamentals (actions, income statements, insider transactions). These run monthly via crontab, but can be triggered manually here.
+                            </p>
+                        </div>
+                        
+                        <!-- Update Market Cap Card -->
+                        <div style="border: 1px solid #ddd; border-radius: 4px; padding: 15px; margin-bottom: 15px; background-color: #f8f9fa;">
+                            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 10px;">💰 Update Market Cap</h4>
+                            <div style="margin-bottom: 10px;">
+                                <label style="font-size: 12px; font-weight: 600; margin-right: 10px;">
+                                    <input type="checkbox" id="updateMcapHoldings" checked style="margin-right: 5px;">
+                                    Holdings
+                                </label>
+                                <label style="font-size: 12px; font-weight: 600; margin-right: 10px;">
+                                    <input type="checkbox" id="updateMcapNifty50" checked style="margin-right: 5px;">
+                                    Nifty50
+                                </label>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                                <div>
+                                    <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 5px;">Batch Size:</label>
+                                    <input type="number" id="updateMcapBatchSize" value="10" min="1" max="50" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 5px;">Delay (seconds):</label>
+                                    <input type="number" id="updateMcapDelay" value="1.0" min="0" step="0.1" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <button onclick="updateMarketCap()" id="updateMcapBtn" class="btn" style="flex: 1; padding: 8px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer;">
+                                    Update Market Cap
+                                </button>
+                                <button onclick="stopUpdateMarketCap()" id="stopUpdateMcapBtn" class="btn" style="padding: 8px 12px; background-color: #dc3545; color: white; border: none; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer; display: none;">
+                                    Stop Update
+                                </button>
+                            </div>
+                            <div id="updateMcapStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                        </div>
+                        
+                        <!-- Fetch Yahoo Fundamentals Card -->
+                        <div style="border: 1px solid #ddd; border-radius: 4px; padding: 15px; background-color: #f8f9fa;">
+                            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 10px;">📈 Fetch Yahoo Fundamentals</h4>
+                            <div style="margin-bottom: 10px;">
+                                <label style="font-size: 12px; font-weight: 600; margin-right: 10px;">
+                                    <input type="checkbox" id="fetchYahooHoldings" checked style="margin-right: 5px;">
+                                    Holdings
+                                </label>
+                                <label style="font-size: 12px; font-weight: 600; margin-right: 10px;">
+                                    <input type="checkbox" id="fetchYahooNifty50" checked style="margin-right: 5px;">
+                                    Nifty50
+                                </label>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                                <div>
+                                    <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 5px;">Batch Size:</label>
+                                    <input type="number" id="fetchYahooBatchSize" value="5" min="1" max="20" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 5px;">Delay (seconds):</label>
+                                    <input type="number" id="fetchYahooDelay" value="3.45" min="0" step="0.1" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <button onclick="fetchYahooFundamentals()" id="fetchYahooBtn" class="btn" style="flex: 1; padding: 8px; background-color: #007bff; color: white; border: none; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer;">
+                                    Fetch Yahoo Fundamentals
+                                </button>
+                                <button onclick="stopFetchYahooFundamentals()" id="stopFetchYahooBtn" class="btn" style="padding: 8px 12px; background-color: #dc3545; color: white; border: none; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer; display: none;">
+                                    Stop Fetch
+                                </button>
+                            </div>
+                            <div id="fetchYahooStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         <!-- End Utilities Tab Content -->
@@ -1944,7 +2146,6 @@
                 { id: 'section-order-flow', title: 'Order Flow Analysis' },
                 { id: 'section-footprint', title: 'Footprint Analysis' },
                 { id: 'section-micro-levels', title: 'Critical Micro Levels' },
-                { id: 'section-options-scanner', title: 'Options Chain Scanner' }
             ],
             'holdings': [
                 { id: 'section-pnl-summary', title: 'P&L Summary' },
@@ -1960,13 +2161,26 @@
                 { id: 'section-top-gainers', title: 'Sectoral Predictions' },
                 { id: 'section-stock-search', title: 'Search Stock Prediction' }
             ],
+            'options': [
+                { id: 'section-options-scanner', title: 'Options Chain Scanner' },
+                { id: 'section-top5-options', title: 'Top 5 Options by Open Interest' },
+                { id: 'section-options-suggestions', title: 'Options Suggestions' },
+                { id: 'section-options-backtesting', title: 'Options Back-testing' }
+            ],
+            'sentiment': [
+                { id: 'section-fundamental-data', title: 'Fundamental Data' },
+                { id: 'section-news-sentiment', title: 'News Sentiment Analysis' },
+                { id: 'section-fundamental-sentiment', title: 'Fundamental Sentiment Analysis' },
+                { id: 'section-combined-sentiment', title: 'Combined Sentiment' }
+            ],
             'utilities': [
                 { id: 'section-export', title: 'Export Data' },
                 { id: 'section-import', title: 'Import Data' },
                 { id: 'section-refresh', title: 'Refresh Stock Data' },
                 { id: 'section-add-stock', title: 'Add New Stock' },
                 { id: 'section-kitews', title: 'Kite WebSocket' },
-                { id: 'section-cron', title: 'Cron Utilities' }
+                { id: 'section-cron', title: 'Cron Utilities' },
+                { id: 'section-yahoo-data', title: 'Yahoo Finance Data' }
             ]
         };
 
@@ -6220,6 +6434,160 @@
             });
         }
         
+        // Yahoo Finance Data Functions
+        let mcapAbortController = null;
+        let yahooAbortController = null;
+        
+        function updateMarketCap() {
+            const statusDiv = document.getElementById('updateMcapStatus');
+            const fetchBtn = document.getElementById('updateMcapBtn');
+            const stopBtn = document.getElementById('stopUpdateMcapBtn');
+            
+            if (!statusDiv || !fetchBtn || !stopBtn) return;
+            
+            // Clear cancellation flag when user clicks Update
+            fetch('/api/fundamentals/clear-cancel-mcap', {
+                method: 'POST'
+            }).catch(err => {
+                console.error('Error clearing cancellation flag:', err);
+            });
+            
+            // Create new abort controller
+            mcapAbortController = new AbortController();
+            
+            // Update button states
+            fetchBtn.style.display = 'none';
+            stopBtn.style.display = 'inline-block';
+            
+            statusDiv.innerHTML = '<div style="text-align: center; padding: 10px; color: #666;">Updating market cap... <br><small>Click "Stop Update" to cancel</small></div>';
+            
+            const fetchHoldings = document.getElementById('updateMcapHoldings').checked;
+            const fetchNifty50 = document.getElementById('updateMcapNifty50').checked;
+            const batchSize = parseInt(document.getElementById('updateMcapBatchSize').value) || 10;
+            const delay = parseFloat(document.getElementById('updateMcapDelay').value) || 1.0;
+            
+            let url = `/api/fundamentals/update-mcap?fetch_holdings=${fetchHoldings}&fetch_nifty50=${fetchNifty50}&batch_size=${batchSize}&delay_between_batches=${delay}`;
+            
+            fetch(url, { signal: mcapAbortController.signal })
+            .then(response => response.json())
+            .then(data => {
+                fetchBtn.style.display = 'inline-block';
+                stopBtn.style.display = 'none';
+                
+                if (data.success) {
+                    const summary = data.summary || {};
+                    statusDiv.innerHTML = `
+                        <div style="color: #28a745; font-weight: 600; margin-bottom: 5px;">✅ ${data.message}</div>
+                        <div style="font-size: 11px; color: #666;">
+                            Total: ${summary.total || 0} | Updated: ${summary.updated || 0} | Failed: ${summary.failed || 0}
+                        </div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `<div style="color: #dc3545;">❌ Error: ${data.error || 'Failed'}</div>`;
+                }
+            })
+            .catch(error => {
+                if (error.name === 'AbortError') {
+                    statusDiv.innerHTML = '<div style="color: #ffc107;">⚠️ Update cancelled by user</div>';
+                } else {
+                    statusDiv.innerHTML = `<div style="color: #dc3545;">❌ Error: ${error.message}</div>`;
+                }
+                fetchBtn.style.display = 'inline-block';
+                stopBtn.style.display = 'none';
+            });
+        }
+        
+        function stopUpdateMarketCap() {
+            if (mcapAbortController) {
+                mcapAbortController.abort();
+            }
+            
+            // Set cancellation flag on server
+            fetch('/api/fundamentals/cancel-mcap', {
+                method: 'POST'
+            }).catch(err => {
+                console.error('Error setting cancellation flag:', err);
+            });
+        }
+        
+        function fetchYahooFundamentals() {
+            const statusDiv = document.getElementById('fetchYahooStatus');
+            const fetchBtn = document.getElementById('fetchYahooBtn');
+            const stopBtn = document.getElementById('stopFetchYahooBtn');
+            
+            if (!statusDiv || !fetchBtn || !stopBtn) return;
+            
+            // Clear cancellation flag when user clicks Fetch
+            fetch('/api/fundamentals/clear-cancel-yahoo', {
+                method: 'POST'
+            }).catch(err => {
+                console.error('Error clearing cancellation flag:', err);
+            });
+            
+            // Create new abort controller
+            yahooAbortController = new AbortController();
+            
+            // Update button states
+            fetchBtn.style.display = 'none';
+            stopBtn.style.display = 'inline-block';
+            
+            statusDiv.innerHTML = '<div style="text-align: center; padding: 10px; color: #666;">Fetching Yahoo fundamentals... <br><small>Click "Stop Fetch" to cancel</small></div>';
+            
+            const fetchHoldings = document.getElementById('fetchYahooHoldings').checked;
+            const fetchNifty50 = document.getElementById('fetchYahooNifty50').checked;
+            const batchSize = parseInt(document.getElementById('fetchYahooBatchSize').value) || 5;
+            const delay = parseFloat(document.getElementById('fetchYahooDelay').value) || 3.45;
+            
+            let url = `/api/fundamentals/fetch-yahoo?fetch_holdings=${fetchHoldings}&fetch_nifty50=${fetchNifty50}&batch_size=${batchSize}&delay_between_batches=${delay}`;
+            
+            fetch(url, { signal: yahooAbortController.signal })
+            .then(response => response.json())
+            .then(data => {
+                fetchBtn.style.display = 'inline-block';
+                stopBtn.style.display = 'none';
+                
+                if (data.success) {
+                    const summary = data.summary || {};
+                    statusDiv.innerHTML = `
+                        <div style="color: #28a745; font-weight: 600; margin-bottom: 5px;">✅ ${data.message}</div>
+                        <div style="font-size: 11px; color: #666;">
+                            Total: ${summary.total || 0} | Succeeded: ${summary.succeeded || 0} | Failed: ${summary.failed || 0} | Cancelled: ${summary.cancelled || 0}
+                        </div>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `<div style="color: #dc3545;">❌ Error: ${data.error || 'Failed'}</div>`;
+                }
+            })
+            .catch(error => {
+                if (error.name === 'AbortError') {
+                    statusDiv.innerHTML = '<div style="color: #ffc107;">⚠️ Fetch cancelled by user</div>';
+                } else {
+                    statusDiv.innerHTML = `<div style="color: #dc3545;">❌ Error: ${error.message}</div>`;
+                }
+                fetchBtn.style.display = 'inline-block';
+                stopBtn.style.display = 'none';
+            });
+        }
+        
+        function stopFetchYahooFundamentals() {
+            if (yahooAbortController) {
+                yahooAbortController.abort();
+            }
+            
+            // Set cancellation flag on server
+            fetch('/api/fundamentals/cancel-yahoo', {
+                method: 'POST'
+            }).catch(err => {
+                console.error('Error setting cancellation flag:', err);
+            });
+        }
+        
+        // Clear cancellation flags on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            fetch('/api/fundamentals/clear-cancel-mcap', { method: 'POST' }).catch(() => {});
+            fetch('/api/fundamentals/clear-cancel-yahoo', { method: 'POST' }).catch(() => {});
+        });
+        
         function addNewStock() {
             const statusDiv = document.getElementById('addStockStatus');
             const btn = document.getElementById('addNewStockBtn');
@@ -6893,6 +7261,13 @@
         
         // Load initial data - ONLY Live Market tab data
         document.addEventListener('DOMContentLoaded', function() {
+            // Clear cancellation flag on page load
+            fetch('/api/fundamentals/clear-cancel', {
+                method: 'POST'
+            }).catch(err => {
+                console.error('Error clearing cancellation flag:', err);
+            });
+            
             // Only load Live Market tab data initially
             loadMarketBiasAnalysis();
             loadFuturesOrderFlow();
@@ -7012,6 +7387,24 @@
                     initMicroLevelsAutoRefresh();
                     if (!TabLoadTracker.isLoaded(tabName)) {
                         TabLoadTracker.markLoaded(tabName);
+                    }
+                } else if (tabName === 'sentiment') {
+                    // Clear cancellation flag on page load or tab switch
+                    fetch('/api/fundamentals/clear-cancel', {
+                        method: 'POST'
+                    }).catch(err => {
+                        console.error('Error clearing cancellation flag:', err);
+                    });
+                    
+                    // Load existing data when sentiment tab is opened
+                    if (!TabLoadTracker.isLoaded(tabName)) {
+                        loadExistingFundamentalData();
+                        loadExistingNewsSentiment();
+                        TabLoadTracker.markLoaded(tabName);
+                    } else {
+                        // Reload data when tab is switched to (refresh existing data)
+                        loadExistingFundamentalData();
+                        loadExistingNewsSentiment();
                     }
                 } else {
                     // Stop auto-refresh when switching away from Live Market tab
@@ -8952,6 +9345,472 @@
         // Sparklines for holdings will be loaded when holdings tab is first clicked
         // This prevents holdings API calls on initial page load
         // Note: loadSparklines() is called when holdings tab is loaded via loadHoldingsPage()
+        // Sentiment Analysis Functions
+        // Global abort controllers for cancellation
+        let fundamentalAbortController = null;
+        let newsSentimentAbortController = null;
+        
+        // Load existing fundamental data automatically
+        function loadExistingFundamentalData() {
+            const container = document.getElementById('fundamentalDataContainer');
+            const scripId = document.getElementById('fundamentalScripId').value || null;
+            const includeHoldings = document.getElementById('fetchFundamentalsHoldings').checked;
+            const includeNifty50 = document.getElementById('fetchFundamentalsNifty50').checked;
+            
+            // Use 30 days to include today's data (0 days old)
+            let url = '/api/fundamentals/list?max_days_old=30';
+            if (scripId) {
+                url += `&scrip_id=${encodeURIComponent(scripId)}`;
+            }
+            url += `&include_holdings=${includeHoldings}&include_nifty50=${includeNifty50}`;
+            
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success && data.results && data.results.length > 0) {
+                        let html = `<div style="padding: 15px;">
+                            <div style="margin-bottom: 15px; padding: 10px; background-color: #d1ecf1; border-radius: 5px; color: #0c5460;">
+                                <strong>Existing Data:</strong> Found ${data.count} stocks with fundamental data (less than 30 days old)
+                            </div>
+                            <div style="max-height: 500px; overflow-y: auto;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                                    <thead>
+                                        <tr style="background-color: #f8f9fa; position: sticky; top: 0;">
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Stock</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Sector</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Fetch Date</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Days Old</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">P/E</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">P/B</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">ROE %</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">ROCE %</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">D/E</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Current Ratio</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">EPS</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Market Cap (Cr)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>`;
+                        
+                        data.results.forEach(result => {
+                            const daysOld = result.days_old || 0;
+                            const daysOldColor = daysOld < 7 ? '#28a745' : daysOld < 15 ? '#ffc107' : '#dc3545';
+                            
+                            html += `<tr>
+                                <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">${result.scrip_id || 'N/A'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd;">${result.sector_code || '<span style="color: #999;">N/A</span>'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd;">${result.fetch_date || 'N/A'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; color: ${daysOldColor}; font-weight: bold;">${daysOld}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${result.pe_ratio != null ? result.pe_ratio.toFixed(2) : '<span style="color: #999;">N/A</span>'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${result.pb_ratio != null ? result.pb_ratio.toFixed(2) : '<span style="color: #999;">N/A</span>'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${result.roe != null ? result.roe.toFixed(2) : '<span style="color: #999;">N/A</span>'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${result.roce != null ? result.roce.toFixed(2) : '<span style="color: #999;">N/A</span>'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${result.debt_to_equity != null ? result.debt_to_equity.toFixed(2) : '<span style="color: #999;">N/A</span>'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${result.current_ratio != null ? result.current_ratio.toFixed(2) : '<span style="color: #999;">N/A</span>'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${result.eps != null ? result.eps.toFixed(2) : '<span style="color: #999;">N/A</span>'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${result.market_cap != null ? result.market_cap.toFixed(2) : '<span style="color: #999;">N/A</span>'}</td>
+                            </tr>`;
+                        });
+                        
+                        html += `</tbody></table></div>
+                            <div style="margin-top: 15px; padding: 10px; background-color: #fff3cd; border-radius: 5px; color: #856404; font-size: 11px;">
+                                <strong>Note:</strong> Data shown is less than 30 days old. Click "Fetch Fundamentals" to refresh or fetch new data.
+                            </div>
+                        </div>`;
+                        container.innerHTML = html;
+                    } else {
+                        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #666;">
+                            No existing fundamental data found (less than 30 days old).<br>
+                            Click "Fetch Fundamentals" to load data from screener.in
+                        </div>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading existing fundamental data:', error);
+                    container.innerHTML = `<div style="text-align: center; padding: 20px; color: #666;">
+                        Click "Fetch Fundamentals" to load fundamental data from screener.in
+                    </div>`;
+                });
+        }
+        
+        function fetchFundamentalData() {
+            const container = document.getElementById('fundamentalDataContainer');
+            const fetchBtn = document.getElementById('fetchFundamentalsBtn');
+            const stopBtn = document.getElementById('stopFundamentalsBtn');
+            
+            // Clear cancellation flag when user clicks Fetch
+            fetch('/api/fundamentals/clear-cancel', {
+                method: 'POST'
+            }).catch(err => {
+                console.error('Error clearing cancellation flag:', err);
+            });
+            
+            // Create new abort controller
+            fundamentalAbortController = new AbortController();
+            
+            // Update button states
+            fetchBtn.style.display = 'none';
+            stopBtn.style.display = 'inline-block';
+            
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Fetching fundamental data... <br><small>Click "Stop Fetch" to cancel</small></div>';
+            
+            const scripId = document.getElementById('fundamentalScripId').value || null;
+            const fetchHoldings = document.getElementById('fetchFundamentalsHoldings').checked;
+            const fetchNifty50 = document.getElementById('fetchFundamentalsNifty50').checked;
+            
+            let url = '/api/fundamentals/fetch?';
+            if (scripId) {
+                url += `scrip_id=${encodeURIComponent(scripId)}&`;
+            }
+            url += `fetch_holdings=${fetchHoldings}&fetch_nifty50=${fetchNifty50}`;
+            
+            fetch(url, { signal: fundamentalAbortController.signal })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Reset button states
+                    fetchBtn.style.display = 'inline-block';
+                    stopBtn.style.display = 'none';
+                    fundamentalAbortController = null;
+                    
+                    if (data.success) {
+                        // Show summary but then load and display actual fundamental data
+                        let html = `<div style="padding: 15px;">
+                            <div style="margin-bottom: 15px; padding: 10px; background-color: #d4edda; border-radius: 5px; color: #155724;">
+                                <strong>Fetch Summary:</strong> ${data.message}
+                            </div>
+                            <div style="margin-bottom: 10px; padding: 10px; background-color: #fff3cd; border-radius: 5px; color: #856404;">
+                                <strong>Note:</strong> Loading actual fundamental data...
+                            </div>
+                        </div>`;
+                        container.innerHTML = html;
+                        
+                        // Reload existing data after fetch completes to show actual metrics
+                        setTimeout(() => {
+                            loadExistingFundamentalData();
+                        }, 2000);
+                    } else {
+                        container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${data.error || 'Failed to fetch fundamental data'}</div>`;
+                    }
+                })
+                .catch(error => {
+                    // Reset button states
+                    fetchBtn.style.display = 'inline-block';
+                    stopBtn.style.display = 'none';
+                    fundamentalAbortController = null;
+                    
+                    if (error.name === 'AbortError') {
+                        console.log('Fundamental data fetch cancelled by user');
+                        container.innerHTML = '<div style="padding: 15px; color: #ffc107; text-align: center;"><strong>Fetch cancelled by user</strong></div>';
+                    } else {
+                        console.error('Error fetching fundamental data:', error);
+                        container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${error.message}</div>`;
+                    }
+                });
+        }
+        
+        function stopFetchFundamentals() {
+            // Cancel the HTTP request if it's still pending
+            if (fundamentalAbortController) {
+                fundamentalAbortController.abort();
+            }
+            
+            // Also cancel batch processing on server side
+            fetch('/api/fundamentals/cancel', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('fundamentalDataContainer');
+                if (data.success) {
+                    container.innerHTML = '<div style="padding: 15px; color: #ffc107; text-align: center;"><strong>Cancelling batch fetch...</strong><br><small>Batch processing will stop after current stock completes</small></div>';
+                } else {
+                    container.innerHTML = `<div style="padding: 15px; color: #dc3545; text-align: center;"><strong>Error:</strong> ${data.error || 'Failed to cancel'}</div>`;
+                }
+            })
+            .catch(error => {
+                console.error('Error cancelling batch fetch:', error);
+                const container = document.getElementById('fundamentalDataContainer');
+                container.innerHTML = '<div style="padding: 15px; color: #ffc107; text-align: center;"><strong>Cancelling fetch...</strong></div>';
+            });
+        }
+        
+        // Load existing news sentiment data automatically
+        function loadExistingNewsSentiment() {
+            const container = document.getElementById('newsSentimentContainer');
+            const scripId = document.getElementById('newsSentimentScripId').value || null;
+            const days = document.getElementById('newsSentimentDays').value || 7;
+            
+            let url = `/api/sentiment/list_news?max_days_old=${days}`;
+            if (scripId) {
+                url += `&scrip_id=${encodeURIComponent(scripId)}`;
+            }
+            url += `&include_holdings=true&include_nifty50=true`;
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.results && data.results.length > 0) {
+                        let html = `<div style="padding: 15px;">
+                            <div style="margin-bottom: 15px; padding: 10px; background-color: #d1ecf1; border-radius: 5px; color: #0c5460;">
+                                <strong>Existing Data:</strong> Found ${data.count} stocks with news sentiment data (less than ${days} days old)
+                            </div>
+                            <div style="max-height: 500px; overflow-y: auto;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                                    <thead>
+                                        <tr style="background-color: #f8f9fa; position: sticky; top: 0;">
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Stock</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Date</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Days Old</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">News Score</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Fundamental Score</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Combined Score</th>
+                                            <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Articles</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>`;
+                        
+                        data.results.forEach(result => {
+                            const daysOld = result.days_old || 0;
+                            const daysOldColor = daysOld < 2 ? '#28a745' : daysOld < 4 ? '#ffc107' : '#dc3545';
+                            
+                            const newsScore = result.news_sentiment_score || 0;
+                            const fundamentalScore = result.fundamental_sentiment_score || 0;
+                            const combinedScore = result.combined_sentiment_score || 0;
+                            
+                            const newsColor = newsScore > 0.1 ? '#28a745' : newsScore < -0.1 ? '#dc3545' : '#6c757d';
+                            const fundamentalColor = fundamentalScore > 0.1 ? '#28a745' : fundamentalScore < -0.1 ? '#dc3545' : '#6c757d';
+                            const combinedColor = combinedScore > 0.1 ? '#28a745' : combinedScore < -0.1 ? '#dc3545' : '#6c757d';
+                            
+                            html += `<tr>
+                                <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">${result.scrip_id}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd;">${result.calculation_date || 'N/A'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; color: ${daysOldColor}; font-weight: bold;">${daysOld}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; color: ${newsColor}; font-weight: bold;">${newsScore.toFixed(4)}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; color: ${fundamentalColor}; font-weight: bold;">${fundamentalScore.toFixed(4)}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right; color: ${combinedColor}; font-weight: bold;">${combinedScore.toFixed(4)}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${result.article_count || 0}</td>
+                            </tr>`;
+                        });
+                        
+                        html += `</tbody></table></div>
+                            <div style="margin-top: 15px; padding: 10px; background-color: #fff3cd; border-radius: 5px; color: #856404; font-size: 11px;">
+                                <strong>Note:</strong> Data shown is less than ${days} days old. Click "Analyze News" to refresh or fetch new data.
+                            </div>
+                        </div>`;
+                        container.innerHTML = html;
+                    } else {
+                        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #666;">
+                            No existing news sentiment data found (less than ${days} days old).<br>
+                            Click "Analyze News" to fetch and analyze news sentiment
+                        </div>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading existing news sentiment data:', error);
+                    container.innerHTML = `<div style="text-align: center; padding: 20px; color: #666;">
+                        Click "Analyze News" to fetch and analyze news sentiment
+                    </div>`;
+                });
+        }
+        
+        function fetchNewsSentiment() {
+            const container = document.getElementById('newsSentimentContainer');
+            const fetchBtn = document.getElementById('fetchNewsSentimentBtn');
+            const stopBtn = document.getElementById('stopNewsSentimentBtn');
+            
+            // Create new abort controller
+            newsSentimentAbortController = new AbortController();
+            
+            // Update button states
+            fetchBtn.style.display = 'none';
+            stopBtn.style.display = 'inline-block';
+            
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Analyzing news sentiment... <br><small>Click "Stop Fetch" to cancel</small></div>';
+            
+            const scripId = document.getElementById('newsSentimentScripId').value || null;
+            const days = document.getElementById('newsSentimentDays').value || 7;
+            
+            let url = `/api/sentiment/fetch_news?days=${days}`;
+            if (scripId) {
+                url += `&scrip_id=${encodeURIComponent(scripId)}`;
+            }
+            
+            fetch(url, { signal: newsSentimentAbortController.signal })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Reset button states
+                    fetchBtn.style.display = 'inline-block';
+                    stopBtn.style.display = 'none';
+                    newsSentimentAbortController = null;
+                    
+                    if (data.success) {
+                        let html = `<div style="padding: 15px;">
+                            <div style="margin-bottom: 15px; padding: 10px; background-color: #d4edda; border-radius: 5px; color: #155724;">
+                                <strong>Success:</strong> ${data.message}
+                            </div>`;
+                        
+                        if (data.results && data.results.length > 0) {
+                            html += '<div style="max-height: 400px; overflow-y: auto;"><table style="width: 100%; border-collapse: collapse; font-size: 12px;"><thead><tr style="background-color: #f8f9fa;"><th style="padding: 8px; border: 1px solid #ddd;">Stock</th><th style="padding: 8px; border: 1px solid #ddd;">Sentiment Score</th><th style="padding: 8px; border: 1px solid #ddd;">Articles</th></tr></thead><tbody>';
+                            data.results.forEach(result => {
+                                const score = result.aggregate_sentiment_score || 0;
+                                const scoreColor = score > 0.1 ? '#28a745' : score < -0.1 ? '#dc3545' : '#6c757d';
+                                html += `<tr>
+                                    <td style="padding: 8px; border: 1px solid #ddd;">${result.scrip_id}</td>
+                                    <td style="padding: 8px; border: 1px solid #ddd; color: ${scoreColor}; font-weight: bold;">${score.toFixed(4)}</td>
+                                    <td style="padding: 8px; border: 1px solid #ddd;">${result.article_count || 0}</td>
+                                </tr>`;
+                            });
+                            html += '</tbody></table></div>';
+                        }
+                        html += '</div>';
+                        container.innerHTML = html;
+                        
+                        // Reload existing data after fetch completes
+                        setTimeout(() => {
+                            loadExistingNewsSentiment();
+                        }, 1000);
+                    } else {
+                        container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${data.error || 'Failed to analyze news sentiment'}</div>`;
+                    }
+                })
+                .catch(error => {
+                    // Reset button states
+                    fetchBtn.style.display = 'inline-block';
+                    stopBtn.style.display = 'none';
+                    newsSentimentAbortController = null;
+                    
+                    if (error.name === 'AbortError') {
+                        console.log('News sentiment fetch cancelled by user');
+                        container.innerHTML = '<div style="padding: 15px; color: #ffc107; text-align: center;"><strong>Fetch cancelled by user</strong></div>';
+                    } else {
+                        console.error('Error analyzing news sentiment:', error);
+                        container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${error.message}</div>`;
+                    }
+                });
+        }
+        
+        function stopFetchNewsSentiment() {
+            if (newsSentimentAbortController) {
+                newsSentimentAbortController.abort();
+                const container = document.getElementById('newsSentimentContainer');
+                container.innerHTML = '<div style="padding: 15px; color: #ffc107; text-align: center;"><strong>Cancelling fetch...</strong></div>';
+            }
+        }
+        
+        function calculateFundamentalSentiment() {
+            const container = document.getElementById('fundamentalSentimentContainer');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Calculating fundamental sentiment...</div>';
+            
+            const scripId = document.getElementById('fundamentalSentimentScripId').value || null;
+            
+            let url = '/api/sentiment/calculate_fundamental';
+            if (scripId) {
+                url += `?scrip_id=${encodeURIComponent(scripId)}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        let html = `<div style="padding: 15px;">
+                            <div style="margin-bottom: 15px; padding: 10px; background-color: #d4edda; border-radius: 5px; color: #155724;">
+                                <strong>Success:</strong> ${data.message}
+                            </div>`;
+                        
+                        if (data.results && data.results.length > 0) {
+                            html += '<div style="max-height: 400px; overflow-y: auto;"><table style="width: 100%; border-collapse: collapse; font-size: 12px;"><thead><tr style="background-color: #f8f9fa;"><th style="padding: 8px; border: 1px solid #ddd;">Stock</th><th style="padding: 8px; border: 1px solid #ddd;">Fundamental Sentiment</th><th style="padding: 8px; border: 1px solid #ddd;">Combined Sentiment</th></tr></thead><tbody>';
+                            data.results.forEach(result => {
+                                const fundScore = result.fundamental_sentiment_score || 0;
+                                const combinedScore = result.combined_sentiment?.combined_sentiment_score || 0;
+                                const fundColor = fundScore > 0.1 ? '#28a745' : fundScore < -0.1 ? '#dc3545' : '#6c757d';
+                                const combinedColor = combinedScore > 0.1 ? '#28a745' : combinedScore < -0.1 ? '#dc3545' : '#6c757d';
+                                html += `<tr>
+                                    <td style="padding: 8px; border: 1px solid #ddd;">${result.scrip_id}</td>
+                                    <td style="padding: 8px; border: 1px solid #ddd; color: ${fundColor}; font-weight: bold;">${fundScore.toFixed(4)}</td>
+                                    <td style="padding: 8px; border: 1px solid #ddd; color: ${combinedColor}; font-weight: bold;">${combinedScore.toFixed(4)}</td>
+                                </tr>`;
+                            });
+                            html += '</tbody></table></div>';
+                        }
+                        html += '</div>';
+                        container.innerHTML = html;
+                    } else {
+                        container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${data.error || 'Failed to calculate fundamental sentiment'}</div>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error calculating fundamental sentiment:', error);
+                    container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${error.message}</div>`;
+                });
+        }
+        
+        function calculateCombinedSentiment() {
+            const container = document.getElementById('combinedSentimentContainer');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Calculating combined sentiment...</div>';
+            
+            const scripId = document.getElementById('combinedSentimentScripId').value || null;
+            const newsWeight = document.getElementById('combinedNewsWeight').value || 0.5;
+            const fundamentalWeight = document.getElementById('combinedFundamentalWeight').value || 0.5;
+            
+            // First calculate fundamental sentiment, then show combined results
+            let url = '/api/sentiment/calculate_fundamental';
+            if (scripId) {
+                url += `?scrip_id=${encodeURIComponent(scripId)}`;
+            }
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.results && data.results.length > 0) {
+                        let html = `<div style="padding: 15px;">
+                            <div style="margin-bottom: 15px; padding: 10px; background-color: #d4edda; border-radius: 5px; color: #155724;">
+                                <strong>Success:</strong> Combined sentiment calculated
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <strong>Weights:</strong> News: ${newsWeight}, Fundamental: ${fundamentalWeight}
+                            </div>
+                            <div style="max-height: 400px; overflow-y: auto;"><table style="width: 100%; border-collapse: collapse; font-size: 12px;"><thead><tr style="background-color: #f8f9fa;"><th style="padding: 8px; border: 1px solid #ddd;">Stock</th><th style="padding: 8px; border: 1px solid #ddd;">News Sentiment</th><th style="padding: 8px; border: 1px solid #ddd;">Fundamental Sentiment</th><th style="padding: 8px; border: 1px solid #ddd;">Combined Sentiment</th></tr></thead><tbody>`;
+                        data.results.forEach(result => {
+                            const combined = result.combined_sentiment || {};
+                            const newsScore = combined.news_sentiment_score || 0;
+                            const fundScore = combined.fundamental_sentiment_score || 0;
+                            const combinedScore = combined.combined_sentiment_score || 0;
+                            const newsColor = newsScore > 0.1 ? '#28a745' : newsScore < -0.1 ? '#dc3545' : '#6c757d';
+                            const fundColor = fundScore > 0.1 ? '#28a745' : fundScore < -0.1 ? '#dc3545' : '#6c757d';
+                            const combinedColor = combinedScore > 0.1 ? '#28a745' : combinedScore < -0.1 ? '#dc3545' : '#6c757d';
+                            html += `<tr>
+                                <td style="padding: 8px; border: 1px solid #ddd;">${result.scrip_id}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; color: ${newsColor}; font-weight: bold;">${newsScore.toFixed(4)}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; color: ${fundColor}; font-weight: bold;">${fundScore.toFixed(4)}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; color: ${combinedColor}; font-weight: bold; font-size: 14px;">${combinedScore.toFixed(4)}</td>
+                            </tr>`;
+                        });
+                        html += '</tbody></table></div></div>';
+                        container.innerHTML = html;
+                    } else {
+                        container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${data.error || 'Failed to calculate combined sentiment'}</div>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error calculating combined sentiment:', error);
+                    container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${error.message}</div>`;
+                });
+        }
     </script>
 </body>
 </html>

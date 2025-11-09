@@ -22,6 +22,21 @@ import psycopg2.extras
 from dotenv import load_dotenv
 from common.Boilerplate import get_db_connection
 
+# Import sentiment analysis modules
+try:
+    from sentiment.NewsSentimentAnalyzer import NewsSentimentAnalyzer
+    from sentiment.FundamentalSentimentAnalyzer import FundamentalSentimentAnalyzer
+    from sentiment.CombinedSentimentCalculator import CombinedSentimentCalculator
+    from stocks.EnsemblePredictor import EnsemblePredictor
+    SENTIMENT_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Sentiment analysis modules not available: {e}")
+    SENTIMENT_AVAILABLE = False
+    NewsSentimentAnalyzer = None
+    FundamentalSentimentAnalyzer = None
+    CombinedSentimentCalculator = None
+    EnsemblePredictor = None
+
 # Load environment variables
 load_dotenv()
 
@@ -95,18 +110,38 @@ class ProphetPricePredictor:
     Generates 30-day price predictions based on historical price data
     """
     
-    def __init__(self, prediction_days: int = 30):
+    def __init__(self, prediction_days: int = 30, enable_sentiment: bool = True):
         """
         Initialize Prophet Price Predictor
         
         Args:
             prediction_days: Number of days to predict ahead (default: 30)
+            enable_sentiment: Whether to enable sentiment analysis (default: True)
         """
         self.prediction_days = prediction_days
         self.min_data_points = 60  # Minimum days of data required for reliable forecasting
         # Check if cross-validation is enabled via environment variable
         self.enable_cross_validation = os.getenv("PROPHET_ENABLE_CROSS_VALIDATION", "false").lower() == "true"
-        logger.info(f"ProphetPricePredictor initialized: cross_validation={self.enable_cross_validation}, prediction_days={self.prediction_days}")
+        
+        # Initialize sentiment analyzers if available
+        self.enable_sentiment = enable_sentiment and SENTIMENT_AVAILABLE
+        if self.enable_sentiment:
+            try:
+                self.news_analyzer = NewsSentimentAnalyzer()
+                self.fundamental_analyzer = FundamentalSentimentAnalyzer()
+                self.combined_calculator = CombinedSentimentCalculator(news_weight=0.5, fundamental_weight=0.5)
+                self.ensemble_predictor = EnsemblePredictor(prophet_weight=0.7, sentiment_weight=0.3)
+                logger.info("Sentiment analysis modules initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize sentiment analyzers: {e}")
+                self.enable_sentiment = False
+        else:
+            self.news_analyzer = None
+            self.fundamental_analyzer = None
+            self.combined_calculator = None
+            self.ensemble_predictor = None
+        
+        logger.info(f"ProphetPricePredictor initialized: cross_validation={self.enable_cross_validation}, prediction_days={self.prediction_days}, sentiment={self.enable_sentiment}")
     
     def get_stocks_list(self) -> List[str]:
         """
@@ -730,6 +765,34 @@ class ProphetPricePredictor:
                 continue
         
         # Summary log
+        # Always generate Nifty50 60-day predictions
+        nifty50_scrip_ids = ['NIFTY50', 'Nifty_50', 'Nifty5']
+        nifty50_predicted = False
+        
+        for nifty_id in nifty50_scrip_ids:
+            try:
+                logger.info(f"Generating 60-day prediction for {nifty_id}")
+                nifty_prediction = self.predict_price(nifty_id, prediction_days=60)
+                if nifty_prediction:
+                    if save_immediately:
+                        if self.save_single_prediction(nifty_prediction, run_date=run_date, prediction_days=60):
+                            saved_count += 1
+                            nifty50_predicted = True
+                            logger.info(f"Successfully generated and saved 60-day prediction for {nifty_id}")
+                        else:
+                            logger.warning(f"Failed to save 60-day prediction for {nifty_id}")
+                    else:
+                        predictions.append(nifty_prediction)
+                        nifty50_predicted = True
+                        logger.info(f"Successfully generated 60-day prediction for {nifty_id}")
+                    break  # Successfully generated for one of the Nifty50 IDs
+            except Exception as e:
+                logger.warning(f"Error generating 60-day prediction for {nifty_id}: {e}")
+                continue
+        
+        if not nifty50_predicted:
+            logger.warning("Failed to generate Nifty50 60-day prediction")
+        
         logger.info(f"✓ Prophet predictions completed: {len(predictions)} successful, {len(skipped)} skipped, {len(errors)} errors out of {total} stocks")
         if save_immediately:
             logger.info(f"  Saved: {saved_count} predictions saved immediately, {save_failed_count} save failures")
@@ -816,11 +879,48 @@ class ProphetPricePredictor:
             conn = get_db_connection()
             cursor = conn.cursor()
             
+            # Get sentiment scores and enhanced prediction if enabled
+            news_sentiment_score = None
+            fundamental_sentiment_score = None
+            combined_sentiment_score = None
+            enhanced_predicted_price_change_pct = None
+            enhanced_prediction_confidence = None
+            sentiment_metadata = None
+            
+            if self.enable_sentiment and self.ensemble_predictor:
+                try:
+                    # Calculate combined sentiment
+                    combined_sentiment = self.combined_calculator.calculate_combined_sentiment(
+                        scrip_id, run_date
+                    )
+                    if combined_sentiment:
+                        news_sentiment_score = combined_sentiment.get('news_sentiment_score')
+                        fundamental_sentiment_score = combined_sentiment.get('fundamental_sentiment_score')
+                        combined_sentiment_score = combined_sentiment.get('combined_sentiment_score')
+                    
+                    # Enhance prediction with sentiment
+                    enhanced_prediction = self.ensemble_predictor.enhance_prediction(
+                        scrip_id,
+                        float(predicted_price_change_pct) if predicted_price_change_pct else 0.0,
+                        float(prediction_confidence),
+                        combined_sentiment_score,
+                        run_date
+                    )
+                    
+                    if enhanced_prediction:
+                        enhanced_predicted_price_change_pct = enhanced_prediction.get('enhanced_predicted_price_change_pct')
+                        enhanced_prediction_confidence = enhanced_prediction.get('enhanced_prediction_confidence')
+                        sentiment_metadata = enhanced_prediction.get('metadata')
+                except Exception as e:
+                    logger.warning(f"Error calculating sentiment for {scrip_id}: {e}")
+            
             insert_query = """
                 INSERT INTO my_schema.prophet_predictions 
                 (scrip_id, run_date, prediction_days, current_price, predicted_price_30d, 
-                 predicted_price_change_pct, prediction_confidence, prediction_details, status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 predicted_price_change_pct, prediction_confidence, prediction_details, status,
+                 news_sentiment_score, fundamental_sentiment_score, combined_sentiment_score,
+                 enhanced_predicted_price_change_pct, enhanced_prediction_confidence, sentiment_metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (scrip_id, run_date, prediction_days) 
                 DO UPDATE SET
                     current_price = EXCLUDED.current_price,
@@ -828,10 +928,18 @@ class ProphetPricePredictor:
                     predicted_price_change_pct = EXCLUDED.predicted_price_change_pct,
                     prediction_confidence = EXCLUDED.prediction_confidence,
                     prediction_details = EXCLUDED.prediction_details,
-                    status = EXCLUDED.status
+                    status = EXCLUDED.status,
+                    news_sentiment_score = EXCLUDED.news_sentiment_score,
+                    fundamental_sentiment_score = EXCLUDED.fundamental_sentiment_score,
+                    combined_sentiment_score = EXCLUDED.combined_sentiment_score,
+                    enhanced_predicted_price_change_pct = EXCLUDED.enhanced_predicted_price_change_pct,
+                    enhanced_prediction_confidence = EXCLUDED.enhanced_prediction_confidence,
+                    sentiment_metadata = EXCLUDED.sentiment_metadata
             """
             
             try:
+                sentiment_metadata_json = json.dumps(sentiment_metadata) if sentiment_metadata else None
+                
                 cursor.execute(insert_query, (
                     scrip_id,
                     run_date,
@@ -841,7 +949,13 @@ class ProphetPricePredictor:
                     float(predicted_price_change_pct) if predicted_price_change_pct is not None else None,
                     float(prediction_confidence),
                     json.dumps(convert_numpy_to_native(prediction_details)),
-                    'ACTIVE'
+                    'ACTIVE',
+                    float(news_sentiment_score) if news_sentiment_score is not None else None,
+                    float(fundamental_sentiment_score) if fundamental_sentiment_score is not None else None,
+                    float(combined_sentiment_score) if combined_sentiment_score is not None else None,
+                    float(enhanced_predicted_price_change_pct) if enhanced_predicted_price_change_pct is not None else None,
+                    float(enhanced_prediction_confidence) if enhanced_prediction_confidence is not None else None,
+                    sentiment_metadata_json
                 ))
                 conn.commit()
                 logger.debug(f"Successfully saved prediction for {scrip_id}")

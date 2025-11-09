@@ -6,7 +6,7 @@ from fastapi import Request, Query, Form, File, UploadFile, Body
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from typing import Optional, List
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import json
 
 # Helper function to add cache headers based on endpoint refresh frequency
@@ -108,6 +108,7 @@ def cached_json_response(data: dict, endpoint_path: str) -> JSONResponse:
 import io
 import psycopg2
 import psycopg2.extras
+from psycopg2.extras import RealDictCursor
 import pandas as pd
 import numpy as np
 try:
@@ -446,7 +447,6 @@ def get_system_status():
         'tick_data': tick_status,
         'last_update': last_update_value
     }
-
 # Helper function to enrich holdings with today's P&L
 def enrich_holdings_with_today_pnl(holdings_data):
     """Enrich holdings data with today's P&L from rt_intraday_price"""
@@ -1089,7 +1089,6 @@ async def api_refresh_futures():
     except Exception as e:
         logging.error(f"Error refreshing futures data: {e}")
         return {"success": False, "error": str(e)}
-
 @app.post("/api/start_kitews")
 async def api_start_kitews():
     """API endpoint to start KiteWS and run it until 3:30 PM IST"""
@@ -2764,20 +2763,802 @@ async def api_swing_trades_nifty(
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
 
+@app.get("/api/fundamentals/list")
+async def api_list_fundamentals(
+    scrip_id: Optional[str] = Query(None, description="Specific stock symbol to get (default: all holdings and Nifty50)"),
+    include_holdings: bool = Query(True, description="Include fundamentals for all holdings"),
+    include_nifty50: bool = Query(True, description="Include fundamentals for Nifty50 stocks"),
+    max_days_old: int = Query(30, description="Maximum age of data in days (default: 30)")
+):
+    """API endpoint to get existing fundamental data from database (less than max_days_old)"""
+    try:
+        # Ensure max_days_old is a valid integer
+        try:
+            max_days_old = int(max_days_old) if max_days_old is not None else 30
+            if max_days_old < 0:
+                max_days_old = 30
+        except (ValueError, TypeError):
+            max_days_old = 30
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        results = []
+        
+        if scrip_id:
+            # Get for specific stock - get the latest entry
+            cursor.execute("""
+                SELECT 
+                    fd.scrip_id, fd.fetch_date, fd.pe_ratio, fd.pb_ratio, fd.debt_to_equity,
+                    fd.roe, fd.roce, fd.current_ratio, fd.quick_ratio, fd.eps,
+                    fd.revenue_growth, fd.profit_growth, fd.dividend_yield, 
+                    COALESCE(ms.scrip_mcap, fd.market_cap) as market_cap,
+                    ms.scrip_mcap as master_mcap,
+                    CURRENT_DATE - fd.fetch_date as days_old,
+                    ms.sector_code, ms.scrip_group, ms.yahoo_code
+                FROM my_schema.fundamental_data fd
+                LEFT JOIN my_schema.master_scrips ms ON ms.scrip_id = fd.scrip_id
+                WHERE fd.scrip_id = %s
+                AND fd.fetch_date >= CURRENT_DATE - %s::integer
+                ORDER BY fd.fetch_date DESC
+                LIMIT 1
+            """, [scrip_id, max_days_old])
+            
+            result = cursor.fetchone()
+            if result:
+                results.append(dict(result))
+        else:
+            # If both include_holdings and include_nifty50 are True, get ALL fundamental data
+            # Otherwise, filter based on the flags
+            if include_holdings and include_nifty50:
+                # Get ALL fundamental data (most common case)
+                cursor.execute("""
+                    SELECT DISTINCT ON (fd.scrip_id)
+                        fd.scrip_id, fd.fetch_date, fd.pe_ratio, fd.pb_ratio, fd.debt_to_equity,
+                        fd.roe, fd.roce, fd.current_ratio, fd.quick_ratio, fd.eps,
+                        fd.revenue_growth, fd.profit_growth, fd.dividend_yield, 
+                        COALESCE(ms.scrip_mcap, fd.market_cap) as market_cap,
+                        ms.scrip_mcap as master_mcap,
+                        CURRENT_DATE - fd.fetch_date as days_old,
+                        ms.sector_code, ms.scrip_group, ms.yahoo_code
+                    FROM my_schema.fundamental_data fd
+                    LEFT JOIN my_schema.master_scrips ms ON ms.scrip_id = fd.scrip_id
+                    WHERE fd.fetch_date >= CURRENT_DATE - %s::integer
+                    ORDER BY fd.scrip_id, fd.fetch_date DESC
+                """, [max_days_old])
+                
+                all_results = cursor.fetchall()
+                results.extend([dict(row) for row in all_results])
+            else:
+                # Get for holdings only
+                if include_holdings:
+                    cursor.execute("""
+                        SELECT DISTINCT ON (fd.scrip_id)
+                            fd.scrip_id, fd.fetch_date, fd.pe_ratio, fd.pb_ratio, fd.debt_to_equity,
+                            fd.roe, fd.roce, fd.current_ratio, fd.quick_ratio, fd.eps,
+                            fd.revenue_growth, fd.profit_growth, fd.dividend_yield, 
+                            COALESCE(ms.scrip_mcap, fd.market_cap) as market_cap,
+                            ms.scrip_mcap as master_mcap,
+                            CURRENT_DATE - fd.fetch_date as days_old,
+                            ms.sector_code, ms.scrip_group, ms.yahoo_code
+                        FROM my_schema.fundamental_data fd
+                        LEFT JOIN my_schema.master_scrips ms ON ms.scrip_id = fd.scrip_id
+                        WHERE EXISTS (
+                            SELECT 1 FROM my_schema.holdings h 
+                            WHERE h.trading_symbol = fd.scrip_id
+                        )
+                        AND fd.fetch_date >= CURRENT_DATE - %s::integer
+                        ORDER BY fd.scrip_id, fd.fetch_date DESC
+                    """, [max_days_old])
+                    
+                    holdings_results = cursor.fetchall()
+                    results.extend([dict(row) for row in holdings_results])
+                
+                # Get for Nifty50 only - get individual constituents (Nifty50 is an index, not a stock)
+                if include_nifty50:
+                    # Ensure max_days_old is a valid integer for this query
+                    try:
+                        query_max_days = int(max_days_old) if max_days_old is not None else 30
+                        if query_max_days < 0:
+                            query_max_days = 30
+                    except (ValueError, TypeError):
+                        query_max_days = 30
+                    
+                    # Ensure we have a valid parameter list - use same syntax as other queries
+                    # Note: In psycopg2, literal % characters must be escaped as %%
+                    cursor.execute("""
+                        SELECT DISTINCT ON (fd.scrip_id)
+                            fd.scrip_id, fd.fetch_date, fd.pe_ratio, fd.pb_ratio, fd.debt_to_equity,
+                            fd.roe, fd.roce, fd.current_ratio, fd.quick_ratio, fd.eps,
+                            fd.revenue_growth, fd.profit_growth, fd.dividend_yield, 
+                            COALESCE(ms.scrip_mcap, fd.market_cap) as market_cap,
+                            ms.scrip_mcap as master_mcap,
+                            CURRENT_DATE - fd.fetch_date as days_old,
+                            ms.sector_code, ms.scrip_group, ms.yahoo_code
+                        FROM my_schema.fundamental_data fd
+                        LEFT JOIN my_schema.master_scrips ms ON ms.scrip_id = fd.scrip_id
+                        WHERE ms.scrip_id IS NOT NULL
+                        AND (ms.scrip_group LIKE '%%NIFTY50%%' OR ms.scrip_group LIKE '%%NIFTY_50%%' OR ms.scrip_group = 'NIFTY50')
+                        AND fd.scrip_id NOT IN ('NIFTY50', 'Nifty_50', 'Nifty5')
+                        AND fd.fetch_date >= CURRENT_DATE - %s::integer
+                        ORDER BY fd.scrip_id, fd.fetch_date DESC
+                    """, (query_max_days,))
+                    
+                    nifty50_results = cursor.fetchall()
+                    results.extend([dict(row) for row in nifty50_results])
+        
+        cursor.close()
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": f"Found {len(results)} stocks with fundamental data (less than {max_days_old} days old)",
+            "results": results,
+            "count": len(results)
+        }
+    except Exception as e:
+        logging.error(f"Error listing fundamentals: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+@app.post("/api/fundamentals/cancel")
+async def api_cancel_fundamentals_fetch():
+    """API endpoint to cancel ongoing fundamental data batch fetch"""
+    try:
+        from fundamentals.ScreenerDataFetcher import ScreenerDataFetcher
+        
+        fetcher = ScreenerDataFetcher()
+        fetcher.set_cancellation_flag(True)
+        logging.info("Cancellation flag set - user clicked Stop Fetch")
+        
+        return {
+            "success": True,
+            "message": "Fundamental data batch fetch cancellation requested"
+        }
+    except Exception as e:
+        logging.error(f"Error cancelling fundamental fetch: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/api/fundamentals/clear-cancel")
+async def api_clear_cancel_flag():
+    """API endpoint to clear cancellation flag (called on page load or when fetch starts)"""
+    try:
+        from fundamentals.ScreenerDataFetcher import ScreenerDataFetcher
+        
+        fetcher = ScreenerDataFetcher()
+        fetcher.set_cancellation_flag(False)
+        logging.info("Cancellation flag cleared - page load or fetch started")
+        
+        return {
+            "success": True,
+            "message": "Cancellation flag cleared"
+        }
+    except Exception as e:
+        logging.error(f"Error clearing cancellation flag: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.get("/api/fundamentals/update-mcap")
+@app.post("/api/fundamentals/update-mcap")
+async def api_update_mcap(
+    scrip_id: Optional[str] = Query(None, description="Specific stock symbol to update (default: all holdings and Nifty50)"),
+    fetch_holdings: bool = Query(True, description="Update market cap for all holdings"),
+    fetch_nifty50: bool = Query(True, description="Update market cap for Nifty50 stocks"),
+    batch_size: int = Query(10, description="Number of stocks to process in each batch (default: 10)"),
+    delay_between_batches: float = Query(1.0, description="Delay in seconds between batches (default: 1.0)")
+):
+    """API endpoint to update market cap from Yahoo Finance (monthly refresh)"""
+    try:
+        from fundamentals.FetchMCap import MarketCapFetcher
+        
+        fetcher = MarketCapFetcher()
+        # Clear cancellation flag at start of new update (user clicked Update)
+        fetcher.set_cancellation_flag(False)
+        logging.info("Cancellation flag cleared - starting new market cap update")
+        
+        scrip_ids = [scrip_id] if scrip_id else None
+        
+        result = fetcher.update_mcap(
+            scrip_ids=scrip_ids,
+            fetch_holdings=fetch_holdings,
+            fetch_nifty50=fetch_nifty50,
+            batch_size=batch_size,
+            delay_between_batches=delay_between_batches
+        )
+        
+        return {
+            "success": result.get('success', True),
+            "message": f"Market cap update: {result.get('updated', 0)} updated, {result.get('failed', 0)} failed",
+            "summary": {
+                "total": result.get('total', 0),
+                "updated": result.get('updated', 0),
+                "failed": result.get('failed', 0)
+            },
+            "results": result.get('results', []),
+            "note": "Market cap is updated monthly"
+        }
+    except Exception as e:
+        logging.error(f"Error updating market cap: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.post("/api/fundamentals/cancel-mcap")
+async def api_cancel_mcap():
+    """API endpoint to cancel market cap update batch processing"""
+    try:
+        from fundamentals.FetchMCap import MarketCapFetcher
+        
+        fetcher = MarketCapFetcher()
+        fetcher.set_cancellation_flag(True)
+        logging.info("Market cap update cancellation requested")
+        
+        return {
+            "success": True,
+            "message": "Market cap update batch cancellation requested"
+        }
+    except Exception as e:
+        logging.error(f"Error cancelling market cap update: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.post("/api/fundamentals/clear-cancel-mcap")
+async def api_clear_cancel_mcap():
+    """API endpoint to clear cancellation flag for market cap update"""
+    try:
+        from fundamentals.FetchMCap import MarketCapFetcher
+        
+        fetcher = MarketCapFetcher()
+        fetcher.set_cancellation_flag(False)
+        logging.info("Market cap update cancellation flag cleared")
+        
+        return {
+            "success": True,
+            "message": "Cancellation flag cleared"
+        }
+    except Exception as e:
+        logging.error(f"Error clearing cancellation flag: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.get("/api/fundamentals/fetch-yahoo")
+@app.post("/api/fundamentals/fetch-yahoo")
+async def api_fetch_yahoo_fundamentals(
+    scrip_id: Optional[str] = Query(None, description="Specific stock symbol to fetch (default: all holdings and Nifty50)"),
+    fetch_holdings: bool = Query(True, description="Fetch Yahoo fundamentals for all holdings"),
+    fetch_nifty50: bool = Query(True, description="Fetch Yahoo fundamentals for Nifty50 stocks"),
+    batch_size: int = Query(5, description="Number of stocks to process in each batch (default: 5)"),
+    delay_between_batches: float = Query(3.45, description="Delay in seconds between batches (default: 3.45)")
+):
+    """API endpoint to fetch Yahoo Finance fundamentals (actions, income, insider transactions) (monthly refresh)"""
+    try:
+        from fundamentals.FetchFundamentals import YahooFundamentalsFetcher
+        
+        fetcher = YahooFundamentalsFetcher()
+        # Clear cancellation flag at start of new fetch (user clicked Fetch)
+        fetcher.set_cancellation_flag(False)
+        logging.info("Cancellation flag cleared - starting new Yahoo fundamentals fetch")
+        
+        scrip_ids = [scrip_id] if scrip_id else None
+        
+        result = fetcher.fetch_fundamentals_for_missing_stocks(
+            scrip_ids=scrip_ids,
+            fetch_holdings=fetch_holdings,
+            fetch_nifty50=fetch_nifty50,
+            batch_size=batch_size,
+            delay_between_batches=delay_between_batches
+        )
+        
+        return {
+            "success": result.get('success', True),
+            "message": f"Yahoo fundamentals: {result.get('succeeded', 0)} succeeded, {result.get('failed', 0)} failed, {result.get('cancelled', 0)} cancelled",
+            "summary": {
+                "total": result.get('total', 0),
+                "succeeded": result.get('succeeded', 0),
+                "failed": result.get('failed', 0),
+                "cancelled": result.get('cancelled', 0)
+            },
+            "results": result.get('results', []),
+            "note": "Yahoo fundamentals are fetched monthly"
+        }
+    except Exception as e:
+        logging.error(f"Error fetching Yahoo fundamentals: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.post("/api/fundamentals/cancel-yahoo")
+async def api_cancel_yahoo():
+    """API endpoint to cancel Yahoo fundamentals fetch batch processing"""
+    try:
+        from fundamentals.FetchFundamentals import YahooFundamentalsFetcher
+        
+        fetcher = YahooFundamentalsFetcher()
+        fetcher.set_cancellation_flag(True)
+        logging.info("Yahoo fundamentals fetch cancellation requested")
+        
+        return {
+            "success": True,
+            "message": "Yahoo fundamentals fetch batch cancellation requested"
+        }
+    except Exception as e:
+        logging.error(f"Error cancelling Yahoo fundamentals fetch: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.post("/api/fundamentals/clear-cancel-yahoo")
+async def api_clear_cancel_yahoo():
+    """API endpoint to clear cancellation flag for Yahoo fundamentals fetch"""
+    try:
+        from fundamentals.FetchFundamentals import YahooFundamentalsFetcher
+        
+        fetcher = YahooFundamentalsFetcher()
+        fetcher.set_cancellation_flag(False)
+        logging.info("Yahoo fundamentals fetch cancellation flag cleared")
+        
+        return {
+            "success": True,
+            "message": "Cancellation flag cleared"
+        }
+    except Exception as e:
+        logging.error(f"Error clearing cancellation flag: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.get("/api/fundamentals/fetch")
+async def api_fetch_fundamentals(
+    scrip_id: Optional[str] = Query(None, description="Specific stock symbol to fetch (default: all holdings and Nifty50)"),
+    fetch_holdings: bool = Query(True, description="Fetch fundamentals for all holdings"),
+    fetch_nifty50: bool = Query(True, description="Fetch fundamentals for Nifty50 stocks"),
+    force_refresh: bool = Query(False, description="Force fetch even if recent data exists (default: only fetch if >30 days old)")
+):
+    """API endpoint to fetch fundamental data from screener.in (monthly refresh by default)"""
+    try:
+        from fundamentals.ScreenerDataFetcher import ScreenerDataFetcher
+        
+        fetcher = ScreenerDataFetcher()
+        # Clear cancellation flag at start of new fetch (user clicked Fetch)
+        fetcher.set_cancellation_flag(False)
+        logging.info("Cancellation flag cleared - starting new fetch")
+        results = []
+        
+        if scrip_id:
+            # Fetch for specific stock - check database first
+            logging.info(f"Checking database for {scrip_id} before fetching from internet")
+            
+            # First check if data exists in database
+            if fetcher.has_fundamental_data(scrip_id):
+                # Data exists, check if we need to refresh (based on age or force_refresh)
+                if not fetcher.needs_fundamental_fetch(scrip_id, days_threshold=30, force_refresh=force_refresh):
+                    logging.info(f"Skipping {scrip_id} - fundamental data exists in database and is recent (less than 30 days old)")
+                    results.append({'scrip_id': scrip_id, 'status': 'skipped', 'reason': 'Data exists in database and is recent'})
+                else:
+                    logging.info(f"Data exists for {scrip_id} but is old or force_refresh is True, fetching from internet...")
+                    data = fetcher.fetch_fundamental_data(scrip_id)
+                    if data:
+                        fetch_date = date.today()
+                        fetcher.save_fundamental_data(scrip_id, data, fetch_date=fetch_date)
+                        results.append({'scrip_id': scrip_id, 'status': 'success', 'data': data, 'fetch_date': str(fetch_date)})
+                    else:
+                        results.append({'scrip_id': scrip_id, 'status': 'failed', 'error': 'No data returned from internet'})
+            else:
+                logging.info(f"No data in database for {scrip_id}, fetching from internet...")
+                data = fetcher.fetch_fundamental_data(scrip_id)
+                if data:
+                    fetch_date = date.today()
+                    fetcher.save_fundamental_data(scrip_id, data, fetch_date=fetch_date)
+                    results.append({'scrip_id': scrip_id, 'status': 'success', 'data': data, 'fetch_date': str(fetch_date)})
+                else:
+                    results.append({'scrip_id': scrip_id, 'status': 'failed', 'error': 'No data returned from internet'})
+        else:
+            # Fetch for holdings (only if >30 days old, unless forced) - in batches
+            if fetch_holdings:
+                logging.info("Checking and fetching fundamentals for all holdings (monthly refresh, batch processing)")
+                holdings_results = fetcher.fetch_all_holdings_fundamentals(
+                    force_refresh=force_refresh,
+                    days_threshold=30,
+                    batch_size=5,  # Process 5 stocks at a time
+                    delay_between_batches=0.0  # No delay between batches
+                )
+                results.extend(holdings_results)
+            
+            # Fetch for Nifty50 (only if >30 days old, unless forced) - in batches
+            if fetch_nifty50:
+                logging.info("Checking and fetching fundamentals for Nifty50 stocks (monthly refresh, batch processing)")
+                nifty50_results = fetcher.fetch_nifty50_fundamentals(
+                    force_refresh=force_refresh,
+                    days_threshold=30,
+                    batch_size=5,  # Process 5 stocks at a time
+                    delay_between_batches=0.0  # No delay between batches
+                )
+                results.extend(nifty50_results)
+        
+        success_count = sum(1 for r in results if r.get('status') == 'success')
+        skipped_count = sum(1 for r in results if r.get('status') == 'skipped')
+        failed_count = len(results) - success_count - skipped_count
+        
+        return {
+            "success": True,
+            "message": f"Fundamentals: {success_count} fetched, {skipped_count} skipped (recent data), {failed_count} failed",
+            "results": results,
+            "summary": {
+                "total": len(results),
+                "success": success_count,
+                "skipped": skipped_count,
+                "failed": failed_count
+            },
+            "note": "Fundamental data is fetched monthly (only if data is >30 days old) unless force_refresh=true"
+        }
+    except Exception as e:
+        logging.error(f"Error fetching fundamentals: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.get("/api/sentiment/list_news")
+async def api_list_news_sentiment(
+    scrip_id: Optional[str] = Query(None, description="Specific stock symbol to get (default: all holdings and Nifty50)"),
+    include_holdings: bool = Query(True, description="Include sentiment for all holdings"),
+    include_nifty50: bool = Query(True, description="Include sentiment for Nifty50 stocks"),
+    max_days_old: int = Query(7, description="Maximum age of data in days (default: 7)")
+):
+    """API endpoint to get existing news sentiment data from database (recent data)"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        results = []
+        
+        if scrip_id:
+            # Get for specific stock - get latest combined sentiment
+            cursor.execute("""
+                SELECT 
+                    cs.scrip_id, cs.calculation_date, 
+                    cs.news_sentiment_score, cs.fundamental_sentiment_score, cs.combined_sentiment_score,
+                    cs.news_weight, cs.fundamental_weight,
+                    COUNT(DISTINCT ns.id) as article_count,
+                    CURRENT_DATE - cs.calculation_date as days_old
+                FROM my_schema.combined_sentiment cs
+                LEFT JOIN my_schema.news_sentiment ns ON ns.scrip_id = cs.scrip_id 
+                    AND ns.article_date >= cs.calculation_date - INTERVAL '7 days'
+                WHERE cs.scrip_id = %s
+                AND CURRENT_DATE - cs.calculation_date <= %s::integer
+                GROUP BY cs.scrip_id, cs.calculation_date, cs.news_sentiment_score, 
+                         cs.fundamental_sentiment_score, cs.combined_sentiment_score,
+                         cs.news_weight, cs.fundamental_weight
+                ORDER BY cs.calculation_date DESC
+                LIMIT 1
+            """, [scrip_id, max_days_old])
+            
+            result = cursor.fetchone()
+            if result:
+                results.append(dict(result))
+        else:
+            # Get for holdings
+            if include_holdings:
+                cursor.execute("""
+                    SELECT DISTINCT ON (cs.scrip_id)
+                        cs.scrip_id, cs.calculation_date, 
+                        cs.news_sentiment_score, cs.fundamental_sentiment_score, cs.combined_sentiment_score,
+                        cs.news_weight, cs.fundamental_weight,
+                        COUNT(DISTINCT ns.id) as article_count,
+                        CURRENT_DATE - cs.calculation_date as days_old
+                    FROM my_schema.combined_sentiment cs
+                    JOIN my_schema.holdings h ON h.trading_symbol = cs.scrip_id
+                    LEFT JOIN my_schema.news_sentiment ns ON ns.scrip_id = cs.scrip_id 
+                        AND ns.article_date >= cs.calculation_date - INTERVAL '7 days'
+                    WHERE CURRENT_DATE - cs.calculation_date <= %s::integer
+                    GROUP BY cs.scrip_id, cs.calculation_date, cs.news_sentiment_score, 
+                             cs.fundamental_sentiment_score, cs.combined_sentiment_score,
+                             cs.news_weight, cs.fundamental_weight
+                    ORDER BY cs.scrip_id, cs.calculation_date DESC
+                """, [max_days_old])
+                
+                holdings_results = cursor.fetchall()
+                results.extend([dict(row) for row in holdings_results])
+            
+            # Get for Nifty50
+            if include_nifty50:
+                cursor.execute("""
+                    SELECT DISTINCT ON (cs.scrip_id)
+                        cs.scrip_id, cs.calculation_date, 
+                        cs.news_sentiment_score, cs.fundamental_sentiment_score, cs.combined_sentiment_score,
+                        cs.news_weight, cs.fundamental_weight,
+                        COUNT(DISTINCT ns.id) as article_count,
+                        CURRENT_DATE - cs.calculation_date as days_old
+                    FROM my_schema.combined_sentiment cs
+                    JOIN my_schema.master_scrips ms ON ms.scrip_id = cs.scrip_id
+                    LEFT JOIN my_schema.news_sentiment ns ON ns.scrip_id = cs.scrip_id 
+                        AND ns.article_date >= cs.calculation_date - INTERVAL '7 days'
+                    WHERE (ms.scrip_group LIKE '%NIFTY50%' OR ms.scrip_group LIKE '%NIFTY_50%' OR ms.scrip_group = 'NIFTY50')
+                    AND cs.scrip_id NOT IN ('NIFTY50', 'Nifty_50', 'Nifty5')
+                    AND CURRENT_DATE - cs.calculation_date <= %s::integer
+                    GROUP BY cs.scrip_id, cs.calculation_date, cs.news_sentiment_score, 
+                             cs.fundamental_sentiment_score, cs.combined_sentiment_score,
+                             cs.news_weight, cs.fundamental_weight
+                    ORDER BY cs.scrip_id, cs.calculation_date DESC
+                """, [max_days_old])
+                
+                nifty50_results = cursor.fetchall()
+                results.extend([dict(row) for row in nifty50_results])
+        
+        cursor.close()
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": f"Found {len(results)} stocks with news sentiment data (less than {max_days_old} days old)",
+            "results": results,
+            "count": len(results)
+        }
+    except Exception as e:
+        logging.error(f"Error listing news sentiment: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.get("/api/sentiment/fetch_news")
+async def api_fetch_news_sentiment(
+    scrip_id: Optional[str] = Query(None, description="Specific stock symbol to analyze (default: all holdings and Nifty50)"),
+    days: int = Query(7, description="Number of days to look back for news (default: 7)")
+):
+    """API endpoint to fetch and analyze news sentiment"""
+    try:
+        from sentiment.NewsSentimentAnalyzer import NewsSentimentAnalyzer
+        
+        analyzer = NewsSentimentAnalyzer()
+        results = []
+        
+        if scrip_id:
+            # Analyze for specific stock
+            logging.info(f"Analyzing news sentiment for {scrip_id}")
+            result = analyzer.fetch_and_analyze(scrip_id, days)
+            if result:
+                results.append(result)
+        else:
+            # Analyze for all holdings and Nifty50
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Get holdings
+            cursor.execute("""
+                SELECT DISTINCT ms.scrip_id
+                FROM my_schema.holdings h
+                JOIN my_schema.master_scrips ms ON h.trading_symbol = ms.scrip_id
+            """)
+            holdings = [row[0] for row in cursor.fetchall()]
+            
+            # Get Nifty50 stocks
+            cursor.execute("""
+                SELECT DISTINCT scrip_id
+                FROM my_schema.master_scrips
+                WHERE (scrip_group LIKE '%NIFTY50%' OR scrip_group LIKE '%NIFTY_50%' OR scrip_group = 'NIFTY50')
+                AND scrip_id NOT IN ('NIFTY50', 'Nifty_50', 'Nifty5')
+            """)
+            nifty50_stocks = [row[0] for row in cursor.fetchall()]
+            
+            cursor.close()
+            conn.close()
+            
+            all_stocks = list(set(holdings + nifty50_stocks))
+            
+            for stock in all_stocks:
+                try:
+                    logging.info(f"Analyzing news sentiment for {stock}")
+                    result = analyzer.fetch_and_analyze(stock, days)
+                    if result:
+                        results.append(result)
+                except Exception as e:
+                    logging.warning(f"Error analyzing news sentiment for {stock}: {e}")
+                    continue
+        
+        return {
+            "success": True,
+            "message": f"Analyzed news sentiment for {len(results)} stocks",
+            "results": results
+        }
+    except Exception as e:
+        logging.error(f"Error fetching news sentiment: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.get("/api/sentiment/calculate_fundamental")
+async def api_calculate_fundamental_sentiment(
+    scrip_id: Optional[str] = Query(None, description="Specific stock symbol to analyze (default: all holdings and Nifty50)")
+):
+    """API endpoint to calculate fundamental sentiment"""
+    try:
+        from sentiment.FundamentalSentimentAnalyzer import FundamentalSentimentAnalyzer
+        from sentiment.CombinedSentimentCalculator import CombinedSentimentCalculator
+        
+        fundamental_analyzer = FundamentalSentimentAnalyzer()
+        combined_calculator = CombinedSentimentCalculator()
+        results = []
+        
+        if scrip_id:
+            # Analyze for specific stock
+            logging.info(f"Calculating fundamental sentiment for {scrip_id}")
+            sentiment_score = fundamental_analyzer.calculate_fundamental_sentiment(scrip_id)
+            combined_sentiment = combined_calculator.calculate_combined_sentiment(scrip_id)
+            results.append({
+                'scrip_id': scrip_id,
+                'fundamental_sentiment_score': sentiment_score,
+                'combined_sentiment': combined_sentiment
+            })
+        else:
+            # Analyze for all holdings and Nifty50
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Get holdings
+            cursor.execute("""
+                SELECT DISTINCT ms.scrip_id
+                FROM my_schema.holdings h
+                JOIN my_schema.master_scrips ms ON h.trading_symbol = ms.scrip_id
+            """)
+            holdings = [row[0] for row in cursor.fetchall()]
+            
+            # Get Nifty50 stocks
+            cursor.execute("""
+                SELECT DISTINCT scrip_id
+                FROM my_schema.master_scrips
+                WHERE (scrip_group LIKE '%NIFTY50%' OR scrip_group LIKE '%NIFTY_50%' OR scrip_group = 'NIFTY50')
+                AND scrip_id NOT IN ('NIFTY50', 'Nifty_50', 'Nifty5')
+            """)
+            nifty50_stocks = [row[0] for row in cursor.fetchall()]
+            
+            cursor.close()
+            conn.close()
+            
+            all_stocks = list(set(holdings + nifty50_stocks))
+            
+            for stock in all_stocks:
+                try:
+                    logging.info(f"Calculating fundamental sentiment for {stock}")
+                    sentiment_score = fundamental_analyzer.calculate_fundamental_sentiment(stock)
+                    combined_sentiment = combined_calculator.calculate_combined_sentiment(stock)
+                    results.append({
+                        'scrip_id': stock,
+                        'fundamental_sentiment_score': sentiment_score,
+                        'combined_sentiment': combined_sentiment
+                    })
+                except Exception as e:
+                    logging.warning(f"Error calculating fundamental sentiment for {stock}: {e}")
+                    continue
+        
+        return {
+            "success": True,
+            "message": f"Calculated fundamental sentiment for {len(results)} stocks",
+            "results": results
+        }
+    except Exception as e:
+        logging.error(f"Error calculating fundamental sentiment: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
 @app.get("/api/prophet_predictions/generate")
 async def api_generate_prophet_predictions(
     prediction_days: int = Query(30, description="Number of days to predict ahead (default: 30, supports 30, 60, 90, 180, etc.)"),
-    limit: int = Query(None, description="Limit number of stocks to process (default: all)")
+    limit: int = Query(None, description="Limit number of stocks to process (default: all)"),
+    fetch_fundamentals: bool = Query(True, description="Check and fetch fundamental data if >30 days old (monthly refresh)"),
+    force_fundamentals: bool = Query(False, description="Force fetch fundamentals even if recent data exists"),
+    fetch_sentiment: bool = Query(True, description="Fetch and calculate sentiment (always daily)")
 ):
-    """API endpoint to generate Prophet price predictions for all stocks (always regenerates)"""
+    """API endpoint to generate Prophet price predictions for all stocks with sentiment analysis (always regenerates)"""
     try:
         from stocks.ProphetPricePredictor import ProphetPricePredictor
         from datetime import date
         
-        predictor = ProphetPricePredictor(prediction_days=prediction_days)
         run_date = date.today()
         
-        # Always regenerate predictions (force=true behavior)
+        # Step 1: Fetch fundamental data if requested (only if >30 days old, unless forced)
+        # Fundamental data doesn't change frequently, so we fetch monthly
+        if fetch_fundamentals:
+            try:
+                logging.info("Checking and fetching fundamental data (monthly refresh)...")
+                from fundamentals.ScreenerDataFetcher import ScreenerDataFetcher
+                fetcher = ScreenerDataFetcher()
+                fetcher.fetch_all_holdings_fundamentals(force_refresh=force_fundamentals, days_threshold=30)
+                fetcher.fetch_nifty50_fundamentals(force_refresh=force_fundamentals, days_threshold=30)
+                logging.info("Fundamental data check/fetch completed (monthly refresh)")
+            except Exception as e:
+                logging.warning(f"Error fetching fundamental data: {e}")
+        
+        # Step 2: Fetch and calculate sentiment if requested (always runs daily)
+        # Sentiment changes daily, so we always fetch and calculate
+        if fetch_sentiment:
+            try:
+                logging.info("Fetching and calculating sentiment (daily refresh)...")
+                from sentiment.NewsSentimentAnalyzer import NewsSentimentAnalyzer
+                from sentiment.FundamentalSentimentAnalyzer import FundamentalSentimentAnalyzer
+                from sentiment.CombinedSentimentCalculator import CombinedSentimentCalculator
+                
+                news_analyzer = NewsSentimentAnalyzer()
+                fundamental_analyzer = FundamentalSentimentAnalyzer()
+                combined_calculator = CombinedSentimentCalculator()
+                
+                # Get all stocks
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT DISTINCT scrip_id
+                    FROM my_schema.rt_intraday_price
+                    WHERE country = 'IN'
+                    AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
+                """)
+                all_stocks = [row[0] for row in cursor.fetchall()]
+                cursor.close()
+                conn.close()
+                
+                if limit:
+                    all_stocks = all_stocks[:limit]
+                
+                # Process sentiment for all stocks (limit to avoid timeout)
+                for stock in all_stocks[:100]:  # Limit to 100 stocks to avoid timeout
+                    try:
+                        # News sentiment (always fetch daily)
+                        news_analyzer.fetch_and_analyze(stock, days=7)
+                        # Fundamental sentiment (uses existing fundamental data)
+                        fundamental_analyzer.calculate_fundamental_sentiment(stock)
+                        # Combined sentiment (combines news and fundamental sentiment)
+                        combined_calculator.calculate_combined_sentiment(stock)
+                    except Exception as e:
+                        logging.warning(f"Error processing sentiment for {stock}: {e}")
+                        continue
+                
+                logging.info("Sentiment analysis completed (daily refresh)")
+            except Exception as e:
+                logging.warning(f"Error processing sentiment: {e}")
+        
+        # Step 3: Generate predictions with sentiment integration
+        predictor = ProphetPricePredictor(prediction_days=prediction_days, enable_sentiment=fetch_sentiment)
         
         # Generate predictions and save immediately after each calculation
         logging.info(f"Starting Prophet prediction generation for run_date={run_date}, prediction_days={prediction_days}, limit={limit}")
@@ -3398,7 +4179,6 @@ async def api_scanner_with_confirmation(
         import traceback
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
-
 @app.get("/api/gainers")
 async def api_gainers():
     """API endpoint to get top 10 gainers from last trading day"""
@@ -3888,7 +4668,6 @@ async def api_rt_intraday_price_latest():
         import traceback
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
-
 @app.get("/api/holdings")
 async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=1), sort_by: str = Query(None), sort_dir: str = Query("asc"), search: str = Query(None)):
     """API endpoint to get paginated holdings data with sorting and GTT info"""
@@ -4499,7 +5278,6 @@ async def api_holdings_patterns():
         import traceback
         logging.error(traceback.format_exc())
         return cached_json_response({"success": False, "error": str(e), "patterns": {}}, "/api/holdings/patterns")
-
 @app.get("/api/today_pnl_summary")
 async def api_today_pnl_summary():
     """API endpoint to get today's P&L summary for Equity, MF, and Intraday trades"""
@@ -5141,7 +5919,6 @@ async def api_add_gtt_for_all(stop_loss_percentage: float = 5.0):
     except Exception as e:
         logging.error(f"Error adding GTT for all: {e}")
         return {"success": False, "error": str(e)}
-
 @app.get("/api/get_all_gtts")
 async def api_get_all_gtts():
     """API endpoint to get all active GTT orders"""
@@ -5767,7 +6544,6 @@ async def download_holdings_excel():
         import traceback
         logging.error(traceback.format_exc())
         return {"error": str(e)}
-
 @app.get("/api/download/holdings/csv")
 async def download_holdings_csv():
     """Download holdings data as CSV file - uses same logic as Excel"""
@@ -6133,7 +6909,6 @@ async def download_pnl_summary_excel():
         import traceback
         logging.error(traceback.format_exc())
         return {"error": str(e)}
-
 @app.get("/api/download/pnl_summary/pdf")
 async def download_pnl_summary_pdf():
     """Download complete P&L summary with equity and MF holdings as PDF file"""
@@ -6702,7 +7477,6 @@ async def download_holdings_pdf():
         import traceback
         logging.error(traceback.format_exc())
         return {"error": str(e)}
-
 @app.get("/api/download/swing_trades/excel")
 async def download_swing_trades_excel():
     """Download swing trade recommendations data as Excel file"""
@@ -7984,7 +8758,6 @@ async def api_options_backtest_payoff_chart(
             "success": False,
             "error": str(e)
         }
-
 @app.get("/api/options/historical_chain")
 async def api_options_historical_chain(
     analysis_date: str = Query(..., description="Analysis date in YYYY-MM-DD format"),

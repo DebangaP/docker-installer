@@ -1741,3 +1741,144 @@ COMMENT ON COLUMN my_schema.prophet_predictions.predicted_price_30d IS 'Predicte
 COMMENT ON COLUMN my_schema.prophet_predictions.predicted_price_change_pct IS 'Predicted percentage change from current price to 30-day target';
 COMMENT ON COLUMN my_schema.prophet_predictions.prediction_confidence IS 'Confidence score of the prediction (0-100)';
 COMMENT ON COLUMN my_schema.prophet_predictions.prediction_details IS 'JSON object containing detailed prediction data including daily forecasts';
+
+-- Fundamental Data and Sentiment Analysis Tables
+
+-- Fundamental data table to store metrics from screener.in
+CREATE TABLE IF NOT EXISTS my_schema.fundamental_data (
+    id SERIAL PRIMARY KEY,
+    scrip_id VARCHAR(10) NOT NULL,
+    fetch_date DATE DEFAULT CURRENT_DATE,
+    pe_ratio DOUBLE PRECISION,
+    pb_ratio DOUBLE PRECISION,
+    debt_to_equity DOUBLE PRECISION,
+    roe DOUBLE PRECISION,
+    roce DOUBLE PRECISION,
+    current_ratio DOUBLE PRECISION,
+    quick_ratio DOUBLE PRECISION,
+    eps DOUBLE PRECISION,
+    revenue_growth DOUBLE PRECISION,
+    profit_growth DOUBLE PRECISION,
+    dividend_yield DOUBLE PRECISION,
+    market_cap DOUBLE PRECISION,
+    raw_data JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(scrip_id, fetch_date)
+);
+
+-- Indexes for fundamental_data table
+CREATE INDEX IF NOT EXISTS idx_fundamental_scrip_id ON my_schema.fundamental_data(scrip_id);
+CREATE INDEX IF NOT EXISTS idx_fundamental_fetch_date ON my_schema.fundamental_data(fetch_date);
+CREATE INDEX IF NOT EXISTS idx_fundamental_scrip_date ON my_schema.fundamental_data(scrip_id, fetch_date DESC);
+CREATE INDEX IF NOT EXISTS idx_fundamental_date_scrip ON my_schema.fundamental_data(fetch_date DESC, scrip_id);
+
+-- News sentiment table to store news articles and sentiment scores
+CREATE TABLE IF NOT EXISTS my_schema.news_sentiment (
+    id SERIAL PRIMARY KEY,
+    scrip_id VARCHAR(10) NOT NULL,
+    article_date DATE NOT NULL,
+    source VARCHAR(200),
+    title TEXT,
+    content TEXT,
+    sentiment_score DOUBLE PRECISION,  -- -1 to 1 range
+    sentiment_label VARCHAR(20),  -- positive/negative/neutral
+    raw_data JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(scrip_id, article_date, source, title)
+);
+
+-- Indexes for news_sentiment table
+CREATE INDEX IF NOT EXISTS idx_news_sentiment_scrip_id ON my_schema.news_sentiment(scrip_id);
+CREATE INDEX IF NOT EXISTS idx_news_sentiment_article_date ON my_schema.news_sentiment(article_date);
+CREATE INDEX IF NOT EXISTS idx_news_sentiment_sentiment_score ON my_schema.news_sentiment(sentiment_score);
+
+-- Combined sentiment table to store aggregated sentiment scores per stock
+CREATE TABLE IF NOT EXISTS my_schema.combined_sentiment (
+    id SERIAL PRIMARY KEY,
+    scrip_id VARCHAR(10) NOT NULL,
+    calculation_date DATE DEFAULT CURRENT_DATE,
+    news_sentiment_score DOUBLE PRECISION,  -- -1 to 1 range
+    fundamental_sentiment_score DOUBLE PRECISION,  -- -1 to 1 range
+    combined_sentiment_score DOUBLE PRECISION,  -- -1 to 1 range
+    news_weight DOUBLE PRECISION DEFAULT 0.5,
+    fundamental_weight DOUBLE PRECISION DEFAULT 0.5,
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(scrip_id, calculation_date)
+);
+
+-- Indexes for combined_sentiment table
+CREATE INDEX IF NOT EXISTS idx_combined_sentiment_scrip_id ON my_schema.combined_sentiment(scrip_id);
+CREATE INDEX IF NOT EXISTS idx_combined_sentiment_calculation_date ON my_schema.combined_sentiment(calculation_date);
+
+-- Add sentiment columns to prophet_predictions table
+ALTER TABLE my_schema.prophet_predictions 
+ADD COLUMN IF NOT EXISTS news_sentiment_score DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS fundamental_sentiment_score DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS combined_sentiment_score DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS enhanced_predicted_price_change_pct DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS enhanced_prediction_confidence DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS sentiment_metadata JSONB;
+
+-- Indexes for new sentiment columns
+CREATE INDEX IF NOT EXISTS idx_prophet_combined_sentiment ON my_schema.prophet_predictions(combined_sentiment_score);
+CREATE INDEX IF NOT EXISTS idx_prophet_enhanced_price_change ON my_schema.prophet_predictions(enhanced_predicted_price_change_pct DESC);
+
+
+
+-- public.rt_scrip_actions definition
+
+-- Drop table
+
+-- DROP TABLE public.rt_scrip_actions;
+
+CREATE TABLE public.rt_scrip_actions (
+	scrip_id varchar NOT NULL,
+	run_date varchar DEFAULT CURRENT_DATE NOT NULL,
+	dividend float4 NULL,
+	split float4 NULL,
+	created_at timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	trans_date date NOT NULL,
+	CONSTRAINT rt_scrip_actions_pk PRIMARY KEY (scrip_id, trans_date)
+);
+
+-- public.rt_quarterly_income definition
+
+-- Drop table
+
+-- DROP TABLE public.rt_quarterly_income;
+
+CREATE TABLE  if not exists public.rt_quarterly_income (
+	scrip_id varchar NOT NULL,
+	run_date date DEFAULT CURRENT_DATE NOT NULL,
+	trans_date date NOT NULL,
+	trans_tag varchar NOT NULL,
+	trans_value varchar NOT NULL,
+	created_at timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	CONSTRAINT rt_quarterly_income_pk PRIMARY KEY (scrip_id, trans_date, trans_tag, trans_value)
+);
+
+-- public.rt_insider_trans definition
+
+-- Drop table
+
+-- DROP TABLE public.rt_insider_trans;
+
+CREATE TABLE if not exists public.rt_insider_trans (
+	scrip_id varchar NULL,
+	run_date date DEFAULT CURRENT_DATE NOT NULL,
+	shares varchar NULL,
+	value varchar NULL,
+	"text" varchar NULL,
+	insider varchar NULL,
+	"position" varchar NULL,
+	trans_date date NULL,
+	ownership varchar NULL,
+	created_at timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+ CREATE TABLE IF NOT EXISTS my_schema.system_flags (
+                    flag_key VARCHAR(100) PRIMARY KEY,
+                    value VARCHAR(10),
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );

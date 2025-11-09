@@ -19,3 +19,7 @@ python-multipart==0.0.20
 prophet==1.1.5
 cmdstanpy==1.2.0
 mftool>=0.2.0
+vaderSentiment==3.3.2
+lightningchart==2.0.1
+stocksent==0.4.5
+textblob==0.19.0

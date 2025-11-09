@@ -1,3 +1,27 @@
+8-Nov-2025
+-----------
+| File Type | Files | Total Lines | Percentage |
+|-----------|-------|-------------|------------|
+| **Python**        | 57 | 32,076 | 71.0% |
+| **HTML**          | 2 | 9,120 | 20.2% |
+| **SQL**           | 2 | 2,765 | 6.1% |
+| **JavaScript**    | 1 | 258 | 0.6% |
+| **YAML**          | 3 | 96 | 0.2% |
+| **Shell Scripts** | 2 | 69 | 0.2% |
+| **Dockerfile**    | 1 | 50 | 0.1% |
+| **Text Files**    | 2 | 375 | 0.8% |
+| **Markdown**      | 2 | 263 | 0.6% |
+| **TOTAL**         | **72** | **45,072** | **100%** |
+
+### Insights:
+- Python is the primary language (71% of codebase)
+- `KiteAccessToken.py` is the largest file (8,456 lines)
+- `dashboard.html` is the largest HTML file (8,922 lines)
+- The codebase is primarily backend-focused with Python
+- Frontend code is mostly embedded in HTML (JavaScript inline in HTML)
+
+
+
 Codebase Statistics
 Total: 26,373 lines across 52 files (excluding SQL)
 
