@@ -230,3 +230,175 @@ def calculate_fibonacci_levels(high: float, low: float) -> Dict[str, float]:
     }
     return levels
 
+
+def calculate_obv(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """
+    Calculate On Balance Volume (OBV)
+    
+    OBV is a cumulative indicator that adds volume on up days and subtracts volume on down days.
+    
+    Args:
+        close: Series of closing prices
+        volume: Series of volume values
+        
+    Returns:
+        Series of OBV values
+    """
+    if len(close) != len(volume):
+        raise ValueError("close and volume series must have the same length")
+    
+    if len(close) < 2:
+        return pd.Series([0.0] * len(close))
+    
+    # Initialize OBV with first volume value
+    obv = pd.Series(index=close.index, dtype=float)
+    obv.iloc[0] = volume.iloc[0]
+    
+    # Calculate OBV: add volume on up days, subtract on down days, keep same on equal days
+    for i in range(1, len(close)):
+        if close.iloc[i] > close.iloc[i-1]:
+            # Up day: add volume
+            obv.iloc[i] = obv.iloc[i-1] + volume.iloc[i]
+        elif close.iloc[i] < close.iloc[i-1]:
+            # Down day: subtract volume
+            obv.iloc[i] = obv.iloc[i-1] - volume.iloc[i]
+        else:
+            # Equal day: keep same OBV
+            obv.iloc[i] = obv.iloc[i-1]
+    
+    return obv
+
+
+def calculate_ad_indicator(high: pd.Series, low: pd.Series, close: pd.Series, volume: pd.Series) -> pd.Series:
+    """
+    Calculate Accumulation/Distribution Line (A/D Line)
+    
+    The A/D Line is a cumulative indicator that uses volume and price to assess whether a stock
+    is being accumulated or distributed.
+    
+    Formula: A/D = Previous A/D + Money Flow Volume
+    Money Flow Volume = ((Close - Low) - (High - Close)) / (High - Low) * Volume
+    
+    Args:
+        high: Series of high prices
+        low: Series of low prices
+        close: Series of closing prices
+        volume: Series of volume values
+        
+    Returns:
+        Series of A/D Line values
+    """
+    if len(high) != len(low) != len(close) != len(volume):
+        raise ValueError("All series must have the same length")
+    
+    if len(close) < 1:
+        return pd.Series([0.0] * len(close))
+    
+    # Initialize A/D Line
+    ad_line = pd.Series(index=close.index, dtype=float)
+    ad_line.iloc[0] = 0.0
+    
+    # Calculate Money Flow Multiplier and Money Flow Volume
+    for i in range(1, len(close)):
+        high_low_diff = high.iloc[i] - low.iloc[i]
+        
+        if high_low_diff == 0:
+            # If high == low, use previous A/D value
+            ad_line.iloc[i] = ad_line.iloc[i-1]
+        else:
+            # Calculate Money Flow Multiplier
+            money_flow_multiplier = ((close.iloc[i] - low.iloc[i]) - (high.iloc[i] - close.iloc[i])) / high_low_diff
+            
+            # Calculate Money Flow Volume
+            money_flow_volume = money_flow_multiplier * volume.iloc[i]
+            
+            # Accumulate A/D Line
+            ad_line.iloc[i] = ad_line.iloc[i-1] + money_flow_volume
+    
+    return ad_line
+
+
+def calculate_momentum(close: pd.Series, period: int = 14) -> pd.Series:
+    """
+    Calculate Price Momentum
+    
+    Momentum measures the rate of change in price over a specified period.
+    
+    Args:
+        close: Series of closing prices
+        period: Period for momentum calculation (default: 14)
+        
+    Returns:
+        Series of momentum values (price change over period)
+    """
+    if len(close) < period + 1:
+        return pd.Series([np.nan] * len(close))
+    
+    # Momentum = Current Price - Price N periods ago
+    momentum = close - close.shift(period)
+    
+    return momentum
+
+
+def detect_declining_momentum(close: pd.Series, period: int = 14) -> float:
+    """
+    Detect declining momentum and return a score (0-100)
+    
+    Lower score indicates declining momentum, higher score indicates rising momentum.
+    0 = strong decline, 100 = strong rise
+    
+    Args:
+        close: Series of closing prices
+        period: Period for momentum analysis (default: 14)
+        
+    Returns:
+        Momentum score (0-100), where lower = declining momentum
+    """
+    if len(close) < period * 2:
+        return 50.0  # Neutral if insufficient data
+    
+    # Calculate momentum over different periods
+    recent_momentum = calculate_momentum(close, period=period)
+    longer_momentum = calculate_momentum(close, period=period * 2)
+    
+    # Get latest values
+    if len(recent_momentum) > 0 and not pd.isna(recent_momentum.iloc[-1]):
+        recent_mom = recent_momentum.iloc[-1]
+    else:
+        return 50.0
+    
+    if len(longer_momentum) > 0 and not pd.isna(longer_momentum.iloc[-1]):
+        longer_mom = longer_momentum.iloc[-1]
+    else:
+        return 50.0
+    
+    # Calculate percentage change
+    if longer_mom != 0:
+        momentum_ratio = recent_mom / longer_mom
+    else:
+        momentum_ratio = 1.0
+    
+    # Calculate rate of change (ROC) for recent period
+    if len(close) >= period + 1:
+        roc = ((close.iloc[-1] - close.iloc[-period-1]) / close.iloc[-period-1]) * 100
+    else:
+        roc = 0.0
+    
+    # Convert to score (0-100)
+    # Negative ROC = declining momentum (lower score)
+    # Positive ROC = rising momentum (higher score)
+    # Normalize ROC to 0-100 scale (assuming ROC ranges from -50% to +50%)
+    score = 50.0 + (roc * 2.0)  # Scale ROC to score
+    score = max(0.0, min(100.0, score))  # Clamp to 0-100
+    
+    # Adjust based on momentum ratio
+    if momentum_ratio < 0.5:
+        # Recent momentum is much weaker than longer-term momentum (declining)
+        score = score * 0.7
+    elif momentum_ratio > 1.5:
+        # Recent momentum is much stronger (rising)
+        score = score * 1.2
+    
+    score = max(0.0, min(100.0, score))  # Clamp again
+    
+    return float(score)

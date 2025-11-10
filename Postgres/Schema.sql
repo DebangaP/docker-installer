@@ -1847,6 +1847,11 @@ CREATE TABLE IF NOT EXISTS my_schema.news_sentiment (
 -- Indexes for news_sentiment table
 CREATE INDEX IF NOT EXISTS idx_news_sentiment_scrip_id ON my_schema.news_sentiment(scrip_id);
 CREATE INDEX IF NOT EXISTS idx_news_sentiment_article_date ON my_schema.news_sentiment(article_date);
+
+-- Accumulation/Distribution Analysis Tables
+
+-- Table to store Accumulation/Distribution analysis results
+
 CREATE INDEX IF NOT EXISTS idx_news_sentiment_sentiment_score ON my_schema.news_sentiment(sentiment_score);
 
 -- Combined sentiment table to store aggregated sentiment scores per stock

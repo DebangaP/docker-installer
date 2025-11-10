@@ -45,8 +45,6 @@ class TPOProfile:
         
         # Convert price_column to float to handle decimal.Decimal
         df[price_column] = df[price_column].astype(float)
-        
-        print(df)
 
         # Round prices to tick size
         df['price_level'] = (df[price_column] / self.tick_size).round() * self.tick_size
@@ -1004,7 +1002,6 @@ if __name__ == "__main__":
 
     # Pre-market TPO Profile (9:05am to 9:15am IST)
     logging.info("Calculating Pre-market TPO profile...")
-    print(df)
     
     # Initialize pre-market profile variables
     pre_market_tpo = None

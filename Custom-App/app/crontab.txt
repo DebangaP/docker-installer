@@ -47,4 +47,9 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 # Daily irrational analysis: Analyze holdings for irrational gains/losses
 # Runs daily at 4:00 PM IST (after market close) to analyze all holdings
-0 16 * * 1-5 root cd /app && python /app/scheduled_jobs/IrrationalAnalysisScheduler.py >> /app/logs/irrational_analysis.log 2>&1 &
+# DISABLED: IrrationalMoveAnalyzer turned off
+#0 16 * * 1-5 root cd /app && python /app/scheduled_jobs/IrrationalAnalysisScheduler.py >> /app/logs/irrational_analysis.log 2>&1 &
+
+# Daily accumulation/distribution analysis: Analyze stocks for accumulation/distribution patterns
+# Runs daily at 4:30 PM IST (after market close) to analyze all stocks
+30 16 * * 1-5 root cd /app && python /app/scheduled_jobs/AccumulationDistributionScheduler.py >> /app/logs/accumulation_distribution.log 2>&1 &

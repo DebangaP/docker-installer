@@ -1224,11 +1224,13 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Predicted Gain %</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Ghost Confidence</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;" title="Accumulation/Distribution state">Accumulation/Distribution</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;" title="Days in accumulation/distribution state">Days in State</th>
                                 </tr>
                             </thead>
                             <tbody id="gainersTableBody">
                                 <tr>
-                                    <td colspan="9" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td>
+                                    <td colspan="11" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1340,12 +1342,14 @@
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Mean Absolute Percentage Error">MAPE (%)</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Root Mean Squared Error">RMSE</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Days</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;" title="Accumulation/Distribution state">Accumulation/Distribution</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;" title="Days in accumulation/distribution state">Days in State</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Rationale</th>
                                 </tr>
                             </thead>
                             <tbody id="swingTradesTableBody">
                                 <tr>
-                                    <td colspan="14" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Click Refresh to load swing trade recommendations</td>
+                                    <td colspan="16" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Click Refresh to load swing trade recommendations</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1429,11 +1433,13 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;" title="Mean Absolute Percentage Error">MAPE (%)</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;" title="Root Mean Squared Error">RMSE</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;" title="Accumulation/Distribution state">Accumulation/Distribution</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;" title="Days in accumulation/distribution state">Days in State</th>
                                 </tr>
                             </thead>
                             <tbody id="topGainersTableBody">
                                 <tr>
-                                    <td colspan="12" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Click Refresh to load top gainers</td>
+                                    <td colspan="14" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Click Refresh to load top gainers</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1876,7 +1882,7 @@
         <!-- Today's P&L Summary Section -->
         <div class="card" id="section-pnl-summary" style="margin-bottom: 20px;">
             <div class="card-header" style="justify-content: space-between;">
-                <h3 class="card-title">📊 P&L Summary</h3>
+                <h3 class="card-title">📊 P&L Summary (If Today's P&L is wrong then the price data for BeeS is wrong)</h3>
                 <div style="display: flex; gap: 10px;">
                     <button onclick="downloadPnlSummary('excel')" class="btn btn-primary" style="padding: 6px 12px; font-size: 12px;" title="Download Summary + Holdings as Excel">
                         📥 Excel
@@ -1999,9 +2005,12 @@
                             <th onclick="sortHoldings('today_pnl')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_today_pnl">Today's P&L ↕</th>
                             <th onclick="sortHoldings('prophet_prediction_pct')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_prophet_prediction_pct">Ghost Prediction (60D) ↕</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Confidence</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Mean Absolute Percentage Error">MAPE (%)</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Root Mean Squared Error">RMSE</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Supertrend Value">Supertrend Value</th>
                             <th onclick="sortHoldings('irrational_score')" style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_irrational_score" title="Irrational Move Score (0-100)">Exit Alert ↕</th>
+                            <th onclick="sortHoldings('below_supertrend')" style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_below_supertrend" title="Alert if stock price is below Supertrend">Supertrend Alert ↕</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;" title="Days below supertrend in the latest downtrend">Days Below ST</th>
+                            <th onclick="sortHoldings('accumulation_state')" style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_accumulation_state" title="Accumulation/Distribution state">Accumulation/Distribution ↕</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;" title="Days in accumulation/distribution state">Days in State</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Actions</th>
                         </tr>
                     </thead>
@@ -2104,31 +2113,8 @@
                                 {% endif %}
                             </td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">
-                                {% if holding.prophet_cv_mape is not none and holding.prophet_cv_mape is defined %}
-                                    {% set mape = holding.prophet_cv_mape %}
-                                    {% if mape is not none and mape != float('inf') %}
-                                        {% if mape < 50 %}
-                                            <span style="color: #28a745;">{{ "%.2f"|format(mape) }}%</span>
-                                        {% elif mape < 100 %}
-                                            <span style="color: #ffc107;">{{ "%.2f"|format(mape) }}%</span>
-                                        {% else %}
-                                            <span style="color: #999;">{{ "%.2f"|format(mape) }}%</span>
-                                        {% endif %}
-                                    {% else %}
-                                        <span style="color: #999; font-size: 12px;">N/A</span>
-                                    {% endif %}
-                                {% else %}
-                                    <span style="color: #999; font-size: 12px;">N/A</span>
-                                {% endif %}
-                            </td>
-                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">
-                                {% if holding.prophet_cv_rmse is not none and holding.prophet_cv_rmse is defined %}
-                                    {% set rmse = holding.prophet_cv_rmse %}
-                                    {% if rmse is not none and rmse != float('inf') %}
-                                        <span style="color: #666;">{{ "%.2f"|format(rmse) }}</span>
-                                    {% else %}
-                                        <span style="color: #999; font-size: 12px;">N/A</span>
-                                    {% endif %}
+                                {% if holding.supertrend_value is not none and holding.supertrend_value is defined %}
+                                    <span style="color: #666;">₹{{ "%.2f"|format(holding.supertrend_value) }}</span>
                                 {% else %}
                                     <span style="color: #999; font-size: 12px;">N/A</span>
                                 {% endif %}
@@ -2161,6 +2147,45 @@
                                     {% endif %}
                                 {% else %}
                                     <span style="color: #999; font-size: 12px;">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
+                                {% if holding.below_supertrend is defined and holding.below_supertrend %}
+                                    <div style="background-color: #dc3545; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;" title="Stock price is below Supertrend">
+                                        ⚠️ Below ST
+                                    </div>
+                                    {% if holding.supertrend_value is defined and holding.supertrend_value %}
+                                        <div style="font-size: 10px; color: #dc3545; margin-top: 2px;">ST: ₹{{ "%.2f"|format(holding.supertrend_value) }}</div>
+                                    {% endif %}
+                                {% else %}
+                                    <span style="color: #28a745; font-size: 12px;">✓ Above</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
+                                {% if holding.days_below_supertrend is defined and holding.days_below_supertrend is not none and holding.days_below_supertrend > 0 %}
+                                    <span style="color: #dc3545; font-weight: bold; font-size: 14px;">{{ holding.days_below_supertrend }}</span>
+                                {% else %}
+                                    <span style="color: #999; font-size: 12px;">-</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
+                                {% if holding.accumulation_state is defined and holding.accumulation_state %}
+                                    {% if holding.accumulation_state == 'ACCUMULATION' %}
+                                        <span style="color: #28a745; font-weight: bold; font-size: 12px;">✓ Accumulation</span>
+                                    {% elif holding.accumulation_state == 'DISTRIBUTION' %}
+                                        <span style="color: #dc3545; font-weight: bold; font-size: 12px;">⚠ Distribution</span>
+                                    {% else %}
+                                        <span style="color: #999; font-size: 12px;">Neutral</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span style="color: #999; font-size: 12px;">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
+                                {% if holding.days_in_accumulation_state is defined and holding.days_in_accumulation_state is not none and holding.days_in_accumulation_state > 0 %}
+                                    <span style="color: #666; font-weight: bold; font-size: 14px;">{{ holding.days_in_accumulation_state }}</span>
+                                {% else %}
+                                    <span style="color: #999; font-size: 12px;">-</span>
                                 {% endif %}
                             </td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">
@@ -3210,8 +3235,9 @@
         }
         
         // Global variable for sort settings
-        let sortColumn = 'trading_symbol';
-        let sortDirection = 'asc';
+        // Default: Sort by Supertrend Alert (desc) - stocks below supertrend shown first
+        let sortColumn = 'below_supertrend';
+        let sortDirection = 'desc';
         let currentHoldingsPage = {% if holdings_info %}{{ holdings_info.page }}{% else %}1{% endif %};
         let holdingsSearchTerm = '';
         
@@ -3255,7 +3281,7 @@
         
         // Update sort indicators in table headers
         function updateSortIndicators() {
-            const headers = ['header_trading_symbol', 'header_invested_amount', 'header_current_amount', 'header_pnl', 'header_today_pnl', 'header_prophet_prediction_pct', 'header_irrational_score'];
+            const headers = ['header_trading_symbol', 'header_invested_amount', 'header_current_amount', 'header_pnl', 'header_today_pnl', 'header_prophet_prediction_pct', 'header_irrational_score', 'header_below_supertrend'];
             const labelMap = {
                 'header_trading_symbol': 'Symbol',
                 'header_invested_amount': 'Invested Amount',
@@ -3263,7 +3289,9 @@
                 'header_pnl': 'Total P&L',
                 'header_today_pnl': 'Today\'s P&L',
                 'header_prophet_prediction_pct': 'Ghost Prediction (60D)',
-                'header_irrational_score': 'Exit Alert'
+                'header_irrational_score': 'Exit Alert',
+                'header_below_supertrend': 'Supertrend Alert',
+                'header_accumulation_state': 'Accumulation/Distribution'
             };
             
             headers.forEach(headerId => {
@@ -3282,8 +3310,9 @@
         // Load holdings page via AJAX
         function loadHoldingsPage(page) {
             // Ensure sortColumn and sortDirection are defined
-            const sortBy = sortColumn || 'trading_symbol';
-            const sortDir = sortDirection || 'asc';
+            // Default: Sort by Supertrend Alert (desc) - stocks below supertrend shown first
+            const sortBy = sortColumn || 'below_supertrend';
+            const sortDir = sortDirection || 'desc';
             // Build URL with search parameter
             let url = `/api/holdings?page=${page}&per_page=10&sort_by=${sortBy}&sort_dir=${sortDir}`;
             if (holdingsSearchTerm) {
@@ -3360,18 +3389,8 @@
                                     ` : `<span style="color: #999; font-size: 12px;">N/A</span>`}
                                 </td>
                                 <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">
-                                    ${holding.prophet_cv_mape !== null && holding.prophet_cv_mape !== undefined && !isNaN(holding.prophet_cv_mape) && holding.prophet_cv_mape !== Infinity ? `
-                                        ${holding.prophet_cv_mape < 50 ? 
-                                            `<span style="color: #28a745;">${holding.prophet_cv_mape.toFixed(2)}%</span>` : 
-                                            holding.prophet_cv_mape < 100 ? 
-                                            `<span style="color: #ffc107;">${holding.prophet_cv_mape.toFixed(2)}%</span>` : 
-                                            `<span style="color: #999;">${holding.prophet_cv_mape.toFixed(2)}%</span>`
-                                        }
-                                    ` : '<span style="color: #999; font-size: 12px;">N/A</span>'}
-                                </td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">
-                                    ${holding.prophet_cv_rmse !== null && holding.prophet_cv_rmse !== undefined && !isNaN(holding.prophet_cv_rmse) && holding.prophet_cv_rmse !== Infinity ? `
-                                        <span style="color: #666;">${holding.prophet_cv_rmse.toFixed(2)}</span>
+                                    ${holding.supertrend_value !== null && holding.supertrend_value !== undefined && !isNaN(holding.supertrend_value) ? `
+                                        <span style="color: #666;">₹${holding.supertrend_value.toFixed(2)}</span>
                                     ` : '<span style="color: #999; font-size: 12px;">N/A</span>'}
                                 </td>
                                 <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
@@ -3398,6 +3417,37 @@
                                             <div style="font-size: 10px; color: #28a745; margin-top: 2px;">NONE</div>
                                         `}
                                     ` : '<span style="color: #999; font-size: 12px;">N/A</span>'}
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
+                                    ${holding.below_supertrend ? `
+                                        <div style="background-color: #dc3545; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;" title="Stock price is below Supertrend">
+                                            ⚠️ Below ST
+                                        </div>
+                                        ${holding.supertrend_value ? `
+                                            <div style="font-size: 10px; color: #dc3545; margin-top: 2px;">ST: ₹${holding.supertrend_value.toFixed(2)}</div>
+                                        ` : ''}
+                                    ` : '<span style="color: #28a745; font-size: 12px;">✓ Above</span>'}
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
+                                    ${holding.days_below_supertrend !== null && holding.days_below_supertrend !== undefined && holding.days_below_supertrend > 0 ? `
+                                        <span style="color: #dc3545; font-weight: bold; font-size: 14px;">${holding.days_below_supertrend}</span>
+                                    ` : '<span style="color: #999; font-size: 12px;">-</span>'}
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
+                                    ${holding.accumulation_state ? `
+                                        ${holding.accumulation_state === 'ACCUMULATION' ? `
+                                            <span style="color: #28a745; font-weight: bold; font-size: 12px;">✓ Accumulation</span>
+                                        ` : holding.accumulation_state === 'DISTRIBUTION' ? `
+                                            <span style="color: #dc3545; font-weight: bold; font-size: 12px;">⚠ Distribution</span>
+                                        ` : `
+                                            <span style="color: #999; font-size: 12px;">Neutral</span>
+                                        `}
+                                    ` : '<span style="color: #999; font-size: 12px;">N/A</span>'}
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
+                                    ${holding.days_in_accumulation_state !== null && holding.days_in_accumulation_state !== undefined && holding.days_in_accumulation_state > 0 ? `
+                                        <span style="color: #666; font-weight: bold; font-size: 14px;">${holding.days_in_accumulation_state}</span>
+                                    ` : '<span style="color: #999; font-size: 12px;">-</span>'}
                                 </td>
                                 <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">
                                     <div style="display: flex; gap: 4px; justify-content: center; flex-wrap: wrap;">
@@ -3431,6 +3481,9 @@
                     
                     // Load patterns for holdings
                     loadHoldingsPatterns(data.holdings);
+                    
+                    // Update sort indicators to show current sort
+                    updateSortIndicators();
                 })
                 .catch(error => {
                     console.error('Error fetching holdings:', error);
@@ -3750,7 +3803,7 @@
                     if (data.error) {
                         console.error('Error loading gainers:', data.error);
                         document.getElementById('gainersTableBody').innerHTML = 
-                            '<tr><td colspan="9" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading gainers</td></tr>';
+                            '<tr><td colspan="11" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading gainers</td></tr>';
                         return;
                     }
                     
@@ -3768,7 +3821,7 @@
                     
                     if (!data.gainers || data.gainers.length === 0) {
                         console.warn('No gainers data in response:', data);
-                        tbody.innerHTML = '<tr><td colspan="9" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">No gainers data available</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="11" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">No gainers data available</td></tr>';
                         return;
                     }
                     
@@ -3846,6 +3899,22 @@
                                     <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">${prophetPredictionDisplay}</td>
                                     <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">${prophetConfidenceDisplay}</td>
                                     <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">${predictionDaysDisplay}</td>
+                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                                        ${gainer.accumulation_state ? `
+                                            ${gainer.accumulation_state === 'ACCUMULATION' ? `
+                                                <span style="color: #28a745; font-weight: bold; font-size: 11px;">✓ Accumulation</span>
+                                            ` : gainer.accumulation_state === 'DISTRIBUTION' ? `
+                                                <span style="color: #dc3545; font-weight: bold; font-size: 11px;">⚠ Distribution</span>
+                                            ` : `
+                                                <span style="color: #999; font-size: 11px;">Neutral</span>
+                                            `}
+                                        ` : '<span style="color: #999; font-size: 11px;">N/A</span>'}
+                                    </td>
+                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                                        ${gainer.days_in_accumulation_state !== null && gainer.days_in_accumulation_state !== undefined && gainer.days_in_accumulation_state > 0 ? `
+                                            <span style="color: #666; font-weight: bold; font-size: 12px;">${gainer.days_in_accumulation_state}</span>
+                                        ` : '<span style="color: #999; font-size: 11px;">-</span>'}
+                                    </td>
                                 </tr>
                             `;
                             tbody.innerHTML += row;
@@ -3866,7 +3935,7 @@
                 .catch(error => {
                     console.error('Error fetching gainers:', error);
                         document.getElementById('gainersTableBody').innerHTML = 
-                            '<tr><td colspan="9" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading gainers</td></tr>';
+                            '<tr><td colspan="11" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading gainers</td></tr>';
                 });
             
             // Load losers without caching
@@ -3884,7 +3953,7 @@
                     if (data.error) {
                         console.error('Error loading losers:', data.error);
                         document.getElementById('losersTableBody').innerHTML = 
-                            '<tr><td colspan="6" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading losers</td></tr>';
+                            '<tr><td colspan="8" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading losers</td></tr>';
                         return;
                     }
                     
@@ -3902,7 +3971,7 @@
                     
                     if (!data.losers || data.losers.length === 0) {
                         console.warn('No losers data in response:', data);
-                        tbody.innerHTML = '<tr><td colspan="6" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">No losers data available</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="8" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">No losers data available</td></tr>';
                         return;
                     }
                     
@@ -3927,6 +3996,22 @@
                                     <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: #dc3545; font-size: 12px;">
                                         ${Number(gain).toFixed(2)}%
                                     </td>
+                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                                        ${loser.accumulation_state ? `
+                                            ${loser.accumulation_state === 'ACCUMULATION' ? `
+                                                <span style="color: #28a745; font-weight: bold; font-size: 11px;">✓ Accumulation</span>
+                                            ` : loser.accumulation_state === 'DISTRIBUTION' ? `
+                                                <span style="color: #dc3545; font-weight: bold; font-size: 11px;">⚠ Distribution</span>
+                                            ` : `
+                                                <span style="color: #999; font-size: 11px;">Neutral</span>
+                                            `}
+                                        ` : '<span style="color: #999; font-size: 11px;">N/A</span>'}
+                                    </td>
+                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                                        ${loser.days_in_accumulation_state !== null && loser.days_in_accumulation_state !== undefined && loser.days_in_accumulation_state > 0 ? `
+                                            <span style="color: #666; font-weight: bold; font-size: 12px;">${loser.days_in_accumulation_state}</span>
+                                        ` : '<span style="color: #999; font-size: 11px;">-</span>'}
+                                    </td>
                                 </tr>
                             `;
                             tbody.innerHTML += row;
@@ -3947,7 +4032,7 @@
                 .catch(error => {
                     console.error('Error fetching losers:', error);
                         document.getElementById('losersTableBody').innerHTML = 
-                            '<tr><td colspan="6" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading losers</td></tr>';
+                            '<tr><td colspan="8" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading losers</td></tr>';
                 });
         }
         
@@ -8115,14 +8200,14 @@
             
             swingTradeScanInProgress = true;
             statusDiv.innerHTML = '<span style="color: #666;">⏳ Scanning stocks and generating recommendations... (This may take a few minutes)</span>';
-            tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Scanning stocks...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="16" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Scanning stocks...</td></tr>';
             
             fetch('/api/swing_trades?min_gain=10&max_gain=20&min_confidence=70&limit=100&scan_limit=500')
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
                         statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${data.error || 'Failed to load recommendations'}</span>`;
-                        tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading recommendations</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="16" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading recommendations</td></tr>';
                         return;
                     }
                     
@@ -8255,7 +8340,7 @@
             tbody.innerHTML = '';
             
             if (filteredSwingTrades.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="14" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">No recommendations found matching the filters</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="16" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">No recommendations found matching the filters</td></tr>';
                 updateSwingTradePagination(0);
                 return;
             }
@@ -8434,6 +8519,22 @@
                             ${rmseDisplay}
                         </td>
                         <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">${avgHoldingPeriod || '-'}</td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
+                            ${trades[0].accumulation_state ? `
+                                ${trades[0].accumulation_state === 'ACCUMULATION' ? `
+                                    <span style="color: #28a745; font-weight: bold; font-size: 12px;">✓ Accumulation</span>
+                                ` : trades[0].accumulation_state === 'DISTRIBUTION' ? `
+                                    <span style="color: #dc3545; font-weight: bold; font-size: 12px;">⚠ Distribution</span>
+                                ` : `
+                                    <span style="color: #999; font-size: 12px;">Neutral</span>
+                                `}
+                            ` : '<span style="color: #999; font-size: 12px;">N/A</span>'}
+                        </td>
+                        <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
+                            ${trades[0].days_in_accumulation_state !== null && trades[0].days_in_accumulation_state !== undefined && trades[0].days_in_accumulation_state > 0 ? `
+                                <span style="color: #666; font-weight: bold; font-size: 14px;">${trades[0].days_in_accumulation_state}</span>
+                            ` : '<span style="color: #999; font-size: 12px;">-</span>'}
+                        </td>
                         <td style="padding: 12px; border: 1px solid #ddd; font-size: 12px; max-width: 350px; word-wrap: break-word; white-space: normal; line-height: 1.4;" title="${rationale}">${rationale}</td>
                     </tr>
                 `;
@@ -9111,6 +9212,22 @@
                         <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; color: ${cvRmse !== null && cvRmse !== undefined && !isNaN(cvRmse) && cvRmse !== Infinity ? '#666' : '#999'};">
                             ${rmseDisplay}
                         </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                            ${gainer.accumulation_state ? `
+                                ${gainer.accumulation_state === 'ACCUMULATION' ? `
+                                    <span style="color: #28a745; font-weight: bold; font-size: 11px;">✓ Accumulation</span>
+                                ` : gainer.accumulation_state === 'DISTRIBUTION' ? `
+                                    <span style="color: #dc3545; font-weight: bold; font-size: 11px;">⚠ Distribution</span>
+                                ` : `
+                                    <span style="color: #999; font-size: 11px;">Neutral</span>
+                                `}
+                            ` : '<span style="color: #999; font-size: 11px;">N/A</span>'}
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                            ${gainer.days_in_accumulation_state !== null && gainer.days_in_accumulation_state !== undefined && gainer.days_in_accumulation_state > 0 ? `
+                                <span style="color: #666; font-weight: bold; font-size: 12px;">${gainer.days_in_accumulation_state}</span>
+                            ` : '<span style="color: #999; font-size: 11px;">-</span>'}
+                        </td>
                     </tr>
                 `;
                 tbody.innerHTML += row;
@@ -9183,14 +9300,14 @@
             }
             
             statusDiv.innerHTML = `<span style="color: #666;">⏳ Loading top gainers for ${predictionDays} days...</span>`;
-            tbody.innerHTML = '<tr><td colspan="12" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="14" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td></tr>';
             
             fetch(`/api/prophet_predictions/top_gainers?limit=500&prediction_days=${predictionDays}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
                         statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${data.error || 'Failed to load top gainers'}</span>`;
-                        tbody.innerHTML = '<tr><td colspan="12" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading top gainers</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="14" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading top gainers</td></tr>';
                         return;
                     }
                     
@@ -9235,7 +9352,7 @@
                 .catch(error => {
                     console.error('Error loading top gainers:', error);
                     statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message || 'Failed to load top gainers'}</span>`;
-                    tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading top gainers</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="14" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading top gainers</td></tr>';
                 });
         }
         

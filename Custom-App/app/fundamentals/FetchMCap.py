@@ -491,7 +491,6 @@ def fetch_market_cap(symbols):
     df = pd.DataFrame(results)
     df.to_csv('market_cap_data.csv', index=False)
     logger.info(f"\nData exported to 'market_cap_data.csv'")
-    logger.info(f"\n{df}")
     
     return df
 

@@ -180,6 +180,127 @@ def calculate_supertrend(high, low, close, period=14, multiplier=3.0):
         logging.error(f"Error calculating Supertrend: {e}")
         return np.full(len(close), np.nan), np.zeros(len(close))
 
+# Function to get latest supertrend value for a stock
+def get_latest_supertrend(scrip_id: str, conn=None):
+    """Get the latest supertrend value, direction, corresponding close price, and days below supertrend
+    Uses the same logic as the candlestick endpoint
+    Returns: (supertrend_value, direction, close_price, days_below_supertrend) or None if error
+    direction: -1 if price is below supertrend, 1 if price is above supertrend
+    days_below_supertrend: number of consecutive days below supertrend in the latest downtrend
+    """
+    print(f"---XXX--- get_latest_supertrend called for {scrip_id}")
+    try:
+        # Always create a new connection to avoid connection issues
+        # The passed conn might be closed or in use by other queries
+        print(f"---XXX--- Step 1: Creating new connection for {scrip_id}")
+        conn = get_db_connection()
+        should_close = True
+        print(f"---XXX--- Step 2: Created new connection for {scrip_id}")
+        
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        print(f"---XXX--- Step 3: Created cursor for {scrip_id}")
+        
+        # Get OHLC data for candlestick - same query as api_candlestick endpoint
+        # Get last 30 days of data ordered by date ASC (oldest to newest)
+        print(f"---XXX--- Step 4: Executing query for {scrip_id}")
+        cursor.execute("""
+            SELECT 
+                price_high,
+                price_low,
+                price_close
+            FROM my_schema.rt_intraday_price
+            WHERE scrip_id = %s
+            AND price_date::date >= CURRENT_DATE - make_interval(days => 30)
+            AND price_high IS NOT NULL
+            AND price_low IS NOT NULL
+            AND price_close IS NOT NULL
+            ORDER BY price_date ASC
+        """, (scrip_id,))
+        
+        print(f"---XXX--- Step 5: Fetching rows for {scrip_id}")
+        rows = cursor.fetchall()
+        cursor.close()
+        print(f"---XXX--- Step 6: Closed cursor for {scrip_id}")
+        
+        if should_close:
+            conn.close()
+            print(f"---XXX--- Step 7: Closed connection for {scrip_id}")
+        
+        print(f"---XXX--- Found {len(rows) if rows else 0} rows for {scrip_id}")
+        
+        if not rows or len(rows) < 14:
+            print(f"---XXX--- Not enough data for {scrip_id}: {len(rows) if rows else 0} rows")
+            logging.debug(f"Not enough data for supertrend calculation for {scrip_id}: {len(rows) if rows else 0} rows")
+            return None
+        
+        # Extract arrays - same as candlestick endpoint
+        highs = []
+        lows = []
+        closes = []
+        
+        for row in rows:
+            highs.append(float(row['price_high']) if row['price_high'] else 0.0)
+            lows.append(float(row['price_low']) if row['price_low'] else 0.0)
+            closes.append(float(row['price_close']) if row['price_close'] else 0.0)
+        
+        # Convert to numpy arrays
+        highs_array = np.array(highs)
+        lows_array = np.array(lows)
+        closes_array = np.array(closes)
+        
+        # Calculate supertrend - same as candlestick endpoint
+        try:
+            supertrend, supertrend_direction = calculate_supertrend(highs_array, lows_array, closes_array)
+            print('---XXX--- Supertrend')
+            print(supertrend)
+        except Exception as calc_error:
+            logging.warning(f"Error calculating supertrend for {scrip_id}: {calc_error}")
+            import traceback
+            logging.warning(traceback.format_exc())
+            return None
+        
+        # Get the latest non-NaN supertrend value (last element in array)
+        # Same logic as candlestick endpoint - get last value
+        latest_supertrend = None
+        latest_direction = None
+        latest_close = None
+        latest_index = None
+        
+        # Find the last non-NaN value
+        for i in range(len(supertrend) - 1, -1, -1):
+            if not np.isnan(supertrend[i]):
+                latest_supertrend = float(supertrend[i])
+                latest_direction = int(supertrend_direction[i])
+                latest_close = float(closes_array[i])
+                latest_index = i
+                break
+        
+        if latest_supertrend is None:
+            logging.debug(f"No valid supertrend value found for {scrip_id} (all NaN)")
+            return None
+        
+        # Calculate days below supertrend (only for latest downtrend)
+        # Count consecutive days with direction = -1 (below supertrend) from the latest day backwards
+        days_below_supertrend = 0
+        if latest_direction == -1:  # Currently below supertrend
+            # Count backwards from latest_index
+            for i in range(latest_index, -1, -1):
+                if not np.isnan(supertrend_direction[i]) and int(supertrend_direction[i]) == -1:
+                    days_below_supertrend += 1
+                else:
+                    break  # Stop counting when we hit a day above supertrend
+        
+        logging.debug(f"Supertrend calculated for {scrip_id}: value={latest_supertrend}, direction={latest_direction}, close={latest_close}, days_below={days_below_supertrend}")
+        return (latest_supertrend, latest_direction, latest_close, days_below_supertrend)
+        
+    except Exception as e:
+        print(f"---XXX--- Exception in get_latest_supertrend for {scrip_id}: {e}")
+        import traceback
+        print(f"---XXX--- Traceback: {traceback.format_exc()}")
+        logging.debug(f"Error getting supertrend for {scrip_id}: {e}")
+        logging.debug(traceback.format_exc())
+        return None
+
 # Function to validate access token
 def is_access_token_valid(access_token):
     print('cheking token')
@@ -354,7 +475,7 @@ def get_holdings_data(page: int = 1, per_page: int = 10, sort_by: str = None, so
         total_count = cursor.fetchone()['total_count']
 
         # Validate and set sort column
-        valid_sort_columns = ['trading_symbol', 'invested_amount', 'current_amount', 'pnl', 'today_pnl', 'prophet_prediction_pct', 'irrational_score']
+        valid_sort_columns = ['trading_symbol', 'invested_amount', 'current_amount', 'pnl', 'today_pnl', 'prophet_prediction_pct']
         if sort_by not in valid_sort_columns:
             sort_by = 'trading_symbol'
         
@@ -2295,11 +2416,26 @@ async def api_swing_trades(
                 rows = cursor.fetchall()
                 
                 if rows and len(rows) > 0:
+                    # Get accumulation/distribution data for all swing trade stocks
+                    from indicators.AccumulationDistributionAnalyzer import AccumulationDistributionAnalyzer
+                    analyzer = AccumulationDistributionAnalyzer()
+                    accumulation_map = {}
+                    
+                    scrip_ids = [row.get('scrip_id') for row in rows if row.get('scrip_id')]
+                    for scrip_id in scrip_ids:
+                        try:
+                            state_data = analyzer.get_current_state(scrip_id, today)
+                            if state_data:
+                                accumulation_map[scrip_id] = state_data
+                        except Exception as e:
+                            logging.debug(f"Error getting accumulation/distribution for {scrip_id}: {e}")
+                    
                     # Convert database rows to recommendation format
                     recommendations = []
                     for row in rows:
+                        scrip_id = row.get('scrip_id')
                         rec = {
-                            'scrip_id': row.get('scrip_id'),
+                            'scrip_id': scrip_id,
                             'instrument_token': row.get('instrument_token'),
                             'pattern_type': row.get('pattern_type'),
                             'direction': row.get('direction', 'BUY'),
@@ -2323,6 +2459,17 @@ async def api_swing_trades(
                             'resistance_level': float(row.get('resistance_level', 0)) if row.get('resistance_level') else None,
                             'rationale': row.get('rationale'),
                         }
+                        
+                        # Add accumulation/distribution data
+                        if scrip_id and scrip_id in accumulation_map:
+                            acc_data = accumulation_map[scrip_id]
+                            rec['accumulation_state'] = acc_data.get('state')
+                            rec['days_in_accumulation_state'] = acc_data.get('days_in_state')
+                            rec['accumulation_confidence'] = acc_data.get('confidence_score')
+                        else:
+                            rec['accumulation_state'] = None
+                            rec['days_in_accumulation_state'] = None
+                            rec['accumulation_confidence'] = None
                         
                         # Parse JSONB fields
                         if row.get('technical_context'):
@@ -3546,65 +3693,6 @@ async def api_generate_prophet_predictions(
         
         run_date = date.today()
         
-        # Step 1: Fetch fundamental data if requested (only if >30 days old, unless forced)
-        # Fundamental data doesn't change frequently, so we fetch monthly
-        if fetch_fundamentals:
-            try:
-                logging.info("Checking and fetching fundamental data (monthly refresh)...")
-                from fundamentals.ScreenerDataFetcher import ScreenerDataFetcher
-                fetcher = ScreenerDataFetcher()
-                fetcher.fetch_all_holdings_fundamentals(force_refresh=force_fundamentals, days_threshold=30)
-                fetcher.fetch_nifty50_fundamentals(force_refresh=force_fundamentals, days_threshold=30)
-                logging.info("Fundamental data check/fetch completed (monthly refresh)")
-            except Exception as e:
-                logging.warning(f"Error fetching fundamental data: {e}")
-        
-        # Step 2: Fetch and calculate sentiment if requested (always runs daily)
-        # Sentiment changes daily, so we always fetch and calculate
-        if fetch_sentiment:
-            try:
-                logging.info("Fetching and calculating sentiment (daily refresh)...")
-                from sentiment.NewsSentimentAnalyzer import NewsSentimentAnalyzer
-                from sentiment.FundamentalSentimentAnalyzer import FundamentalSentimentAnalyzer
-                from sentiment.CombinedSentimentCalculator import CombinedSentimentCalculator
-                
-                news_analyzer = NewsSentimentAnalyzer()
-                fundamental_analyzer = FundamentalSentimentAnalyzer()
-                combined_calculator = CombinedSentimentCalculator()
-                
-                # Get all stocks
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT DISTINCT scrip_id
-                    FROM my_schema.rt_intraday_price
-                    WHERE country = 'IN'
-                    AND scrip_id NOT IN ('BITCOIN', 'SOLANA', 'DOGE', 'ETH')
-                """)
-                all_stocks = [row[0] for row in cursor.fetchall()]
-                cursor.close()
-                conn.close()
-                
-                if limit:
-                    all_stocks = all_stocks[:limit]
-                
-                # Process sentiment for all stocks (limit to avoid timeout)
-                for stock in all_stocks[:100]:  # Limit to 100 stocks to avoid timeout
-                    try:
-                        # News sentiment (always fetch daily)
-                        news_analyzer.fetch_and_analyze(stock, days=7)
-                        # Fundamental sentiment (uses existing fundamental data)
-                        fundamental_analyzer.calculate_fundamental_sentiment(stock)
-                        # Combined sentiment (combines news and fundamental sentiment)
-                        combined_calculator.calculate_combined_sentiment(stock)
-                    except Exception as e:
-                        logging.warning(f"Error processing sentiment for {stock}: {e}")
-                        continue
-                
-                logging.info("Sentiment analysis completed (daily refresh)")
-            except Exception as e:
-                logging.warning(f"Error processing sentiment: {e}")
-        
         # Step 3: Generate predictions with sentiment integration
         predictor = ProphetPricePredictor(prediction_days=prediction_days, enable_sentiment=fetch_sentiment)
         
@@ -3692,7 +3780,7 @@ async def api_prophet_top_gainers(
                     "needs_generation": False
                 }
         
-        # Calculate days_in_leaderboard for each stock
+        # Calculate days_in_leaderboard and get accumulation/distribution data for each stock
         if top_gainers and len(top_gainers) > 0:
             conn = get_db_connection()
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -3728,10 +3816,35 @@ async def api_prophet_top_gainers(
                 
                 days_counts = {row['scrip_id']: row['days_count'] for row in cursor.fetchall()}
                 
-                # Add days_in_leaderboard to each gainer
+                # Get accumulation/distribution data
+                from indicators.AccumulationDistributionAnalyzer import AccumulationDistributionAnalyzer
+                from datetime import date
+                analyzer = AccumulationDistributionAnalyzer()
+                accumulation_map = {}
+                
+                for scrip_id in scrip_ids:
+                    try:
+                        state_data = analyzer.get_current_state(scrip_id, date.today())
+                        if state_data:
+                            accumulation_map[scrip_id] = state_data
+                    except Exception as e:
+                        logging.debug(f"Error getting accumulation/distribution for {scrip_id}: {e}")
+                
+                # Add days_in_leaderboard and accumulation/distribution data to each gainer
                 for gainer in top_gainers:
                     scrip_id = gainer.get('scrip_id')
                     gainer['days_in_leaderboard'] = days_counts.get(scrip_id, 0)
+                    
+                    # Add accumulation/distribution data
+                    if scrip_id and scrip_id in accumulation_map:
+                        acc_data = accumulation_map[scrip_id]
+                        gainer['accumulation_state'] = acc_data.get('state')
+                        gainer['days_in_accumulation_state'] = acc_data.get('days_in_state')
+                        gainer['accumulation_confidence'] = acc_data.get('confidence_score')
+                    else:
+                        gainer['accumulation_state'] = None
+                        gainer['days_in_accumulation_state'] = None
+                        gainer['accumulation_confidence'] = None
             
             conn.close()
         
@@ -4500,17 +4613,48 @@ async def api_gainers():
                 current_price_value = row.get('current_price') or row.get('CURRENT_PRICE') or 0.0
                 previous_price_value = row.get('previous_price') or row.get('PREVIOUS_PRICE') or 0.0
                 
-                gainers_list.append({
-                    "scrip_id": row.get('scrip_id') or row.get('SCRIP_ID') or row.get('scrip_id'),
+                scrip_id = row.get('scrip_id') or row.get('SCRIP_ID') or row.get('scrip_id')
+                gainer_data = {
+                    "scrip_id": scrip_id,
                     "gain": float(gain_value) if gain_value is not None else 0.0,
                     "current_price": float(current_price_value) if current_price_value is not None else 0.0,
                     "previous_price": float(previous_price_value) if previous_price_value is not None else 0.0
-                })
+                }
+                gainers_list.append(gainer_data)
             except (ValueError, TypeError, KeyError) as e:
                 logging.warning(f"Error processing gainer row for {row.get('scrip_id') or row.get('SCRIP_ID', 'unknown')}: {e}")
                 logging.warning(f"Row data: {dict(row)}")
                 logging.warning(f"Available keys: {list(row.keys()) if hasattr(row, 'keys') else 'N/A'}")
                 continue
+        
+        # Get accumulation/distribution data for all gainers
+        from indicators.AccumulationDistributionAnalyzer import AccumulationDistributionAnalyzer
+        from datetime import date
+        analyzer = AccumulationDistributionAnalyzer()
+        accumulation_map = {}
+        
+        scrip_ids_for_acc = [g['scrip_id'] for g in gainers_list if g.get('scrip_id')]
+        for scrip_id in scrip_ids_for_acc:
+            if scrip_id:
+                try:
+                    state_data = analyzer.get_current_state(scrip_id, date.today())
+                    if state_data:
+                        accumulation_map[scrip_id] = state_data
+                except Exception as e:
+                    logging.debug(f"Error getting accumulation/distribution for {scrip_id}: {e}")
+        
+        # Add accumulation/distribution data to each gainer
+        for gainer in gainers_list:
+            scrip_id = gainer.get('scrip_id')
+            if scrip_id and scrip_id in accumulation_map:
+                acc_data = accumulation_map[scrip_id]
+                gainer['accumulation_state'] = acc_data.get('state')
+                gainer['days_in_accumulation_state'] = acc_data.get('days_in_state')
+                gainer['accumulation_confidence'] = acc_data.get('confidence_score')
+            else:
+                gainer['accumulation_state'] = None
+                gainer['days_in_accumulation_state'] = None
+                gainer['accumulation_confidence'] = None
         
         # Get Prophet predictions for all gainers (60-day predictions)
         try:
@@ -4788,6 +4932,35 @@ async def api_losers():
                 logging.warning(f"Row data: {dict(row)}")
                 continue
         
+        # Get accumulation/distribution data for all losers
+        from indicators.AccumulationDistributionAnalyzer import AccumulationDistributionAnalyzer
+        from datetime import date
+        analyzer = AccumulationDistributionAnalyzer()
+        accumulation_map = {}
+        
+        scrip_ids_for_acc = [l['scrip_id'] for l in losers_list if l.get('scrip_id')]
+        for scrip_id in scrip_ids_for_acc:
+            if scrip_id:
+                try:
+                    state_data = analyzer.get_current_state(scrip_id, date.today())
+                    if state_data:
+                        accumulation_map[scrip_id] = state_data
+                except Exception as e:
+                    logging.debug(f"Error getting accumulation/distribution for {scrip_id}: {e}")
+        
+        # Add accumulation/distribution data to each loser
+        for loser in losers_list:
+            scrip_id = loser.get('scrip_id')
+            if scrip_id and scrip_id in accumulation_map:
+                acc_data = accumulation_map[scrip_id]
+                loser['accumulation_state'] = acc_data.get('state')
+                loser['days_in_accumulation_state'] = acc_data.get('days_in_state')
+                loser['accumulation_confidence'] = acc_data.get('confidence_score')
+            else:
+                loser['accumulation_state'] = None
+                loser['days_in_accumulation_state'] = None
+                loser['accumulation_confidence'] = None
+        
         conn.close()
         logging.info(f"Fetched {len(losers_list)} losers, returning response")
         logging.debug(f"Losers list: {losers_list}")
@@ -4842,18 +5015,129 @@ async def api_rt_intraday_price_latest():
         import traceback
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
+@app.get("/api/accumulation_distribution/{scrip_id}")
+async def api_accumulation_distribution(scrip_id: str, analysis_date: str = Query(None)):
+    """API endpoint to get accumulation/distribution state for a stock"""
+    try:
+        from indicators.AccumulationDistributionAnalyzer import AccumulationDistributionAnalyzer
+        from datetime import date, datetime
+        
+        analyzer = AccumulationDistributionAnalyzer()
+        
+        # Parse analysis_date or use today
+        if analysis_date:
+            try:
+                analysis_date_obj = datetime.strptime(analysis_date, '%Y-%m-%d').date()
+            except ValueError:
+                analysis_date_obj = date.today()
+        else:
+            analysis_date_obj = date.today()
+        
+        # Get current state from database
+        state_data = analyzer.get_current_state(scrip_id, analysis_date_obj)
+        
+        if state_data:
+            return cached_json_response({
+                "success": True,
+                "scrip_id": scrip_id,
+                "analysis_date": analysis_date_obj.isoformat(),
+                "state": state_data.get('state'),
+                "start_date": state_data.get('start_date').isoformat() if state_data.get('start_date') else None,
+                "days_in_state": state_data.get('days_in_state'),
+                "obv_value": state_data.get('obv_value'),
+                "ad_value": state_data.get('ad_value'),
+                "momentum_score": state_data.get('momentum_score'),
+                "pattern_detected": state_data.get('pattern_detected'),
+                "confidence_score": state_data.get('confidence_score'),
+                "volume_analysis": state_data.get('volume_analysis'),
+                "technical_context": state_data.get('technical_context')
+            }, f"/api/accumulation_distribution/{scrip_id}")
+        else:
+            return cached_json_response({
+                "success": False,
+                "error": f"No accumulation/distribution data found for {scrip_id} on {analysis_date_obj}"
+            }, f"/api/accumulation_distribution/{scrip_id}")
+            
+    except Exception as e:
+        logging.error(f"Error getting accumulation/distribution for {scrip_id}: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/accumulation_distribution/batch")
+async def api_accumulation_distribution_batch(scrip_ids: str = Query(None), analysis_date: str = Query(None)):
+    """API endpoint to get accumulation/distribution states for multiple stocks"""
+    try:
+        from indicators.AccumulationDistributionAnalyzer import AccumulationDistributionAnalyzer
+        from datetime import date, datetime
+        import json
+        
+        analyzer = AccumulationDistributionAnalyzer()
+        
+        # Parse scrip_ids (comma-separated)
+        if scrip_ids:
+            scrip_id_list = [s.strip() for s in scrip_ids.split(',')]
+        else:
+            return {"success": False, "error": "scrip_ids parameter required"}
+        
+        # Parse analysis_date or use today
+        if analysis_date:
+            try:
+                analysis_date_obj = datetime.strptime(analysis_date, '%Y-%m-%d').date()
+            except ValueError:
+                analysis_date_obj = date.today()
+        else:
+            analysis_date_obj = date.today()
+        
+        # Get states for all stocks
+        results = {}
+        for scrip_id in scrip_id_list:
+            state_data = analyzer.get_current_state(scrip_id, analysis_date_obj)
+            if state_data:
+                results[scrip_id] = {
+                    "state": state_data.get('state'),
+                    "start_date": state_data.get('start_date').isoformat() if state_data.get('start_date') else None,
+                    "days_in_state": state_data.get('days_in_state'),
+                    "obv_value": state_data.get('obv_value'),
+                    "ad_value": state_data.get('ad_value'),
+                    "momentum_score": state_data.get('momentum_score'),
+                    "pattern_detected": state_data.get('pattern_detected'),
+                    "confidence_score": state_data.get('confidence_score')
+                }
+            else:
+                results[scrip_id] = None
+        
+        return cached_json_response({
+            "success": True,
+            "analysis_date": analysis_date_obj.isoformat(),
+            "results": results
+        }, f"/api/accumulation_distribution/batch?scrip_ids={scrip_ids}")
+        
+    except Exception as e:
+        logging.error(f"Error getting batch accumulation/distribution: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+
 @app.get("/api/holdings")
-async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=1), sort_by: str = Query(None), sort_dir: str = Query("asc"), search: str = Query(None)):
-    """API endpoint to get paginated holdings data with sorting and GTT info"""
+async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=1), sort_by: str = Query("below_supertrend"), sort_dir: str = Query("desc"), search: str = Query(None)):
+    """API endpoint to get paginated holdings data with sorting and GTT info
+    Default sort: by Supertrend Alert (desc) - stocks below supertrend shown first
+    """
+    print(f"---XXX--- api_holdings called: page={page}, per_page={per_page}, sort_by={sort_by}, search={search}")
     try:
         # Small cache for hot endpoint (exclude search from cache key for real-time search)
         if not search:
             cache_key = f"holdings:{page}:{per_page}:{sort_by}:{sort_dir}"
             cached = cache_get_json(cache_key)
             if cached:
+                print(f"---XXX--- Returning cached result for {cache_key}")
                 return cached
-        # If sorting by today_pnl, prophet_prediction_pct, or irrational_score, we need to get all holdings, enrich them, sort, then paginate
-        if sort_by == 'today_pnl' or sort_by == 'prophet_prediction_pct' or sort_by == 'irrational_score':
+        print(f"---XXX--- Not using cache, proceeding with fresh data")
+        # If sorting by today_pnl, prophet_prediction_pct, below_supertrend, or accumulation_state, we need to get all holdings, enrich them, sort, then paginate
+        if sort_by == 'today_pnl' or sort_by == 'prophet_prediction_pct' or sort_by == 'below_supertrend' or sort_by == 'accumulation_state':
             # Get all holdings without pagination
             holdings_info = get_holdings_data(page=1, per_page=10000, sort_by='trading_symbol', sort_dir='asc', search=search)
         else:
@@ -5036,11 +5320,30 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
         
         conn.close()
         
+        # Get accumulation/distribution data for all holdings
+        from indicators.AccumulationDistributionAnalyzer import AccumulationDistributionAnalyzer
+        from datetime import date
+        analyzer = AccumulationDistributionAnalyzer()
+        accumulation_map = {}
+        
+        try:
+            for holding in holdings_info["holdings"]:
+                symbol = holding["trading_symbol"]
+                if symbol:
+                    state_data = analyzer.get_current_state(symbol, date.today())
+                    if state_data:
+                        accumulation_map[symbol] = state_data
+        except Exception as e:
+            logging.debug(f"Error loading accumulation/distribution data: {e}")
+            accumulation_map = {}
+        
         # Convert holdings to serializable format
         holdings_list = []
+        print(f"---XXX--- Starting holdings loop, total holdings: {len(holdings_info.get('holdings', []))}")
         for holding in holdings_info["holdings"]:
             symbol = holding["trading_symbol"]
             instrument_token = holding["instrument_token"]
+            print(f"---XXX--- Processing holding: {symbol}")
             today_pnl_info = today_pnl_map.get(instrument_token, {'today_pnl': 0.0, 'today_price': 0.0, 'prev_price': 0.0, 'pct_change': 0.0, 'today_change': '0 (0%)'})
             
             # Get Prophet prediction for this holding
@@ -5106,28 +5409,68 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                     prophet_cv_mape = None
                     prophet_cv_rmse = None
             
-            # Get irrational analysis data
-            irrational_data = None
+            # Check if stock is below supertrend
+            print(f"---XXX--- About to check supertrend for {symbol}")
+            below_supertrend = False
+            supertrend_value = None
+            days_below_supertrend = None
             try:
-                cursor.execute("""
-                    SELECT irrational_score, exit_recommendation, exit_reason, irrational_type
-                    FROM my_schema.holdings_irrational_analysis
-                    WHERE trading_symbol = %s
-                    AND analysis_date = CURRENT_DATE
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                """, (symbol,))
-                irrational_result = cursor.fetchone()
-                if irrational_result:
-                    irrational_data = {
-                        "irrational_score": float(irrational_result['irrational_score']) if irrational_result['irrational_score'] else None,
-                        "exit_recommendation": irrational_result['exit_recommendation'],
-                        "exit_reason": irrational_result['exit_reason'],
-                        "irrational_type": irrational_result['irrational_type']
-                    }
+                print(f"---XXX--- Calling get_latest_supertrend for {symbol}")
+                # Don't pass conn - let the function create its own connection
+                supertrend_result = get_latest_supertrend(symbol, conn=None)
+                print(f"---XXX--- Result for {symbol}: {supertrend_result}")
+                if supertrend_result is not None:
+                    supertrend_value, supertrend_direction, supertrend_close, days_below_supertrend = supertrend_result
+                    print(f"---XXX--- Unpacked for {symbol}: value={supertrend_value}, direction={supertrend_direction}, close={supertrend_close}, days_below={days_below_supertrend}")
+                    
+                    # Compare the close price used in supertrend calculation with the supertrend value
+                    # This is the most accurate comparison since they're from the same calculation
+                    if supertrend_close is not None and supertrend_value is not None:
+                        below_supertrend = supertrend_close < supertrend_value
+                    else:
+                        # Fallback: use direction if close price is not available
+                        # direction = -1 means price is below supertrend, direction = 1 means price is above supertrend
+                        below_supertrend = (supertrend_direction == -1)
+                    
+                    # Also verify with latest price from database as a double-check
+                    cursor.execute("""
+                        SELECT price_close
+                        FROM my_schema.rt_intraday_price
+                        WHERE scrip_id = %s
+                        AND country = 'IN'
+                        AND price_date::date <= CURRENT_DATE
+                        AND price_close IS NOT NULL
+                        ORDER BY price_date DESC
+                        LIMIT 1
+                    """, (symbol,))
+                    price_result = cursor.fetchone()
+                    
+                    if price_result and price_result['price_close']:
+                        latest_close_price = float(price_result['price_close'])
+                        # Double-check: if supertrend value > closing price, then stock is below supertrend
+                        price_below = latest_close_price < supertrend_value
+                        if below_supertrend != price_below:
+                            # If there's a mismatch, use the latest price comparison (more current)
+                            logging.debug(f"Supertrend comparison mismatch for {symbol}: calc_close={supertrend_close}, latest_close={latest_close_price}, st={supertrend_value}, using_latest={price_below}")
+                            below_supertrend = price_below
+                else:
+                    logging.debug(f"Supertrend result is None for {symbol}")
             except Exception as e:
-                logging.debug(f"Could not fetch irrational analysis for {symbol}: {e}")
+                logging.warning(f"Could not check supertrend for {symbol}: {e}")
+                import traceback
+                logging.warning(traceback.format_exc())
             
+            # Get accumulation/distribution data
+            accumulation_state = None
+            days_in_accumulation_state = None
+            accumulation_confidence = None
+            if symbol and symbol in accumulation_map:
+                acc_data = accumulation_map[symbol]
+                accumulation_state = acc_data.get('state')
+                days_in_accumulation_state = acc_data.get('days_in_state')
+                accumulation_confidence = acc_data.get('confidence_score')
+            
+            print(f"---XXX--- Adding to holdings_list for {symbol}: supertrend_value={supertrend_value}, below_supertrend={below_supertrend}")
             holdings_list.append({
                 "trading_symbol": symbol,
                 "instrument_token": instrument_token,
@@ -5148,13 +5491,16 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                 "prediction_days": prophet_pred_days,
                 "prophet_cv_mape": prophet_cv_mape,
                 "prophet_cv_rmse": prophet_cv_rmse,
-                "irrational_score": irrational_data['irrational_score'] if irrational_data else None,
-                "exit_recommendation": irrational_data['exit_recommendation'] if irrational_data else None,
-                "exit_reason": irrational_data['exit_reason'] if irrational_data else None,
-                "irrational_type": irrational_data['irrational_type'] if irrational_data else None
+                "below_supertrend": below_supertrend,
+                "supertrend_value": supertrend_value,
+                "days_below_supertrend": days_below_supertrend,
+                "accumulation_state": accumulation_state,
+                "days_in_accumulation_state": days_in_accumulation_state,
+                "accumulation_confidence": accumulation_confidence
             })
+            print(f"---XXX--- Added to holdings_list for {symbol}")
         
-        # If sorting by today_pnl, prophet_prediction_pct, or irrational_score, sort the enriched list and then paginate
+        # If sorting by today_pnl, prophet_prediction_pct, below_supertrend, or accumulation_state, sort the enriched list and then paginate
         if sort_by == 'today_pnl':
             sort_reverse = sort_dir.lower() == 'desc'
             holdings_list.sort(key=lambda x: x['today_pnl'], reverse=sort_reverse)
@@ -5174,10 +5520,38 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
             start_idx = (page - 1) * per_page
             end_idx = start_idx + per_page
             holdings_list = holdings_list[start_idx:end_idx]
-        elif sort_by == 'irrational_score':
+        elif sort_by == 'below_supertrend':
             sort_reverse = sort_dir.lower() == 'desc'
-            # Sort by irrational_score, handling None values (put None at end)
-            holdings_list.sort(key=lambda x: x['irrational_score'] if x['irrational_score'] is not None else (float('-inf') if sort_reverse else float('inf')), reverse=sort_reverse)
+            # Sort by below_supertrend (boolean), then by supertrend_value
+            # True (below) comes first in desc order, False (above) comes first in asc order
+            holdings_list.sort(key=lambda x: (
+                x.get('below_supertrend', False),
+                x.get('supertrend_value') if x.get('supertrend_value') is not None else (float('inf') if sort_reverse else float('-inf'))
+            ), reverse=sort_reverse)
+            
+            # Apply pagination after sorting
+            total_count = len(holdings_list)
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            holdings_list = holdings_list[start_idx:end_idx]
+        elif sort_by == 'accumulation_state':
+            sort_reverse = sort_dir.lower() == 'desc'
+            # Sort by accumulation_state (ACCUMULATION, DISTRIBUTION, NEUTRAL, None)
+            # Priority: DISTRIBUTION (highest), ACCUMULATION, NEUTRAL, None (lowest)
+            def get_state_priority(state):
+                if state == 'DISTRIBUTION':
+                    return 3
+                elif state == 'ACCUMULATION':
+                    return 2
+                elif state == 'NEUTRAL':
+                    return 1
+                else:
+                    return 0
+            
+            holdings_list.sort(key=lambda x: (
+                get_state_priority(x.get('accumulation_state')),
+                x.get('days_in_accumulation_state') if x.get('days_in_accumulation_state') is not None else 0
+            ), reverse=sort_reverse)
             
             # Apply pagination after sorting
             total_count = len(holdings_list)
@@ -5253,7 +5627,7 @@ async def api_positions():
         logging.error(f"Error fetching positions: {e}")
         return cached_json_response({"error": str(e), "positions": []}, "/api/positions")
 
-@app.get("/api/holdings/irrational-analysis")
+##@app.get("/api/holdings/irrational-analysis")
 async def api_irrational_analysis(
     min_score: float = Query(50.0, description="Minimum irrational score (default: 50)"),
     exit_recommendation: Optional[str] = Query(None, description="Filter by exit recommendation: STRONG, MODERATE, WEAK, NONE"),

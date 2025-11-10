@@ -24,40 +24,37 @@ def test_market_charts():
         # Test pre-market data
         print("\nTesting pre-market data...")
         pre_market_df = gen.get_pre_market_ticks("2025-10-20")
-        print(f"✓ Pre-market data shape: {pre_market_df.shape}")
+        print(f"✓ Pre-market data retrieved")
         
         # Test market data
         print("\nTesting market data...")
         market_df = gen.get_market_ticks("2025-10-20")
-        print(f"✓ Market data shape: {market_df.shape}")
+        print(f"✓ Market data retrieved")
         
         # Test trades data
         print("\nTesting trades data...")
         trades_df = gen.get_latest_trades()
-        print(f"✓ Trades data shape: {trades_df.shape}")
+        print(f"✓ Trades data retrieved")
         
         # Test margin data
         print("\nTesting margin data...")
         margin_df = gen.get_margin_data()
-        print(f"✓ Margin data shape: {margin_df.shape}")
+        print(f"✓ Margin data retrieved")
         
         # Test holdings data
         print("\nTesting holdings data...")
         holdings_df = gen.get_holdings_data()
-        print(f"✓ Holdings data shape: {holdings_df.shape}")
+        print(f"✓ Holdings data retrieved")
         
         # Test positions data
         print("\nTesting positions data...")
         positions_df = gen.get_positions_data()
-        print(f"✓ Positions data shape: {positions_df.shape}")
+        print(f"✓ Positions data retrieved")
         
         # Test gainers/losers data
         print("\nTesting gainers/losers data...")
         gainers_df = gen.get_gainers_losers()
-        print(f"✓ Gainers data shape: {gainers_df.shape}")
-        if not gainers_df.empty:
-            print("Sample gainers data:")
-            print(gainers_df.head())
+        print(f"✓ Gainers data retrieved")
         
         # Test dashboard generation
         print("\nTesting dashboard generation...")

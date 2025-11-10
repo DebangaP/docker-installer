@@ -36,7 +36,6 @@ price_levels = np.round(price_levels, 2)
 # Step 2: Create TPO matrix
 tpo_matrix = pd.DataFrame(index=price_levels, columns=periods)
 tpo_matrix[:] = ''
-print(tpo_matrix)
 
 # Step 3: Assign TPOs to price levels
 for i, period in enumerate(periods):

@@ -204,10 +204,6 @@ class PortfolioHedgeAnalyzer:
             df = pd.DataFrame(all_rows, columns=combined_columns)
             logging.info(f"DataFrame created with {len(df)} rows, columns: {df.columns.tolist()}")
             
-            if len(df) > 0:
-                logging.info(f"Sample DataFrame data before filtering: quantity range: [{df['quantity'].min()}, {df['quantity'].max()}], current_value range: [{df['current_value'].min()}, {df['current_value'].max()}]")
-                logging.info(f"Sample rows: {df.head(3).to_dict('records')}")
-            
             # Ensure current_value and invested_value are numeric
             df['current_value'] = pd.to_numeric(df['current_value'], errors='coerce').fillna(0)
             df['invested_value'] = pd.to_numeric(df['invested_value'], errors='coerce').fillna(0)
@@ -224,7 +220,7 @@ class PortfolioHedgeAnalyzer:
             # Log holdings with zero current_value for debugging
             zero_value_holdings = df[df['current_value'] == 0]
             if len(zero_value_holdings) > 0:
-                logging.warning(f"Found {len(zero_value_holdings)} holdings with zero current_value (missing price data): {zero_value_holdings[['trading_symbol', 'quantity', 'current_price']].to_dict('records')}")
+                logging.warning(f"Found {len(zero_value_holdings)} holdings with zero current_value (missing price data)")
             
             logging.info(f"Final holdings DataFrame: {len(df)} rows")
             if len(df) > 0:
@@ -234,7 +230,6 @@ class PortfolioHedgeAnalyzer:
                 equity_value = df[df['holding_type'] == 'EQUITY']['current_value'].sum()
                 mf_value = df[df['holding_type'] == 'MF']['current_value'].sum()
                 logging.info(f"Total portfolio value: ₹{total_value:,.2f} (Equity: {equity_count} holdings, ₹{equity_value:,.2f}; MF: {mf_count} holdings, ₹{mf_value:,.2f})")
-                logging.info(f"Sample holdings: {df[['trading_symbol', 'quantity', 'current_value', 'holding_type']].head(5).to_dict('records')}")
             else:
                 logging.warning(f"No holdings in final DataFrame. Raw counts - Equity: {len(equity_rows)}, MF: {len(mf_rows)}")
             
@@ -805,8 +800,6 @@ class PortfolioHedgeAnalyzer:
         try:
             holdings = self.get_current_holdings()
             logging.info(f"suggest_hedge: Received holdings DataFrame with {len(holdings)} rows, empty={holdings.empty}")
-            if len(holdings) > 0:
-                logging.info(f"suggest_hedge: Holdings sample: {holdings[['trading_symbol', 'quantity', 'current_value', 'holding_type']].head(5).to_dict('records')}")
             
             if holdings.empty:
                 logging.warning("suggest_hedge: Holdings DataFrame is empty!")
