@@ -1988,6 +1988,19 @@
                         ✕ Clear
                     </button>
                 </div>
+                <!-- Wyckoff Analysis Buttons -->
+                <div style="display: flex; gap: 10px; margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd; align-items: center; flex-wrap: wrap;">
+                    <button onclick="calculateWyckoffForAll()" id="btnCalculateAll" class="btn btn-primary" style="padding: 8px 16px; font-size: 13px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" title="Calculate Wyckoff Accumulation/Distribution for all holdings">
+                        📊 Calculate Wyckoff for All Holdings
+                    </button>
+                    <button onclick="calculateWyckoffForSelected()" id="btnCalculateSelected" class="btn btn-secondary" style="padding: 8px 16px; font-size: 13px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; display: none;" title="Calculate Wyckoff for selected stocks">
+                        📊 Calculate for Selected (<span id="selectedCount">0</span>)
+                    </button>
+                    <button onclick="checkWyckoffStatus()" class="btn" style="padding: 8px 16px; font-size: 13px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;" title="Check Wyckoff analysis status">
+                        ℹ️ Check Status
+                    </button>
+                    <span id="wyckoffStatusMessage" style="margin-left: 10px; font-size: 12px; color: #666;"></span>
+                </div>
             </div>
             <div style="overflow-x: auto;">
                 <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
@@ -3229,6 +3242,183 @@
             // Reset to first page when clearing
             currentHoldingsPage = 1;
             loadHoldingsPage(1);
+        }
+
+        // Wyckoff Analysis Functions
+        let selectedHoldings = new Set();
+
+        function calculateWyckoffForAll() {
+            if (!confirm('Calculate Wyckoff Accumulation/Distribution analysis for all holdings? This may take a few minutes.')) {
+                return;
+            }
+            
+            const btn = document.getElementById('btnCalculateAll');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Calculating...';
+            btn.style.opacity = '0.6';
+            
+            const statusMsg = document.getElementById('wyckoffStatusMessage');
+            statusMsg.textContent = 'Calculating for all holdings...';
+            statusMsg.style.color = '#007bff';
+            
+            fetch('/api/holdings/calculate-wyckoff-all', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({force_recalculate: false})
+            })
+            .then(response => response.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                btn.style.opacity = '1';
+                
+                if (data.success) {
+                    const msg = `✅ Processed ${data.processed || 0} holdings. ` +
+                               `Accumulation: ${data.accumulation_count || 0}, ` +
+                               `Distribution: ${data.distribution_count || 0}, ` +
+                               `Neutral: ${data.neutral_count || 0}`;
+                    statusMsg.textContent = msg;
+                    statusMsg.style.color = '#28a745';
+                    
+                    if (data.errors && data.errors.length > 0) {
+                        console.warn('Some errors occurred:', data.errors);
+                        statusMsg.textContent += ` (${data.errors.length} errors)`;
+                    }
+                    
+                    // Refresh holdings table after a short delay
+                    setTimeout(() => {
+                        location.reload();
+                    }, 2000);
+                } else {
+                    statusMsg.textContent = `❌ Error: ${data.error || 'Failed to calculate'}`;
+                    statusMsg.style.color = '#dc3545';
+                }
+            })
+            .catch(error => {
+                console.error('Error calculating Wyckoff:', error);
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                btn.style.opacity = '1';
+                statusMsg.textContent = `❌ Error: ${error.message}`;
+                statusMsg.style.color = '#dc3545';
+            });
+        }
+
+        function calculateWyckoffForSelected() {
+            const selectedSymbols = Array.from(selectedHoldings);
+            
+            if (selectedSymbols.length === 0) {
+                alert('Please select at least one stock. You can add checkbox selection functionality to enable this feature.');
+                return;
+            }
+            
+            if (!confirm(`Calculate Wyckoff analysis for ${selectedSymbols.length} selected stock(s)?`)) {
+                return;
+            }
+            
+            const btn = document.getElementById('btnCalculateSelected');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Calculating...';
+            btn.style.opacity = '0.6';
+            
+            const statusMsg = document.getElementById('wyckoffStatusMessage');
+            statusMsg.textContent = `Calculating for ${selectedSymbols.length} selected stock(s)...`;
+            statusMsg.style.color = '#007bff';
+            
+            fetch('/api/holdings/calculate-wyckoff', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    symbols: selectedSymbols,
+                    force_recalculate: false
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                btn.style.opacity = '1';
+                
+                if (data.success) {
+                    const successCount = data.success_count || 0;
+                    const failedCount = data.failed_count || 0;
+                    const msg = `✅ Processed ${data.processed || 0} stocks. ` +
+                               `Success: ${successCount}, Failed: ${failedCount}`;
+                    statusMsg.textContent = msg;
+                    statusMsg.style.color = '#28a745';
+                    
+                    if (data.errors && data.errors.length > 0) {
+                        console.warn('Some errors occurred:', data.errors);
+                    }
+                    
+                    // Refresh holdings table after a short delay
+                    setTimeout(() => {
+                        location.reload();
+                    }, 2000);
+                } else {
+                    statusMsg.textContent = `❌ Error: ${data.error || 'Failed to calculate'}`;
+                    statusMsg.style.color = '#dc3545';
+                }
+            })
+            .catch(error => {
+                console.error('Error calculating Wyckoff:', error);
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                btn.style.opacity = '1';
+                statusMsg.textContent = `❌ Error: ${error.message}`;
+                statusMsg.style.color = '#dc3545';
+            });
+        }
+
+        function checkWyckoffStatus() {
+            const statusMsg = document.getElementById('wyckoffStatusMessage');
+            statusMsg.textContent = 'Checking status...';
+            statusMsg.style.color = '#007bff';
+            
+            fetch('/api/holdings/wyckoff-status')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const msg = `Status: ${data.analyzed || 0} analyzed, ${data.not_analyzed || 0} not analyzed out of ${data.total_holdings || 0} total holdings`;
+                    statusMsg.textContent = msg;
+                    statusMsg.style.color = '#28a745';
+                    
+                    if (data.last_analysis_date) {
+                        statusMsg.textContent += ` (Last: ${data.last_analysis_date})`;
+                    }
+                } else {
+                    statusMsg.textContent = `❌ Error: ${data.error || 'Failed to get status'}`;
+                    statusMsg.style.color = '#dc3545';
+                }
+            })
+            .catch(error => {
+                console.error('Error checking status:', error);
+                statusMsg.textContent = `❌ Error: ${error.message}`;
+                statusMsg.style.color = '#dc3545';
+            });
+        }
+
+        // Function to toggle stock selection (for future checkbox implementation)
+        function toggleStockSelection(symbol) {
+            if (selectedHoldings.has(symbol)) {
+                selectedHoldings.delete(symbol);
+            } else {
+                selectedHoldings.add(symbol);
+            }
+            updateSelectedCount();
+        }
+
+        function updateSelectedCount() {
+            const count = selectedHoldings.size;
+            document.getElementById('selectedCount').textContent = count;
+            const btn = document.getElementById('btnCalculateSelected');
+            if (count > 0) {
+                btn.style.display = 'inline-block';
+            } else {
+                btn.style.display = 'none';
+            }
         }
         
         // Sort holdings function

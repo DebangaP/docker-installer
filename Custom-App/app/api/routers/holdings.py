@@ -1,8 +1,8 @@
 """
 Holdings router for all holdings, positions, mutual funds, and portfolio-related endpoints.
 """
-from fastapi import APIRouter, Query
-from typing import Optional
+from fastapi import APIRouter, Query, Body
+from typing import Optional, List
 from common.Boilerplate import get_db_connection, kite
 import psycopg2.extras
 import logging
@@ -2412,4 +2412,104 @@ async def download_pnl_summary_pdf():
         import traceback
         logging.error(traceback.format_exc())
         return {"error": str(e)}
+
+
+@router.post("/holdings/calculate-wyckoff")
+async def calculate_wyckoff_for_selected(
+    symbols: List[str] = Body(...),
+    force_recalculate: bool = Body(False)
+):
+    """
+    Calculate Wyckoff Accumulation/Distribution for selected stocks
+    
+    Args:
+        symbols: List of trading symbols
+        force_recalculate: If True, recalculate even if recent analysis exists
+    
+    Returns:
+        Dict with results and statistics
+    """
+    try:
+        from api.services.wyckoff_service import WyckoffService
+        
+        wyckoff_service = WyckoffService()
+        results = wyckoff_service.calculate_for_symbols(symbols, force_recalculate)
+        
+        return results
+        
+    except Exception as e:
+        logging.error(f"Error calculating Wyckoff for selected stocks: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "total": 0,
+            "processed": 0,
+            "results": [],
+            "errors": []
+        }
+
+
+@router.post("/holdings/calculate-wyckoff-all")
+async def calculate_wyckoff_for_all_holdings(
+    force_recalculate: bool = Body(False)
+):
+    """
+    Calculate Wyckoff Accumulation/Distribution for all holdings
+    
+    Args:
+        force_recalculate: If True, recalculate even if recent analysis exists
+    
+    Returns:
+        Dict with summary statistics
+    """
+    try:
+        from api.services.wyckoff_service import WyckoffService
+        
+        wyckoff_service = WyckoffService()
+        results = wyckoff_service.calculate_for_all_holdings(force_recalculate)
+        
+        return results
+        
+    except Exception as e:
+        logging.error(f"Error calculating Wyckoff for all holdings: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "total_holdings": 0,
+            "processed": 0
+        }
+
+
+@router.get("/holdings/wyckoff-status")
+async def get_wyckoff_status():
+    """
+    Get status of Wyckoff analysis for all holdings
+    
+    Returns:
+        Dict with analysis status for each holding
+    """
+    try:
+        from api.services.wyckoff_service import WyckoffService
+        
+        wyckoff_service = WyckoffService()
+        status = wyckoff_service.get_analysis_status()
+        
+        return status
+        
+    except Exception as e:
+        logging.error(f"Error getting Wyckoff status: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "total_holdings": 0,
+            "analyzed": 0,
+            "not_analyzed": 0,
+            "holdings_status": []
+        }
 

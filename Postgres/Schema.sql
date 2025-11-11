@@ -1944,3 +1944,38 @@ CREATE TABLE if not exists public.rt_insider_trans (
                     value VARCHAR(10),
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+
+-- Accumulation/Distribution Analysis Tables
+CREATE TABLE IF NOT EXISTS my_schema.accumulation_distribution (
+    scrip_id VARCHAR(50) NOT NULL,
+    analysis_date DATE NOT NULL,
+    run_date DATE DEFAULT CURRENT_DATE,
+    state VARCHAR(20) NOT NULL, -- 'ACCUMULATION', 'DISTRIBUTION', 'NEUTRAL'
+    start_date DATE,
+    days_in_state INTEGER,
+    obv_value FLOAT,
+    ad_value FLOAT,
+    momentum_score FLOAT,
+    pattern_detected VARCHAR(100),
+    volume_analysis JSONB,
+    confidence_score FLOAT,
+    technical_context JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (scrip_id, analysis_date)
+);
+
+-- History table for state transitions
+CREATE TABLE IF NOT EXISTS my_schema.accumulation_distribution_history (
+    id SERIAL PRIMARY KEY,
+    scrip_id VARCHAR(50) NOT NULL,
+    state VARCHAR(20) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE,
+    duration_days INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for accumulation/distribution tables
+CREATE INDEX IF NOT EXISTS idx_acc_dist_scrip_date ON my_schema.accumulation_distribution(scrip_id, analysis_date DESC);
+CREATE INDEX IF NOT EXISTS idx_acc_dist_state ON my_schema.accumulation_distribution(state);
+CREATE INDEX IF NOT EXISTS idx_acc_dist_history_scrip ON my_schema.accumulation_distribution_history(scrip_id, start_date DESC);

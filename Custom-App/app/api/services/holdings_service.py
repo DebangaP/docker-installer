@@ -1,6 +1,7 @@
 """
 Holdings service for business logic related to holdings, positions, and portfolio management.
 """
+from typing import List
 from common.Boilerplate import get_db_connection
 import psycopg2.extras
 import logging
@@ -350,4 +351,34 @@ class HoldingsService:
             import traceback
             logging.error(traceback.format_exc())
             return holdings_data
+    
+    def get_all_holdings_symbols(self) -> List[str]:
+        """
+        Get list of all trading symbols from holdings
+        
+        Returns:
+            List of trading symbols
+        """
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            
+            cursor.execute("""
+                SELECT DISTINCT trading_symbol
+                FROM my_schema.holdings
+                WHERE run_date = (SELECT MAX(run_date) FROM my_schema.holdings)
+                AND trading_symbol IS NOT NULL
+                ORDER BY trading_symbol
+            """)
+            
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            symbols = [row['trading_symbol'] for row in rows if row['trading_symbol']]
+            return symbols
+            
+        except Exception as e:
+            logging.error(f"Error getting holdings symbols: {e}")
+            return []
 
