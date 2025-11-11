@@ -1224,7 +1224,7 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Predicted Gain %</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Ghost Confidence</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
-                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;" title="Accumulation/Distribution state">Accumulation/Distribution</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px; white-space: normal; word-wrap: break-word;" title="Accumulation/Distribution state">Accumulation/Distribution</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;" title="Days in accumulation/distribution state">Days in State</th>
                                 </tr>
                             </thead>
@@ -1342,7 +1342,7 @@
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Mean Absolute Percentage Error">MAPE (%)</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Root Mean Squared Error">RMSE</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Days</th>
-                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;" title="Accumulation/Distribution state">Accumulation/Distribution</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px; white-space: normal; word-wrap: break-word;" title="Accumulation/Distribution state">Accumulation/Distribution</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;" title="Days in accumulation/distribution state">Days in State</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Rationale</th>
                                 </tr>
@@ -1433,7 +1433,7 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;" title="Mean Absolute Percentage Error">MAPE (%)</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;" title="Root Mean Squared Error">RMSE</th>
-                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;" title="Accumulation/Distribution state">Accumulation/Distribution</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px; white-space: normal; word-wrap: break-word;" title="Accumulation/Distribution state">Accumulation/Distribution</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;" title="Days in accumulation/distribution state">Days in State</th>
                                 </tr>
                             </thead>
@@ -1999,17 +1999,16 @@
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Qty</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">Avg. Price</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;">LTP</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Supertrend Value">Supertrend Value</th>
+                            <th onclick="sortHoldings('below_supertrend')" style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_below_supertrend" title="Alert if stock price is below Supertrend">Supertrend Alert ↕</th>
                             <th onclick="sortHoldings('invested_amount')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_invested_amount">Invested Amount ↕</th>
                             <th onclick="sortHoldings('current_amount')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_current_amount">Current Amount ↕</th>
                             <th onclick="sortHoldings('pnl')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_pnl">Total P&L ↕</th>
                             <th onclick="sortHoldings('today_pnl')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_today_pnl">Today's P&L ↕</th>
                             <th onclick="sortHoldings('prophet_prediction_pct')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_prophet_prediction_pct">Ghost Prediction (60D) ↕</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Confidence</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Supertrend Value">Supertrend Value</th>
-                            <th onclick="sortHoldings('irrational_score')" style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_irrational_score" title="Irrational Move Score (0-100)">Exit Alert ↕</th>
-                            <th onclick="sortHoldings('below_supertrend')" style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_below_supertrend" title="Alert if stock price is below Supertrend">Supertrend Alert ↕</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;" title="Days below supertrend in the latest downtrend">Days Below ST</th>
-                            <th onclick="sortHoldings('accumulation_state')" style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_accumulation_state" title="Accumulation/Distribution state">Accumulation/Distribution ↕</th>
+                            <th onclick="sortHoldings('accumulation_state')" style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px; white-space: normal; word-wrap: break-word;" id="header_accumulation_state" title="Accumulation/Distribution state">Accumulation/Distribution ↕</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;" title="Days in accumulation/distribution state">Days in State</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Actions</th>
                         </tr>
@@ -2034,6 +2033,25 @@
                             </td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
                                 ₹{{ "%.2f"|format(holding.last_price) }}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">
+                                {% if holding.supertrend_value is not none and holding.supertrend_value is defined %}
+                                    <span style="color: #666;">₹{{ "%.2f"|format(holding.supertrend_value) }}</span>
+                                {% else %}
+                                    <span style="color: #999; font-size: 12px;">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
+                                {% if holding.below_supertrend is defined and holding.below_supertrend %}
+                                    <div style="background-color: #dc3545; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;" title="Stock price is below Supertrend">
+                                        ⚠️ Below ST
+                                    </div>
+                                    {% if holding.supertrend_value is defined and holding.supertrend_value %}
+                                        <div style="font-size: 10px; color: #dc3545; margin-top: 2px;">ST: ₹{{ "%.2f"|format(holding.supertrend_value) }}</div>
+                                    {% endif %}
+                                {% else %}
+                                    <span style="color: #28a745; font-size: 12px;">✓ Above</span>
+                                {% endif %}
                             </td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
                                 ₹{{ "%.2f"|format(holding.quantity * holding.average_price) }}
@@ -2110,55 +2128,6 @@
                                     {% endif %}
                                 {% else %}
                                     <span style="color: #999; font-size: 12px;">N/A</span>
-                                {% endif %}
-                            </td>
-                            <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">
-                                {% if holding.supertrend_value is not none and holding.supertrend_value is defined %}
-                                    <span style="color: #666;">₹{{ "%.2f"|format(holding.supertrend_value) }}</span>
-                                {% else %}
-                                    <span style="color: #999; font-size: 12px;">N/A</span>
-                                {% endif %}
-                            </td>
-                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
-                                {% if holding.irrational_score is not none and holding.irrational_score is defined %}
-                                    {% set score = holding.irrational_score %}
-                                    {% set recommendation = holding.exit_recommendation %}
-                                    {% set reason = holding.exit_reason %}
-                                    {% if score >= 70 %}
-                                        <div style="background-color: #dc3545; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;" title="{{ reason or 'Strong exit recommendation' }}">
-                                            ⚠️ {{ "%.0f"|format(score) }}
-                                        </div>
-                                        <div style="font-size: 10px; color: #dc3545; margin-top: 2px;">STRONG</div>
-                                    {% elif score >= 50 %}
-                                        <div style="background-color: #ff9800; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;" title="{{ reason or 'Moderate exit recommendation' }}">
-                                            ⚠️ {{ "%.0f"|format(score) }}
-                                        </div>
-                                        <div style="font-size: 10px; color: #ff9800; margin-top: 2px;">MODERATE</div>
-                                    {% elif score >= 30 %}
-                                        <div style="background-color: #ffc107; color: #333; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;" title="{{ reason or 'Weak exit recommendation' }}">
-                                            ⚠️ {{ "%.0f"|format(score) }}
-                                        </div>
-                                        <div style="font-size: 10px; color: #ffc107; margin-top: 2px;">WEAK</div>
-                                    {% else %}
-                                        <div style="background-color: #28a745; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;" title="No significant irrational patterns">
-                                            ✓ {{ "%.0f"|format(score) }}
-                                        </div>
-                                        <div style="font-size: 10px; color: #28a745; margin-top: 2px;">NONE</div>
-                                    {% endif %}
-                                {% else %}
-                                    <span style="color: #999; font-size: 12px;">N/A</span>
-                                {% endif %}
-                            </td>
-                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
-                                {% if holding.below_supertrend is defined and holding.below_supertrend %}
-                                    <div style="background-color: #dc3545; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;" title="Stock price is below Supertrend">
-                                        ⚠️ Below ST
-                                    </div>
-                                    {% if holding.supertrend_value is defined and holding.supertrend_value %}
-                                        <div style="font-size: 10px; color: #dc3545; margin-top: 2px;">ST: ₹{{ "%.2f"|format(holding.supertrend_value) }}</div>
-                                    {% endif %}
-                                {% else %}
-                                    <span style="color: #28a745; font-size: 12px;">✓ Above</span>
                                 {% endif %}
                             </td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
@@ -3281,7 +3250,7 @@
         
         // Update sort indicators in table headers
         function updateSortIndicators() {
-            const headers = ['header_trading_symbol', 'header_invested_amount', 'header_current_amount', 'header_pnl', 'header_today_pnl', 'header_prophet_prediction_pct', 'header_irrational_score', 'header_below_supertrend'];
+            const headers = ['header_trading_symbol', 'header_invested_amount', 'header_current_amount', 'header_pnl', 'header_today_pnl', 'header_prophet_prediction_pct', 'header_below_supertrend'];
             const labelMap = {
                 'header_trading_symbol': 'Symbol',
                 'header_invested_amount': 'Invested Amount',
@@ -3289,7 +3258,6 @@
                 'header_pnl': 'Total P&L',
                 'header_today_pnl': 'Today\'s P&L',
                 'header_prophet_prediction_pct': 'Ghost Prediction (60D)',
-                'header_irrational_score': 'Exit Alert',
                 'header_below_supertrend': 'Supertrend Alert',
                 'header_accumulation_state': 'Accumulation/Distribution'
             };
@@ -3311,6 +3279,7 @@
         function loadHoldingsPage(page) {
             // Ensure sortColumn and sortDirection are defined
             // Default: Sort by Supertrend Alert (desc) - stocks below supertrend shown first
+            // NOTE: This endpoint is now handled by api/routers/holdings.py
             const sortBy = sortColumn || 'below_supertrend';
             const sortDir = sortDirection || 'desc';
             // Build URL with search parameter
@@ -3355,6 +3324,21 @@
                                 <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
                                     ₹${holding.last_price.toFixed(2)}
                                 </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">
+                                    ${holding.supertrend_value !== null && holding.supertrend_value !== undefined && !isNaN(holding.supertrend_value) ? `
+                                        <span style="color: #666;">₹${holding.supertrend_value.toFixed(2)}</span>
+                                    ` : '<span style="color: #999; font-size: 12px;">N/A</span>'}
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
+                                    ${holding.below_supertrend ? `
+                                        <div style="background-color: #dc3545; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;" title="Stock price is below Supertrend">
+                                            ⚠️ Below ST
+                                        </div>
+                                        ${holding.supertrend_value ? `
+                                            <div style="font-size: 10px; color: #dc3545; margin-top: 2px;">ST: ₹${holding.supertrend_value.toFixed(2)}</div>
+                                        ` : ''}
+                                    ` : '<span style="color: #28a745; font-size: 12px;">✓ Above</span>'}
+                                </td>
                                 <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 14px;">
                                     ₹${holding.invested_amount.toFixed(2)}
                                 </td>
@@ -3387,46 +3371,6 @@
                                             `<span style="color: #dc3545; font-weight: bold;">${holding.prophet_confidence.toFixed(0)}%</span>`
                                         }
                                     ` : `<span style="color: #999; font-size: 12px;">N/A</span>`}
-                                </td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: right; font-size: 13px;">
-                                    ${holding.supertrend_value !== null && holding.supertrend_value !== undefined && !isNaN(holding.supertrend_value) ? `
-                                        <span style="color: #666;">₹${holding.supertrend_value.toFixed(2)}</span>
-                                    ` : '<span style="color: #999; font-size: 12px;">N/A</span>'}
-                                </td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
-                                    ${holding.irrational_score !== null && holding.irrational_score !== undefined ? `
-                                        ${holding.irrational_score >= 70 ? `
-                                            <div style="background-color: #dc3545; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;" title="${holding.exit_reason || 'Strong exit recommendation'}">
-                                                ⚠️ ${Math.round(holding.irrational_score)}
-                                            </div>
-                                            <div style="font-size: 10px; color: #dc3545; margin-top: 2px;">STRONG</div>
-                                        ` : holding.irrational_score >= 50 ? `
-                                            <div style="background-color: #ff9800; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;" title="${holding.exit_reason || 'Moderate exit recommendation'}">
-                                                ⚠️ ${Math.round(holding.irrational_score)}
-                                            </div>
-                                            <div style="font-size: 10px; color: #ff9800; margin-top: 2px;">MODERATE</div>
-                                        ` : holding.irrational_score >= 30 ? `
-                                            <div style="background-color: #ffc107; color: #333; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;" title="${holding.exit_reason || 'Weak exit recommendation'}">
-                                                ⚠️ ${Math.round(holding.irrational_score)}
-                                            </div>
-                                            <div style="font-size: 10px; color: #ffc107; margin-top: 2px;">WEAK</div>
-                                        ` : `
-                                            <div style="background-color: #28a745; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;" title="No significant irrational patterns">
-                                                ✓ ${Math.round(holding.irrational_score)}
-                                            </div>
-                                            <div style="font-size: 10px; color: #28a745; margin-top: 2px;">NONE</div>
-                                        `}
-                                    ` : '<span style="color: #999; font-size: 12px;">N/A</span>'}
-                                </td>
-                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
-                                    ${holding.below_supertrend ? `
-                                        <div style="background-color: #dc3545; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;" title="Stock price is below Supertrend">
-                                            ⚠️ Below ST
-                                        </div>
-                                        ${holding.supertrend_value ? `
-                                            <div style="font-size: 10px; color: #dc3545; margin-top: 2px;">ST: ₹${holding.supertrend_value.toFixed(2)}</div>
-                                        ` : ''}
-                                    ` : '<span style="color: #28a745; font-size: 12px;">✓ Above</span>'}
                                 </td>
                                 <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
                                     ${holding.days_below_supertrend !== null && holding.days_below_supertrend !== undefined && holding.days_below_supertrend > 0 ? `
@@ -4274,6 +4218,7 @@
         }
         
         // Load positions data
+        // NOTE: This endpoint is now handled by api/routers/holdings.py
         function loadPositions() {
             fetch('/api/positions')
                 .then(response => response.json())
@@ -5385,6 +5330,7 @@
         }
         
         // Load MF holdings data
+        // NOTE: This endpoint is now handled by api/routers/holdings.py
         function loadMFHoldings() {
             fetch('/api/mf_holdings')
                 .then(response => response.json())
@@ -6768,6 +6714,7 @@
             btn.innerHTML = '⏳ Refreshing...';
             statusDiv.innerHTML = '<span style="color: #666;">Refreshing holdings from Kite API...</span>';
             
+            // NOTE: This endpoint is now handled by api/routers/holdings.py
             fetch('/api/refresh_holdings', { method: 'POST' })
             .then(response => response.json())
             .then(data => {
@@ -6884,6 +6831,7 @@
             btn.innerHTML = '⏳ Refreshing...';
             statusDiv.innerHTML = '<span style="color: #666;">Refreshing MF NAV data...</span>';
             
+            // NOTE: This endpoint is now handled by api/routers/holdings.py
             fetch('/api/refresh_mf_nav', { method: 'POST' })
             .then(response => response.json())
             .then(data => {
@@ -7938,8 +7886,13 @@
                     </div>
                 </div>
             </div>
-            <div style="flex: 1; overflow: hidden; position: relative;">
-                <canvas id="candlestickChartCanvas" style="width: 100%; height: 100%;"></canvas>
+            <div style="flex: 1; overflow: hidden; position: relative; display: flex; flex-direction: column;">
+                <div style="flex: 2; overflow: hidden; position: relative;">
+                    <canvas id="candlestickChartCanvas" style="width: 100%; height: 100%;"></canvas>
+                </div>
+                <div style="flex: 1; overflow: hidden; position: relative; border-top: 2px solid #ddd; margin-top: 10px; padding-top: 10px;">
+                    <canvas id="volumeChartCanvas" style="width: 100%; height: 100%;"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -7947,6 +7900,7 @@
     <script>
         let currentStockSymbol = '';
         let candlestickChart = null;
+        let volumeChart = null;
 
         // Helper function to draw sparkline on canvas
         function drawSparkline(canvas, prices) {
@@ -9749,16 +9703,29 @@
                 candlestickChart.destroy();
                 candlestickChart = null;
             }
+            if (volumeChart) {
+                volumeChart.destroy();
+                volumeChart = null;
+            }
         }
         
         // Handle window resize to adjust chart size
         window.addEventListener('resize', function() {
-            if (document.getElementById('candlestickModal').style.display !== 'none' && candlestickChart) {
-                const canvas = document.getElementById('candlestickChartCanvas');
-                const container = canvas.parentElement;
-                canvas.width = container.clientWidth;
-                canvas.height = container.clientHeight;
-                candlestickChart.resize();
+            if (document.getElementById('candlestickModal').style.display !== 'none') {
+                if (candlestickChart) {
+                    const canvas = document.getElementById('candlestickChartCanvas');
+                    const container = canvas.parentElement;
+                    canvas.width = container.clientWidth;
+                    canvas.height = container.clientHeight;
+                    candlestickChart.resize();
+                }
+                if (volumeChart) {
+                    const volumeCanvas = document.getElementById('volumeChartCanvas');
+                    const volumeContainer = volumeCanvas.parentElement;
+                    volumeCanvas.width = volumeContainer.clientWidth;
+                    volumeCanvas.height = volumeContainer.clientHeight;
+                    volumeChart.resize();
+                }
             }
         });
 
@@ -10063,6 +10030,180 @@
                     candlestickChart.data.datasets.forEach((ds, index) => {
                         console.log(`Dataset ${index}:`, ds.label, ds.type, 'data points:', ds.data.length);
                     });
+                    
+                    // Prepare volume and OBV data for volume chart
+                    const volumeData = data.data.map(d => ({
+                        x: new Date(d.date).getTime(),
+                        y: d.volume !== null && !isNaN(d.volume) ? parseFloat(d.volume) : 0
+                    }));
+                    
+                    const obvData = data.data.map(d => ({
+                        x: new Date(d.date).getTime(),
+                        y: d.obv !== null && !isNaN(d.obv) ? parseFloat(d.obv) : null
+                    })).filter(d => d.y !== null && !isNaN(d.y));
+                    
+                    // Create volume chart
+                    const volumeCtx = document.getElementById('volumeChartCanvas').getContext('2d');
+                    const volumeContainer = volumeCtx.canvas.parentElement;
+                    volumeCtx.canvas.width = volumeContainer.clientWidth;
+                    volumeCtx.canvas.height = volumeContainer.clientHeight;
+                    
+                    // Destroy existing volume chart if it exists
+                    if (volumeChart) {
+                        volumeChart.destroy();
+                    }
+                    
+                    // Create color mapping for volume bars based on price movement
+                    const volumeColorMap = {};
+                    data.data.forEach((d, index) => {
+                        const timestamp = new Date(d.date).getTime();
+                        volumeColorMap[timestamp] = d.close > d.open ? 
+                            { bg: 'rgba(40, 167, 69, 0.6)', border: 'rgba(40, 167, 69, 1)' } : 
+                            { bg: 'rgba(220, 53, 69, 0.6)', border: 'rgba(220, 53, 69, 1)' };
+                    });
+                    
+                    volumeChart = new Chart(volumeCtx, {
+                        type: 'bar',
+                        data: {
+                            datasets: [{
+                                label: 'Volume',
+                                data: volumeData,
+                                backgroundColor: (ctx) => {
+                                    const timestamp = ctx.raw.x;
+                                    return volumeColorMap[timestamp]?.bg || 'rgba(128, 128, 128, 0.6)';
+                                },
+                                borderColor: (ctx) => {
+                                    const timestamp = ctx.raw.x;
+                                    return volumeColorMap[timestamp]?.border || 'rgba(128, 128, 128, 1)';
+                                },
+                                borderWidth: 1,
+                                yAxisID: 'y-volume'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                mode: 'index',
+                                intersect: false
+                            },
+                            scales: {
+                                x: {
+                                    type: 'time',
+                                    time: {
+                                        unit: 'day',
+                                        displayFormats: {
+                                            day: 'MMM dd'
+                                        }
+                                    },
+                                    grid: {
+                                        display: false
+                                    }
+                                },
+                                'y-volume': {
+                                    type: 'linear',
+                                    position: 'left',
+                                    title: {
+                                        display: true,
+                                        text: 'Volume'
+                                    },
+                                    ticks: {
+                                        callback: function(value) {
+                                            if (value >= 1000000) {
+                                                return (value / 1000000).toFixed(1) + 'M';
+                                            } else if (value >= 1000) {
+                                                return (value / 1000).toFixed(1) + 'K';
+                                            }
+                                            return value.toFixed(0);
+                                        }
+                                    }
+                                },
+                                'y-obv': {
+                                    type: 'linear',
+                                    position: 'right',
+                                    title: {
+                                        display: true,
+                                        text: 'OBV'
+                                    },
+                                    grid: {
+                                        drawOnChartArea: false
+                                    },
+                                    ticks: {
+                                        callback: function(value) {
+                                            if (value >= 1000000) {
+                                                return (value / 1000000).toFixed(1) + 'M';
+                                            } else if (value >= 1000) {
+                                                return (value / 1000).toFixed(1) + 'K';
+                                            }
+                                            return value.toFixed(0);
+                                        }
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'top'
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Volume & On Balance Volume (OBV)'
+                                },
+                                tooltip: {
+                                    enabled: true,
+                                    mode: 'index',
+                                    intersect: false,
+                                    callbacks: {
+                                        title: function(context) {
+                                            if (context.length > 0 && context[0].raw) {
+                                                const raw = context[0].raw;
+                                                if (raw.x) {
+                                                    const date = new Date(raw.x);
+                                                    return date.toLocaleDateString('en-IN', { 
+                                                        year: 'numeric', 
+                                                        month: 'short', 
+                                                        day: 'numeric' 
+                                                    });
+                                                }
+                                            }
+                                            return '';
+                                        },
+                                        label: function(context) {
+                                            const label = context.dataset.label || '';
+                                            const value = context.parsed.y;
+                                            if (value != null && !isNaN(value)) {
+                                                if (label === 'Volume') {
+                                                    return `Volume: ${value.toLocaleString('en-IN')}`;
+                                                } else if (label === 'OBV') {
+                                                    return `OBV: ${value.toLocaleString('en-IN')}`;
+                                                }
+                                                return `${label}: ${value.toLocaleString('en-IN')}`;
+                                            }
+                                            return label;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                    
+                    // Add OBV line to volume chart
+                    if (obvData.length > 0) {
+                        volumeChart.data.datasets.push({
+                            label: 'OBV',
+                            data: obvData,
+                            type: 'line',
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            tension: 0.1,
+                            fill: false,
+                            yAxisID: 'y-obv'
+                        });
+                        volumeChart.update();
+                    }
+                    
                     } catch (error) {
                         console.error('Error creating chart:', error);
                         console.error(error.stack);

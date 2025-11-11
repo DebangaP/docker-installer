@@ -339,6 +339,10 @@ def generate_new_access_token(request_token):
 # FastAPI app for capturing request_token
 app = FastAPI()
 
+# Include API routers
+from api.routers import holdings_router
+app.include_router(holdings_router)
+
 # Template configuration
 templates = Jinja2Templates(directory="templates")
 
@@ -6332,6 +6336,24 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
         highs_array = np.array(highs)
         lows_array = np.array(lows)
         closes_array = np.array(closes)
+        volumes_array = np.array(volumes)
+        
+        # Calculate OBV (On Balance Volume)
+        def calculate_obv(close, volume):
+            """Calculate On Balance Volume indicator"""
+            obv = np.zeros(len(close))
+            if len(close) > 0 and len(volume) > 0:
+                obv[0] = volume[0]
+                for i in range(1, len(close)):
+                    if close[i] > close[i-1]:
+                        obv[i] = obv[i-1] + volume[i]
+                    elif close[i] < close[i-1]:
+                        obv[i] = obv[i-1] - volume[i]
+                    else:
+                        obv[i] = obv[i-1]
+            return obv
+        
+        obv = calculate_obv(closes_array, volumes_array)
         
         # Calculate technical indicators
         if TALIB_AVAILABLE:
@@ -6376,6 +6398,7 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
                 "low": round(float(lows[i]), 2) if lows[i] else 0.0,
                 "close": round(float(closes[i]), 2) if closes[i] else 0.0,
                 "volume": volumes[i],
+                "obv": round(float(obv[i]), 2) if not np.isnan(obv[i]) else None,
                 "sma_20": round(float(sma_20[i]), 2) if not np.isnan(sma_20[i]) else None,
                 "sma_50": round(float(sma_50[i]), 2) if not np.isnan(sma_50[i]) else None,
                 "sma_200": round(float(sma_200[i]), 2) if not np.isnan(sma_200[i]) else None,
