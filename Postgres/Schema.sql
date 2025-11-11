@@ -1849,6 +1849,58 @@ CREATE INDEX IF NOT EXISTS idx_news_sentiment_scrip_id ON my_schema.news_sentime
 CREATE INDEX IF NOT EXISTS idx_news_sentiment_article_date ON my_schema.news_sentiment(article_date);
 
 -- Accumulation/Distribution Analysis Tables
+-- my_schema.accumulation_distribution definition
+
+-- Drop table
+
+-- DROP TABLE my_schema.accumulation_distribution;
+
+CREATE TABLE my_schema.accumulation_distribution (
+	id serial4 NOT NULL,
+	scrip_id varchar(10) NOT NULL,
+	analysis_date date NOT NULL,
+	run_date date DEFAULT CURRENT_DATE NULL,
+	state varchar(20) NULL,
+	start_date date NULL,
+	days_in_state int4 NULL,
+	obv_value float8 NULL,
+	ad_value float8 NULL,
+	momentum_score float8 NULL,
+	pattern_detected varchar(50) NULL,
+	volume_analysis jsonb NULL,
+	confidence_score float8 NULL,
+	technical_context jsonb NULL,
+	created_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
+	CONSTRAINT accumulation_distribution_pkey PRIMARY KEY (id),
+	CONSTRAINT accumulation_distribution_scrip_id_analysis_date_key UNIQUE (scrip_id, analysis_date)
+);
+CREATE INDEX idx_accumulation_distribution_analysis_date ON my_schema.accumulation_distribution USING btree (analysis_date);
+CREATE INDEX idx_accumulation_distribution_scrip_date ON my_schema.accumulation_distribution USING btree (scrip_id, analysis_date DESC);
+CREATE INDEX idx_accumulation_distribution_scrip_id ON my_schema.accumulation_distribution USING btree (scrip_id);
+CREATE INDEX idx_accumulation_distribution_start_date ON my_schema.accumulation_distribution USING btree (start_date);
+CREATE INDEX idx_accumulation_distribution_state ON my_schema.accumulation_distribution USING btree (state);
+
+-- my_schema.accumulation_distribution_history definition
+
+-- Drop table
+
+-- DROP TABLE my_schema.accumulation_distribution_history;
+
+CREATE TABLE my_schema.accumulation_distribution_history (
+	id serial4 NOT NULL,
+	scrip_id varchar(10) NOT NULL,
+	state varchar(20) NULL,
+	start_date date NOT NULL,
+	end_date date NULL,
+	duration_days int4 NULL,
+	created_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
+	CONSTRAINT accumulation_distribution_history_pkey PRIMARY KEY (id)
+);
+CREATE INDEX idx_accumulation_distribution_history_scrip_id ON my_schema.accumulation_distribution_history USING btree (scrip_id);
+CREATE INDEX idx_accumulation_distribution_history_scrip_start ON my_schema.accumulation_distribution_history USING btree (scrip_id, start_date DESC);
+CREATE INDEX idx_accumulation_distribution_history_start_date ON my_schema.accumulation_distribution_history USING btree (start_date);
+CREATE INDEX idx_accumulation_distribution_history_state ON my_schema.accumulation_distribution_history USING btree (state);
+
 
 -- Table to store Accumulation/Distribution analysis results
 
