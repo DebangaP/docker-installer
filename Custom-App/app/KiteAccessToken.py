@@ -2,7 +2,7 @@ from common.Boilerplate import *
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi import Request, Query, Form, File, UploadFile, Body
+from fastapi import Request, Query, Form, File, UploadFile, Body, BackgroundTasks
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from typing import Optional, List
 import os
@@ -202,16 +202,17 @@ def get_latest_supertrend(scrip_id: str, conn=None):
         print(f"---XXX--- Step 3: Created cursor for {scrip_id}")
         
         # Get OHLC data for candlestick - same query as api_candlestick endpoint
-        # Get last 30 days of data ordered by date ASC (oldest to newest)
+        # Get last 90 days of data ordered by date ASC (oldest to newest) to properly calculate days below supertrend
         print(f"---XXX--- Step 4: Executing query for {scrip_id}")
         cursor.execute("""
             SELECT 
                 price_high,
                 price_low,
-                price_close
+                price_close,
+                price_date
             FROM my_schema.rt_intraday_price
             WHERE scrip_id = %s
-            AND price_date::date >= CURRENT_DATE - make_interval(days => 30)
+            AND price_date::date >= CURRENT_DATE - make_interval(days => 90)
             AND price_high IS NOT NULL
             AND price_low IS NOT NULL
             AND price_close IS NOT NULL
@@ -238,11 +239,13 @@ def get_latest_supertrend(scrip_id: str, conn=None):
         highs = []
         lows = []
         closes = []
+        dates = []
         
         for row in rows:
             highs.append(float(row['price_high']) if row['price_high'] else 0.0)
             lows.append(float(row['price_low']) if row['price_low'] else 0.0)
             closes.append(float(row['price_close']) if row['price_close'] else 0.0)
+            dates.append(row['price_date'])
         
         # Convert to numpy arrays
         highs_array = np.array(highs)
@@ -281,13 +284,31 @@ def get_latest_supertrend(scrip_id: str, conn=None):
             return None
         
         # Calculate days below supertrend (only for latest downtrend)
-        # Count consecutive days with direction = -1 (below supertrend) from the latest day backwards
+        # Count consecutive calendar days with direction = -1 (below supertrend) from the latest day backwards
+        # This looks back at least 90 days or from when supertrend data is available
         days_below_supertrend = 0
         if latest_direction == -1:  # Currently below supertrend
-            # Count backwards from latest_index
+            # Count backwards from latest_index, counting actual calendar days
+            # Normalize dates to date objects for proper comparison
+            from datetime import date as date_type
+            prev_date = None
             for i in range(latest_index, -1, -1):
                 if not np.isnan(supertrend_direction[i]) and int(supertrend_direction[i]) == -1:
-                    days_below_supertrend += 1
+                    current_date_obj = dates[i]
+                    # Normalize to date if it's a datetime
+                    if hasattr(current_date_obj, 'date'):
+                        current_date_obj = current_date_obj.date()
+                    elif isinstance(current_date_obj, str):
+                        from datetime import datetime
+                        try:
+                            current_date_obj = datetime.strptime(current_date_obj.split()[0], '%Y-%m-%d').date()
+                        except:
+                            current_date_obj = current_date_obj
+                    
+                    # If this is the first iteration or dates are different, count as a day
+                    if prev_date is None or current_date_obj != prev_date:
+                        days_below_supertrend += 1
+                        prev_date = current_date_obj
                 else:
                     break  # Stop counting when we hit a day above supertrend
         
@@ -361,6 +382,11 @@ ANALYSIS_DATE = None  # Set to None for current date, or specify date like '2025
 
 # Global SHOW_HOLDINGS configuration - controls visibility of holdings sections
 SHOW_HOLDINGS = os.getenv("SHOW_HOLDINGS", "True").lower() == "true"
+
+# Global tab visibility configurations - controls visibility of specific tabs
+SHOW_OPTIONS_TAB = os.getenv("SHOW_OPTIONS_TAB", "True").lower() == "true"
+SHOW_UTILITIES_TAB = os.getenv("SHOW_UTILITIES_TAB", "True").lower() == "true"
+SHOW_FUNDAMENTALS_TAB = os.getenv("SHOW_FUNDAMENTALS_TAB", "True").lower() == "true"
 
 # Small JSON cache helpers using Redis
 def cache_get_json(key: str):
@@ -509,7 +535,10 @@ async def dashboard(request: Request, page: int = Query(1, ge=1)):
                 "last_update": system_status['last_update'],
                 "total_ticks": tick_data['total_ticks'],
                 "holdings_info": holdings_info,
-                "show_holdings": SHOW_HOLDINGS
+                "show_holdings": SHOW_HOLDINGS,
+                "show_options_tab": SHOW_OPTIONS_TAB,
+                "show_utilities_tab": SHOW_UTILITIES_TAB,
+                "show_fundamentals_tab": SHOW_FUNDAMENTALS_TAB
             })
     
     # No valid token, redirect to login
@@ -563,7 +592,10 @@ async def home(
             "last_update": system_status['last_update'],
             "total_ticks": tick_data['total_ticks'],
             "holdings_info": holdings_info,
-            "show_holdings": SHOW_HOLDINGS
+            "show_holdings": SHOW_HOLDINGS,
+            "show_options_tab": SHOW_OPTIONS_TAB,
+            "show_utilities_tab": SHOW_UTILITIES_TAB,
+            "show_fundamentals_tab": SHOW_FUNDAMENTALS_TAB
         })
     else:
         # Check if there's an existing valid token
@@ -3272,50 +3304,85 @@ async def api_calculate_fundamental_sentiment(
         }
 
 
+def run_prophet_predictions_background(
+    prediction_days: int,
+    limit: Optional[int],
+    fetch_sentiment: bool,
+    run_date: date
+):
+    """
+    Background task function to generate Prophet predictions asynchronously
+    
+    Args:
+        prediction_days: Number of days to predict ahead
+        limit: Optional limit on number of stocks to process
+        fetch_sentiment: Whether to fetch and calculate sentiment
+        run_date: Date for the predictions
+    """
+    try:
+        from stocks.ProphetPricePredictor import ProphetPricePredictor
+        
+        # Generate predictions with sentiment integration
+        predictor = ProphetPricePredictor(prediction_days=prediction_days, enable_sentiment=fetch_sentiment)
+        
+        # Generate predictions and save immediately after each calculation
+        logging.info(f"[Background] Starting Prophet prediction generation for run_date={run_date}, prediction_days={prediction_days}, limit={limit}")
+        predictions = predictor.predict_all_stocks(limit=limit, prediction_days=prediction_days, save_immediately=True, run_date=run_date)
+        
+        logging.info(f"[Background] Prophet prediction generation completed: {len(predictions)} predictions generated and saved")
+        
+        if not predictions:
+            error_msg = "No predictions generated. This could be due to: insufficient data (need at least 60 days), Prophet model errors, or data quality issues. Check application logs for details."
+            logging.warning(f"[Background] {error_msg}")
+            return
+        
+        logging.info(f"[Background] Successfully generated and saved {len(predictions)} predictions for {prediction_days} days")
+        
+    except Exception as e:
+        logging.error(f"[Background] Error generating Prophet predictions: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+
+
 @app.get("/api/prophet_predictions/generate")
 async def api_generate_prophet_predictions(
+    background_tasks: BackgroundTasks,
     prediction_days: int = Query(30, description="Number of days to predict ahead (default: 30, supports 30, 60, 90, 180, etc.)"),
     limit: int = Query(None, description="Limit number of stocks to process (default: all)"),
     fetch_fundamentals: bool = Query(True, description="Check and fetch fundamental data if >30 days old (monthly refresh)"),
     force_fundamentals: bool = Query(False, description="Force fetch fundamentals even if recent data exists"),
     fetch_sentiment: bool = Query(True, description="Fetch and calculate sentiment (always daily)")
 ):
-    """API endpoint to generate Prophet price predictions for all stocks with sentiment analysis (always regenerates)"""
+    """API endpoint to generate Prophet price predictions for all stocks with sentiment analysis (runs asynchronously)"""
     try:
-        from stocks.ProphetPricePredictor import ProphetPricePredictor
         from datetime import date
         
         run_date = date.today()
         
-        # Step 3: Generate predictions with sentiment integration
-        predictor = ProphetPricePredictor(prediction_days=prediction_days, enable_sentiment=fetch_sentiment)
+        # Add the prediction generation task to background tasks
+        background_tasks.add_task(
+            run_prophet_predictions_background,
+            prediction_days=prediction_days,
+            limit=limit,
+            fetch_sentiment=fetch_sentiment,
+            run_date=run_date
+        )
         
-        # Generate predictions and save immediately after each calculation
-        logging.info(f"Starting Prophet prediction generation for run_date={run_date}, prediction_days={prediction_days}, limit={limit}")
-        predictions = predictor.predict_all_stocks(limit=limit, prediction_days=prediction_days, save_immediately=True, run_date=run_date)
-        
-        logging.info(f"Prophet prediction generation completed: {len(predictions)} predictions generated and saved")
-        
-        if not predictions:
-            error_msg = "No predictions generated. This could be due to: insufficient data (need at least 60 days), Prophet model errors, or data quality issues. Check application logs for details."
-            logging.warning(error_msg)
-            return {
-                "success": False,
-                "error": error_msg,
-                "run_date": str(run_date),
-                "prediction_days": prediction_days
-            }
+        logging.info(f"Prophet prediction generation task queued for background execution: run_date={run_date}, prediction_days={prediction_days}, limit={limit}")
         
         return {
             "success": True,
-            "predictions_generated": len(predictions),
+            "message": f"Prophet prediction generation started in background for {prediction_days} days. Check application logs for progress and completion status.",
             "run_date": str(run_date),
             "prediction_days": prediction_days,
-            "message": f"Successfully generated and saved {len(predictions)} predictions for {prediction_days} days (saved immediately after each calculation)"
+            "limit": limit,
+            "fetch_sentiment": fetch_sentiment,
+            "status": "queued",
+            "note": "The prediction generation is running asynchronously. Predictions will be saved to the database as they are calculated. Monitor application logs for progress."
         }
         
     except Exception as e:
-        logging.error(f"Error generating Prophet predictions: {e}")
+        logging.error(f"Error queuing Prophet prediction generation: {e}")
         import traceback
         logging.error(traceback.format_exc())
         return {
@@ -8213,3 +8280,135 @@ async def download_mf_pdf():
     except Exception as e:
         logging.error(f"Error generating PDF: {e}")
         return {"error": str(e)}
+
+
+@app.get("/api/sparkline/{trading_symbol}")
+async def api_sparkline(trading_symbol: str, days: int = Query(90, ge=7, le=90)):
+    """API endpoint to get sparkline data for a stock"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get recent price history for sparkline
+        cursor.execute("""
+            SELECT 
+                price_date::date,
+                price_close as price
+            FROM my_schema.rt_intraday_price
+            WHERE scrip_id = %s
+            AND price_date::date >= CURRENT_DATE - make_interval(days => %s)
+            ORDER BY price_date ASC
+        """, (trading_symbol, days))
+        
+        sparkline_data = cursor.fetchall()
+        
+        # Convert to list of price values
+        prices = []
+        labels = []
+        for row in sparkline_data:
+            prices.append(float(row['price']) if row['price'] else 0.0)
+            # Handle both string and date objects for price_date
+            price_date = row['price_date']
+            if price_date:
+                if hasattr(price_date, 'strftime'):
+                    labels.append(price_date.strftime('%Y-%m-%d'))
+                else:
+                    labels.append(str(price_date))
+            else:
+                labels.append('')
+        
+        conn.close()
+        
+        result = {
+            "trading_symbol": trading_symbol,
+            "prices": prices,
+            "labels": labels,
+            "min_price": min(prices) if prices else 0,
+            "max_price": max(prices) if prices else 0
+        }
+        return cached_json_response(result, f"/api/sparkline/{trading_symbol}")
+    except Exception as e:
+        logging.error(f"Error fetching sparkline data: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return cached_json_response({"error": str(e), "prices": [], "labels": []}, f"/api/sparkline/{trading_symbol}")
+
+@app.post("/api/sparklines/batch")
+async def api_sparklines_batch(request: Request, days: int = Query(90, ge=7, le=90)):
+    """API endpoint to get sparkline data for multiple stocks in a single request"""
+    try:
+        body = await request.json()
+        symbols = body.get('symbols', [])
+        
+        if not symbols or len(symbols) == 0:
+            return cached_json_response({"error": "No symbols provided", "sparklines": {}}, "/api/sparklines/batch")
+        
+        # Limit batch size to prevent abuse
+        if len(symbols) > 50:
+            symbols = symbols[:50]
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Get recent price history for all symbols in one query
+        # Use array parameter for PostgreSQL IN clause
+        placeholders = ','.join(['%s'] * len(symbols))
+        cursor.execute(f"""
+            SELECT 
+                scrip_id,
+                price_date::date,
+                price_close as price
+            FROM my_schema.rt_intraday_price
+            WHERE scrip_id IN ({placeholders})
+            AND price_date::date >= CURRENT_DATE - make_interval(days => %s)
+            ORDER BY scrip_id, price_date ASC
+        """, symbols + [days])
+        
+        sparkline_data = cursor.fetchall()
+        conn.close()
+        
+        # Group data by symbol
+        sparklines_dict = {}
+        for symbol in symbols:
+            sparklines_dict[symbol] = {
+                "trading_symbol": symbol,
+                "prices": [],
+                "labels": [],
+                "min_price": 0,
+                "max_price": 0
+            }
+        
+        # Process fetched data
+        for row in sparkline_data:
+            symbol = row['scrip_id']
+            if symbol in sparklines_dict:
+                price = float(row['price']) if row['price'] else 0.0
+                sparklines_dict[symbol]['prices'].append(price)
+                
+                # Handle both string and date objects for price_date
+                price_date = row['price_date']
+                if price_date:
+                    if hasattr(price_date, 'strftime'):
+                        sparklines_dict[symbol]['labels'].append(price_date.strftime('%Y-%m-%d'))
+                    else:
+                        sparklines_dict[symbol]['labels'].append(str(price_date))
+                else:
+                    sparklines_dict[symbol]['labels'].append('')
+        
+        # Calculate min/max for each symbol
+        for symbol, data in sparklines_dict.items():
+            if data['prices']:
+                data['min_price'] = min(data['prices'])
+                data['max_price'] = max(data['prices'])
+        
+        result = {
+            "sparklines": sparklines_dict
+        }
+        return cached_json_response(result, "/api/sparklines/batch")
+    except Exception as e:
+        logging.error(f"Error fetching batch sparkline data: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return cached_json_response({"error": str(e), "sparklines": {}}, "/api/sparklines/batch")
+
+    

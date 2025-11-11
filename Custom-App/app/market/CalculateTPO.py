@@ -317,11 +317,11 @@ class PostgresDataFetcher:
         query += " ORDER BY timestamp"
         
         try:
-            logging.info(f"Executing query: {query} with params: {params}")
+            #logging.info(f"Executing query: {query} with params: {params}")
             with self.engine.connect() as conn:
                 result = conn.execute(text(query), params)
                 df = pd.DataFrame(result.fetchall(), columns=result.keys())
-                logging.info(f"Fetched {len(df)} tick rows for instrument_token={params.get('instrument_token')} from {table_name}")
+                #logging.info(f"Fetched {len(df)} tick rows for instrument_token={params.get('instrument_token')} from {table_name}")
                 if not df.empty:
                     try:
                         ts = pd.to_datetime(df['timestamp'])

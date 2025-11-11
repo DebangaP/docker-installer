@@ -3,6 +3,7 @@ Holdings router for all holdings, positions, mutual funds, and portfolio-related
 """
 from fastapi import APIRouter, Query, Body
 from typing import Optional, List
+from pydantic import BaseModel
 from common.Boilerplate import get_db_connection, kite
 import psycopg2.extras
 import logging
@@ -53,6 +54,16 @@ router = APIRouter(prefix="/api", tags=["holdings"])
 
 # Initialize service
 holdings_service = HoldingsService()
+
+
+# Pydantic models for request bodies
+class WyckoffCalculateRequest(BaseModel):
+    force_recalculate: bool = False
+
+
+class WyckoffCalculateSelectedRequest(BaseModel):
+    symbols: List[str]
+    force_recalculate: bool = False
 
 
 @router.get("/holdings")
@@ -364,28 +375,6 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                         # Fallback: use direction if close price is not available
                         # direction = -1 means price is below supertrend, direction = 1 means price is above supertrend
                         below_supertrend = (supertrend_direction == -1)
-                    
-                    # Also verify with latest price from database as a double-check
-                    cursor.execute("""
-                        SELECT price_close
-                        FROM my_schema.rt_intraday_price
-                        WHERE scrip_id = %s
-                        AND country = 'IN'
-                        AND price_date::date <= CURRENT_DATE
-                        AND price_close IS NOT NULL
-                        ORDER BY price_date DESC
-                        LIMIT 1
-                    """, (symbol,))
-                    price_result = cursor.fetchone()
-                    
-                    if price_result and price_result['price_close']:
-                        latest_close_price = float(price_result['price_close'])
-                        # Double-check: if supertrend value > closing price, then stock is below supertrend
-                        price_below = latest_close_price < supertrend_value
-                        if below_supertrend != price_below:
-                            # If there's a mismatch, use the latest price comparison (more current)
-                            logging.debug(f"Supertrend comparison mismatch for {symbol}: calc_close={supertrend_close}, latest_close={latest_close_price}, st={supertrend_value}, using_latest={price_below}")
-                            below_supertrend = price_below
                 else:
                     logging.debug(f"Supertrend result is None for {symbol}")
             except Exception as e:
@@ -1357,6 +1346,22 @@ async def download_holdings_excel():
                 'prediction_days': int(row['prediction_days']) if row['prediction_days'] is not None else None
             }
         
+        # Get accumulation/distribution data for all holdings
+        from indicators.AccumulationDistributionAnalyzer import AccumulationDistributionAnalyzer
+        analyzer = AccumulationDistributionAnalyzer()
+        accumulation_map = {}
+        
+        try:
+            for row in holdings:
+                symbol = row.get('trading_symbol')
+                if symbol:
+                    state_data = analyzer.get_current_state(symbol, date.today())
+                    if state_data:
+                        accumulation_map[symbol] = state_data
+        except Exception as e:
+            logging.debug(f"Error loading accumulation/distribution data for download: {e}")
+            accumulation_map = {}
+        
         conn.close()
         
         # Enrich holdings data
@@ -1377,6 +1382,36 @@ async def download_holdings_excel():
             row_dict['confidence'] = prophet_info.get('confidence')
             row_dict['prediction_days'] = prophet_info.get('prediction_days')
             
+            # Add supertrend data
+            supertrend_value = None
+            below_supertrend = False
+            days_below_supertrend = None
+            try:
+                supertrend_result = get_latest_supertrend(symbol, conn=None)
+                if supertrend_result is not None:
+                    supertrend_value, supertrend_direction, supertrend_close, days_below_supertrend = supertrend_result
+                    if supertrend_close is not None and supertrend_value is not None:
+                        below_supertrend = supertrend_close < supertrend_value
+                    else:
+                        below_supertrend = (supertrend_direction == -1)
+            except Exception as e:
+                logging.debug(f"Could not get supertrend for {symbol} in download: {e}")
+            
+            row_dict['supertrend_value'] = supertrend_value
+            row_dict['below_supertrend'] = below_supertrend
+            row_dict['days_below_supertrend'] = days_below_supertrend
+            
+            # Add accumulation/distribution data
+            accumulation_state = None
+            days_in_accumulation_state = None
+            if symbol and symbol in accumulation_map:
+                acc_data = accumulation_map[symbol]
+                accumulation_state = acc_data.get('state')
+                days_in_accumulation_state = acc_data.get('days_in_state')
+            
+            row_dict['accumulation_state'] = accumulation_state
+            row_dict['days_in_accumulation_state'] = days_in_accumulation_state
+            
             holdings_list.append(row_dict)
         
         # Create DataFrame with proper column order
@@ -1385,14 +1420,22 @@ async def download_holdings_excel():
         # Reorder columns for better readability
         column_order = [
             'trading_symbol', 'quantity', 'average_price', 'last_price',
+            'supertrend_value', 'below_supertrend', 'days_below_supertrend',
             'invested_amount', 'current_amount', 'pnl', 'pnl_pct_change',
             'today_pnl', 'today_pnl_pct',
-            'ghost_prediction_pct', 'confidence', 'prediction_days'
+            'ghost_prediction_pct', 'confidence', 'prediction_days',
+            'accumulation_state', 'days_in_accumulation_state'
         ]
         
         # Only include columns that exist
         available_columns = [col for col in column_order if col in df.columns]
         df = df[available_columns]
+        
+        # Format boolean and None values for better display
+        if 'below_supertrend' in df.columns:
+            df['below_supertrend'] = df['below_supertrend'].apply(lambda x: 'Below ST' if x else 'Above ST')
+        if 'accumulation_state' in df.columns:
+            df['accumulation_state'] = df['accumulation_state'].fillna('N/A')
         
         # Rename columns for readability
         df = df.rename(columns={
@@ -1400,6 +1443,9 @@ async def download_holdings_excel():
             'quantity': 'Qty',
             'average_price': 'Avg Price',
             'last_price': 'LTP',
+            'supertrend_value': 'Supertrend Value',
+            'below_supertrend': 'Supertrend Alert',
+            'days_below_supertrend': 'Days Below ST',
             'invested_amount': 'Invested Amount',
             'current_amount': 'Current Amount',
             'pnl': 'Total P&L',
@@ -1408,7 +1454,9 @@ async def download_holdings_excel():
             'today_pnl_pct': "Today's P&L %",
             'ghost_prediction_pct': 'Ghost Prediction %',
             'confidence': 'Confidence %',
-            'prediction_days': 'Prediction Days'
+            'prediction_days': 'Prediction Days',
+            'accumulation_state': 'Accumulation/Distribution',
+            'days_in_accumulation_state': 'Days in State'
         })
         
         output = io.BytesIO()
@@ -1558,6 +1606,22 @@ async def download_holdings_csv():
                 'prediction_days': int(row['prediction_days']) if row['prediction_days'] is not None else None
             }
         
+        # Get accumulation/distribution data for all holdings
+        from indicators.AccumulationDistributionAnalyzer import AccumulationDistributionAnalyzer
+        analyzer = AccumulationDistributionAnalyzer()
+        accumulation_map = {}
+        
+        try:
+            for row in holdings:
+                symbol = row.get('trading_symbol')
+                if symbol:
+                    state_data = analyzer.get_current_state(symbol, date.today())
+                    if state_data:
+                        accumulation_map[symbol] = state_data
+        except Exception as e:
+            logging.debug(f"Error loading accumulation/distribution data for download: {e}")
+            accumulation_map = {}
+        
         conn.close()
         
         # Enrich holdings data
@@ -1578,6 +1642,36 @@ async def download_holdings_csv():
             row_dict['confidence'] = prophet_info.get('confidence')
             row_dict['prediction_days'] = prophet_info.get('prediction_days')
             
+            # Add supertrend data
+            supertrend_value = None
+            below_supertrend = False
+            days_below_supertrend = None
+            try:
+                supertrend_result = get_latest_supertrend(symbol, conn=None)
+                if supertrend_result is not None:
+                    supertrend_value, supertrend_direction, supertrend_close, days_below_supertrend = supertrend_result
+                    if supertrend_close is not None and supertrend_value is not None:
+                        below_supertrend = supertrend_close < supertrend_value
+                    else:
+                        below_supertrend = (supertrend_direction == -1)
+            except Exception as e:
+                logging.debug(f"Could not get supertrend for {symbol} in download: {e}")
+            
+            row_dict['supertrend_value'] = supertrend_value
+            row_dict['below_supertrend'] = below_supertrend
+            row_dict['days_below_supertrend'] = days_below_supertrend
+            
+            # Add accumulation/distribution data
+            accumulation_state = None
+            days_in_accumulation_state = None
+            if symbol and symbol in accumulation_map:
+                acc_data = accumulation_map[symbol]
+                accumulation_state = acc_data.get('state')
+                days_in_accumulation_state = acc_data.get('days_in_state')
+            
+            row_dict['accumulation_state'] = accumulation_state
+            row_dict['days_in_accumulation_state'] = days_in_accumulation_state
+            
             holdings_list.append(row_dict)
         
         # Create DataFrame with proper column order
@@ -1586,14 +1680,22 @@ async def download_holdings_csv():
         # Reorder columns for better readability
         column_order = [
             'trading_symbol', 'quantity', 'average_price', 'last_price',
+            'supertrend_value', 'below_supertrend', 'days_below_supertrend',
             'invested_amount', 'current_amount', 'pnl', 'pnl_pct_change',
             'today_pnl', 'today_pnl_pct',
-            'ghost_prediction_pct', 'confidence', 'prediction_days'
+            'ghost_prediction_pct', 'confidence', 'prediction_days',
+            'accumulation_state', 'days_in_accumulation_state'
         ]
         
         # Only include columns that exist
         available_columns = [col for col in column_order if col in df.columns]
         df = df[available_columns]
+        
+        # Format boolean and None values for better display
+        if 'below_supertrend' in df.columns:
+            df['below_supertrend'] = df['below_supertrend'].apply(lambda x: 'Below ST' if x else 'Above ST')
+        if 'accumulation_state' in df.columns:
+            df['accumulation_state'] = df['accumulation_state'].fillna('N/A')
         
         # Rename columns for readability
         df = df.rename(columns={
@@ -1601,6 +1703,9 @@ async def download_holdings_csv():
             'quantity': 'Qty',
             'average_price': 'Avg Price',
             'last_price': 'LTP',
+            'supertrend_value': 'Supertrend Value',
+            'below_supertrend': 'Supertrend Alert',
+            'days_below_supertrend': 'Days Below ST',
             'invested_amount': 'Invested Amount',
             'current_amount': 'Current Amount',
             'pnl': 'Total P&L',
@@ -1609,7 +1714,9 @@ async def download_holdings_csv():
             'today_pnl_pct': "Today's P&L %",
             'ghost_prediction_pct': 'Ghost Prediction %',
             'confidence': 'Confidence %',
-            'prediction_days': 'Prediction Days'
+            'prediction_days': 'Prediction Days',
+            'accumulation_state': 'Accumulation/Distribution',
+            'days_in_accumulation_state': 'Days in State'
         })
         
         output = StringIO()
@@ -1754,6 +1861,22 @@ async def download_holdings_pdf():
                 'prediction_days': int(row['prediction_days']) if row['prediction_days'] is not None else None
             }
         
+        # Get accumulation/distribution data for all holdings
+        from indicators.AccumulationDistributionAnalyzer import AccumulationDistributionAnalyzer
+        analyzer = AccumulationDistributionAnalyzer()
+        accumulation_map = {}
+        
+        try:
+            for row in holdings:
+                symbol = row.get('trading_symbol')
+                if symbol:
+                    state_data = analyzer.get_current_state(symbol, date.today())
+                    if state_data:
+                        accumulation_map[symbol] = state_data
+        except Exception as e:
+            logging.debug(f"Error loading accumulation/distribution data for download: {e}")
+            accumulation_map = {}
+        
         conn.close()
         
         # Enrich holdings data
@@ -1771,6 +1894,36 @@ async def download_holdings_pdf():
             row_dict['ghost_prediction_pct'] = prophet_info.get('prediction_pct')
             row_dict['confidence'] = prophet_info.get('confidence')
             row_dict['prediction_days'] = prophet_info.get('prediction_days')
+            
+            # Add supertrend data
+            supertrend_value = None
+            below_supertrend = False
+            days_below_supertrend = None
+            try:
+                supertrend_result = get_latest_supertrend(symbol, conn=None)
+                if supertrend_result is not None:
+                    supertrend_value, supertrend_direction, supertrend_close, days_below_supertrend = supertrend_result
+                    if supertrend_close is not None and supertrend_value is not None:
+                        below_supertrend = supertrend_close < supertrend_value
+                    else:
+                        below_supertrend = (supertrend_direction == -1)
+            except Exception as e:
+                logging.debug(f"Could not get supertrend for {symbol} in download: {e}")
+            
+            row_dict['supertrend_value'] = supertrend_value
+            row_dict['below_supertrend'] = below_supertrend
+            row_dict['days_below_supertrend'] = days_below_supertrend
+            
+            # Add accumulation/distribution data
+            accumulation_state = None
+            days_in_accumulation_state = None
+            if symbol and symbol in accumulation_map:
+                acc_data = accumulation_map[symbol]
+                accumulation_state = acc_data.get('state')
+                days_in_accumulation_state = acc_data.get('days_in_state')
+            
+            row_dict['accumulation_state'] = accumulation_state
+            row_dict['days_in_accumulation_state'] = days_in_accumulation_state
             
             holdings_list.append(row_dict)
         
@@ -1819,8 +1972,8 @@ async def download_holdings_pdf():
         elements.append(summary_table)
         elements.append(Spacer(1, 0.3*inch))
         
-        # Create table data
-        data = [['Symbol', 'Qty', 'Avg Price', 'LTP', 'Invested', 'Current', 'P&L', 'P&L %', "Today's P&L", "Today's P&L %", 'Ghost Pred %', 'Conf %', 'Pred Days']]
+        # Create table data with new columns
+        data = [['Symbol', 'Qty', 'Avg Price', 'LTP', 'ST Value', 'ST Alert', 'Days Below ST', 'Invested', 'Current', 'P&L', 'P&L %', "Today's P&L", "Today's P&L %", 'Ghost Pred %', 'Conf %', 'Pred Days', 'Acc/Dist', 'Days in State']]
         for row in holdings_list:
             row_dict = dict(row)
             pnl_pct = row_dict.get('pnl_pct_change', 0) or 0
@@ -1829,12 +1982,20 @@ async def download_holdings_pdf():
             ghost_pred = row_dict.get('ghost_prediction_pct')
             confidence = row_dict.get('confidence')
             pred_days = row_dict.get('prediction_days')
+            supertrend_value = row_dict.get('supertrend_value')
+            below_supertrend = row_dict.get('below_supertrend', False)
+            days_below_supertrend = row_dict.get('days_below_supertrend')
+            accumulation_state = row_dict.get('accumulation_state')
+            days_in_accumulation_state = row_dict.get('days_in_accumulation_state')
             
             data.append([
                 row_dict['trading_symbol'],
                 str(row_dict['quantity']),
                 f"Rs {row_dict['average_price']:.2f}",
                 f"Rs {row_dict['last_price']:.2f}",
+                f"Rs {supertrend_value:.2f}" if supertrend_value is not None else "N/A",
+                'Below ST' if below_supertrend else 'Above ST',
+                str(days_below_supertrend) if days_below_supertrend is not None and days_below_supertrend > 0 else "-",
                 f"Rs {row_dict['invested_amount']:.2f}",
                 f"Rs {row_dict['current_amount']:.2f}",
                 f"Rs {row_dict['pnl']:.2f}",
@@ -1843,21 +2004,23 @@ async def download_holdings_pdf():
                 f"{today_pnl_pct:.2f}%" if today_pnl_pct else "0.00%",
                 f"{ghost_pred:.2f}%" if ghost_pred is not None else "N/A",
                 f"{confidence:.0f}%" if confidence is not None else "N/A",
-                str(pred_days) if pred_days is not None else "N/A"
+                str(pred_days) if pred_days is not None else "N/A",
+                accumulation_state if accumulation_state else "N/A",
+                str(days_in_accumulation_state) if days_in_accumulation_state is not None and days_in_accumulation_state > 0 else "-"
             ])
         
         # Add totals row
         data.append([
-            'TOTAL', '', '', '',
+            'TOTAL', '', '', '', '', '', '',
             f'Rs {total_invested:,.2f}',
             f'Rs {total_current:,.2f}',
             f'Rs {total_pnl:,.2f}',
             '',
             f'Rs {total_today_pnl:,.2f}',
-            '', '', '', ''
+            '', '', '', '', '', ''
         ])
         
-        col_widths = [0.8*inch, 0.5*inch, 0.7*inch, 0.7*inch, 0.9*inch, 0.9*inch, 0.8*inch, 0.6*inch, 0.8*inch, 0.7*inch, 0.7*inch, 0.5*inch, 0.5*inch]
+        col_widths = [0.7*inch, 0.4*inch, 0.6*inch, 0.6*inch, 0.6*inch, 0.5*inch, 0.5*inch, 0.8*inch, 0.8*inch, 0.7*inch, 0.5*inch, 0.7*inch, 0.6*inch, 0.6*inch, 0.4*inch, 0.4*inch, 0.6*inch, 0.4*inch]
         table = Table(data, repeatRows=1, colWidths=col_widths)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
@@ -2416,15 +2579,13 @@ async def download_pnl_summary_pdf():
 
 @router.post("/holdings/calculate-wyckoff")
 async def calculate_wyckoff_for_selected(
-    symbols: List[str] = Body(...),
-    force_recalculate: bool = Body(False)
+    request: WyckoffCalculateSelectedRequest
 ):
     """
     Calculate Wyckoff Accumulation/Distribution for selected stocks
     
     Args:
-        symbols: List of trading symbols
-        force_recalculate: If True, recalculate even if recent analysis exists
+        request: Request body with symbols and force_recalculate flag
     
     Returns:
         Dict with results and statistics
@@ -2433,7 +2594,7 @@ async def calculate_wyckoff_for_selected(
         from api.services.wyckoff_service import WyckoffService
         
         wyckoff_service = WyckoffService()
-        results = wyckoff_service.calculate_for_symbols(symbols, force_recalculate)
+        results = wyckoff_service.calculate_for_symbols(request.symbols, request.force_recalculate)
         
         return results
         
@@ -2453,13 +2614,13 @@ async def calculate_wyckoff_for_selected(
 
 @router.post("/holdings/calculate-wyckoff-all")
 async def calculate_wyckoff_for_all_holdings(
-    force_recalculate: bool = Body(False)
+    request: WyckoffCalculateRequest = WyckoffCalculateRequest()
 ):
     """
     Calculate Wyckoff Accumulation/Distribution for all holdings
     
     Args:
-        force_recalculate: If True, recalculate even if recent analysis exists
+        request: Request body with force_recalculate flag (optional, defaults to False)
     
     Returns:
         Dict with summary statistics
@@ -2468,7 +2629,7 @@ async def calculate_wyckoff_for_all_holdings(
         from api.services.wyckoff_service import WyckoffService
         
         wyckoff_service = WyckoffService()
-        results = wyckoff_service.calculate_for_all_holdings(force_recalculate)
+        results = wyckoff_service.calculate_for_all_holdings(request.force_recalculate)
         
         return results
         
