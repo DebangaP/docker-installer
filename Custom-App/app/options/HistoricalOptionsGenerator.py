@@ -233,6 +233,8 @@ class HistoricalOptionsGenerator:
             
         except Exception as e:
             logging.error(f"Error getting underlying price for {analysis_date}: {e}")
+            from common.Boilerplate import log_stock_price_fetch_error
+            log_stock_price_fetch_error(str(self.instrument_token), e, f"HistoricalOptionsGenerator._get_underlying_price({analysis_date})")
             return None
     
     def _generate_options_chain_black_scholes(self,

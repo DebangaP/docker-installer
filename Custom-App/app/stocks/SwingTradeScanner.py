@@ -137,6 +137,8 @@ class SwingTradeScanner:
             
         except Exception as e:
             logging.error(f"Error fetching price data for {scrip_id}: {e}")
+            from common.Boilerplate import log_stock_price_fetch_error
+            log_stock_price_fetch_error(scrip_id, e, "SwingTradeScanner.get_price_data")
             return None
     
     def get_prophet_prediction(self, scrip_id: str) -> Optional[Dict]:

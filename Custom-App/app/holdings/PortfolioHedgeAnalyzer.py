@@ -301,6 +301,8 @@ class PortfolioHedgeAnalyzer:
                             portfolio_value += holding['quantity'] * float(result[0])
                     except Exception as query_error:
                         logging.warning(f"Error fetching price for {holding.get('trading_symbol', 'UNKNOWN')} on {date_str}: {query_error}")
+                        from common.Boilerplate import log_stock_price_fetch_error
+                        log_stock_price_fetch_error(holding.get('trading_symbol', 'UNKNOWN'), query_error, "PortfolioHedgeAnalyzer._get_historical_portfolio_value")
                         # Continue with next holding
                         continue
                 
@@ -438,6 +440,8 @@ class PortfolioHedgeAnalyzer:
             return None
         except Exception as e:
             logging.error(f"Error getting Nifty price: {e}")
+            from common.Boilerplate import log_stock_price_fetch_error
+            log_stock_price_fetch_error("NIFTY 50", e, "PortfolioHedgeAnalyzer._get_nifty_price")
             return None
     
     def _suggest_protective_puts(self, portfolio_value: float, beta: float, target_hedge_ratio: float, 

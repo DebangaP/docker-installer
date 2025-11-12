@@ -2047,3 +2047,20 @@ CREATE TABLE IF NOT EXISTS my_schema.supertrend_values (
 
 -- Index for supertrend values table
 CREATE INDEX IF NOT EXISTS idx_supertrend_scrip_date ON my_schema.supertrend_values(scrip_id, calculation_date DESC);
+
+-- Stock price fetch error logging table
+CREATE TABLE IF NOT EXISTS my_schema.stock_price_fetch_errors (
+    id SERIAL PRIMARY KEY,
+    scrip_id VARCHAR(50),
+    error_type VARCHAR(100),
+    error_message TEXT,
+    function_name VARCHAR(200),
+    stack_trace TEXT,
+    fetch_date DATE DEFAULT CURRENT_DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for stock_price_fetch_errors table
+CREATE INDEX IF NOT EXISTS idx_price_fetch_errors_scrip_id ON my_schema.stock_price_fetch_errors(scrip_id);
+CREATE INDEX IF NOT EXISTS idx_price_fetch_errors_fetch_date ON my_schema.stock_price_fetch_errors(fetch_date DESC);
+CREATE INDEX IF NOT EXISTS idx_price_fetch_errors_created_at ON my_schema.stock_price_fetch_errors(created_at DESC);

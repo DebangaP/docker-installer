@@ -1,5 +1,6 @@
 import os
 import logging
+import traceback
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, FileResponse
 from kiteconnect import KiteConnect
@@ -10,7 +11,7 @@ from dotenv import load_dotenv
 from psycopg2.extras import execute_batch
 import psycopg2
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 from kiteconnect import KiteTicker
 
 # Configure logging
@@ -66,6 +67,46 @@ def get_access_token():
             token = token.decode('utf-8')
         return token
     return None
+
+def log_stock_price_fetch_error(scrip_id: str, error: Exception, function_name: str = None):
+    """
+    Log stock price fetch errors to the database
+    
+    Args:
+        scrip_id: Stock symbol/identifier
+        error: Exception object that occurred
+        function_name: Name of the function where error occurred
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        error_type = type(error).__name__
+        error_message = str(error)
+        stack_trace = traceback.format_exc()
+        
+        # Truncate long messages to fit database constraints
+        if len(error_message) > 10000:
+            error_message = error_message[:10000]
+        if len(stack_trace) > 50000:
+            stack_trace = stack_trace[:50000]
+        if function_name and len(function_name) > 200:
+            function_name = function_name[:200]
+        
+        cursor.execute("""
+            INSERT INTO my_schema.stock_price_fetch_errors 
+            (scrip_id, error_type, error_message, function_name, stack_trace, fetch_date)
+            VALUES (%s, %s, %s, %s, %s, CURRENT_DATE)
+        """, (scrip_id, error_type, error_message, function_name, stack_trace))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+    except Exception as e:
+        # If logging itself fails, just log to standard logger
+        logging.error(f"Failed to log price fetch error to database: {e}")
+        logging.error(f"Original error for {scrip_id} in {function_name}: {error}")
 
 conn = get_db_connection()
 cursor = conn.cursor()

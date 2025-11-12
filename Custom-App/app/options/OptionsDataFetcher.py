@@ -281,5 +281,7 @@ class OptionsDataFetcher:
             
         except Exception as e:
             logging.error(f"Error fetching Nifty current price: {e}")
+            from common.Boilerplate import log_stock_price_fetch_error
+            log_stock_price_fetch_error("NIFTY 50", e, "OptionsDataFetcher.get_nifty_current_price")
             return None
 

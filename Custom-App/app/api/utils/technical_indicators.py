@@ -4,7 +4,7 @@ Contains Supertrend and other technical analysis utilities.
 """
 import numpy as np
 import psycopg2.extras
-from common.Boilerplate import get_db_connection
+from common.Boilerplate import get_db_connection, log_stock_price_fetch_error
 import logging
 
 try:
@@ -123,25 +123,33 @@ def get_latest_supertrend(scrip_id: str, conn=None, force_recalculate: bool = Fa
         
         # Get OHLC data for candlestick - same query as api_candlestick endpoint
         # Get last 90 days of data ordered by date ASC (oldest to newest) to properly calculate days below supertrend
-        cursor.execute("""
-            SELECT 
-                price_high,
-                price_low,
-                price_close,
-                price_date
-            FROM my_schema.rt_intraday_price
-            WHERE scrip_id = %s
-            AND price_date::date >= CURRENT_DATE - make_interval(days => 90)
-            AND price_high IS NOT NULL
-            AND price_low IS NOT NULL
-            AND price_close IS NOT NULL
-            ORDER BY price_date ASC
-        """, (scrip_id,))
-        
-        rows = cursor.fetchall()
-        
-        if not rows or len(rows) < 14:
-            logging.debug(f"Not enough data for supertrend calculation for {scrip_id}: {len(rows) if rows else 0} rows")
+        try:
+            cursor.execute("""
+                SELECT 
+                    price_high,
+                    price_low,
+                    price_close,
+                    price_date
+                FROM my_schema.rt_intraday_price
+                WHERE scrip_id = %s
+                AND price_date::date >= CURRENT_DATE - make_interval(days => 90)
+                AND price_high IS NOT NULL
+                AND price_low IS NOT NULL
+                AND price_close IS NOT NULL
+                ORDER BY price_date ASC
+            """, (scrip_id,))
+            
+            rows = cursor.fetchall()
+            
+            if not rows or len(rows) < 14:
+                logging.debug(f"Not enough data for supertrend calculation for {scrip_id}: {len(rows) if rows else 0} rows")
+                cursor.close()
+                if should_close:
+                    conn.close()
+                return None
+        except Exception as e:
+            logging.error(f"Error fetching price data for supertrend calculation for {scrip_id}: {e}")
+            log_stock_price_fetch_error(scrip_id, e, "get_latest_supertrend")
             cursor.close()
             if should_close:
                 conn.close()

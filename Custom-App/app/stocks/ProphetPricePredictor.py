@@ -276,6 +276,8 @@ class ProphetPricePredictor:
             
         except Exception as e:
             logger.error(f"Error getting price data for {scrip_id}: {e}")
+            from common.Boilerplate import log_stock_price_fetch_error
+            log_stock_price_fetch_error(scrip_id, e, "ProphetPricePredictor.get_price_data")
             return None
     
     def calculate_mape(self, actual: np.ndarray, predicted: np.ndarray) -> float:

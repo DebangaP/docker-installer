@@ -11,7 +11,7 @@ import logging
 import json
 import psycopg2
 import psycopg2.extras
-from common.Boilerplate import get_db_connection
+from common.Boilerplate import get_db_connection, log_stock_price_fetch_error
 from common.TechnicalIndicators import (
     calculate_obv, 
     calculate_ad_indicator, 
@@ -100,6 +100,7 @@ class AccumulationDistributionAnalyzer:
             
         except Exception as e:
             logger.error(f"Error getting price data for {scrip_id}: {e}")
+            log_stock_price_fetch_error(scrip_id, e, "AccumulationDistributionAnalyzer.get_price_data")
             return None
     
     def _detect_head_and_shoulders(self, price_data: pd.DataFrame) -> bool:
