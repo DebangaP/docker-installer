@@ -4853,6 +4853,7 @@ async def api_positions():
 async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90)):
     """API endpoint to get candlestick chart data for a stock"""
     try:
+        logging.info(f"Candlestick API called for trading_symbol='{trading_symbol}' (type: {type(trading_symbol)}, len: {len(trading_symbol) if trading_symbol else 0})")
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         
@@ -4998,12 +4999,185 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
         except Exception as e:
             logging.debug(f"Could not fetch fundamental data for {trading_symbol}: {e}")
         
+        # Get Prophet prediction data (ENHANCED: add Ghost Prediction)
+        prediction_data = None
+        try:
+            # First try with ACTIVE status
+            cursor.execute("""
+                SELECT 
+                    predicted_price_change_pct,
+                    prediction_confidence,
+                    prediction_days,
+                    prediction_details,
+                    run_date,
+                    status
+                FROM my_schema.prophet_predictions
+                WHERE UPPER(TRIM(scrip_id)) = UPPER(TRIM(%s))
+                AND (status = 'ACTIVE' OR status IS NULL)
+                ORDER BY run_date DESC, prediction_days DESC
+                LIMIT 1
+            """, (trading_symbol,))
+            prediction_result = cursor.fetchone()
+            logging.info(f"Prediction query (ACTIVE) for {trading_symbol}: found={prediction_result is not None}")
+            
+            # If not found, try without status filter
+            if not prediction_result:
+                cursor.execute("""
+                    SELECT 
+                        predicted_price_change_pct,
+                        prediction_confidence,
+                        prediction_days,
+                        prediction_details,
+                        run_date,
+                        status
+                    FROM my_schema.prophet_predictions
+                    WHERE UPPER(TRIM(scrip_id)) = UPPER(TRIM(%s))
+                    ORDER BY run_date DESC, prediction_days DESC
+                    LIMIT 1
+                """, (trading_symbol,))
+                prediction_result = cursor.fetchone()
+                logging.info(f"Prediction query (any status) for {trading_symbol}: found={prediction_result is not None}")
+            
+            # Debug: Check what scrip_ids exist in the table
+            if not prediction_result:
+                cursor.execute("""
+                    SELECT DISTINCT scrip_id, status, COUNT(*) as cnt
+                    FROM my_schema.prophet_predictions
+                    WHERE scrip_id ILIKE %s
+                    GROUP BY scrip_id, status
+                    LIMIT 5
+                """, (f'%{trading_symbol}%',))
+                similar_results = cursor.fetchall()
+                if similar_results:
+                    logging.info(f"Similar scrip_ids found for {trading_symbol}: {[dict(r) for r in similar_results]}")
+            
+            if prediction_result:
+                logging.info(f"Prediction data for {trading_symbol}: change_pct={prediction_result.get('predicted_price_change_pct')}, confidence={prediction_result.get('prediction_confidence')}, days={prediction_result.get('prediction_days')}")
+                # Get latest close price to calculate predicted prices
+                latest_close = closes[-1] if len(closes) > 0 else None
+                predicted_price = None
+                if latest_close and prediction_result['predicted_price_change_pct']:
+                    predicted_price = latest_close * (1 + (prediction_result['predicted_price_change_pct'] / 100))
+                
+                # Parse prediction_details if available (contains daily forecasts)
+                daily_predictions = None
+                if prediction_result['prediction_details']:
+                    try:
+                        import json
+                        if isinstance(prediction_result['prediction_details'], str):
+                            details = json.loads(prediction_result['prediction_details'])
+                        else:
+                            details = prediction_result['prediction_details']
+                        
+                        # Extract daily predictions if available
+                        if isinstance(details, dict) and 'daily_forecasts' in details:
+                            daily_predictions = details['daily_forecasts']
+                    except Exception as e:
+                        logging.debug(f"Could not parse prediction_details for {trading_symbol}: {e}")
+                
+                prediction_data = {
+                    "predicted_price_change_pct": float(prediction_result['predicted_price_change_pct']) if prediction_result['predicted_price_change_pct'] else None,
+                    "prediction_confidence": float(prediction_result['prediction_confidence']) if prediction_result['prediction_confidence'] else None,
+                    "prediction_days": int(prediction_result['prediction_days']) if prediction_result['prediction_days'] else None,
+                    "predicted_price": float(predicted_price) if predicted_price else None,
+                    "current_price": float(latest_close) if latest_close else None,
+                    "daily_predictions": daily_predictions,
+                    "run_date": str(prediction_result['run_date']) if prediction_result['run_date'] else None
+                }
+                logging.info(f"Prediction data created for {trading_symbol}: predicted_price={prediction_data.get('predicted_price')}, current_price={prediction_data.get('current_price')}")
+            else:
+                logging.debug(f"No prediction found for {trading_symbol} with status='ACTIVE'")
+        except Exception as e:
+            logging.error(f"Error fetching prediction data for {trading_symbol}: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+        
+        # Get Accumulation/Distribution state (ENHANCED)
+        accumulation_data = None
+        try:
+            from datetime import date as date_class
+            today = date_class.today()
+            # Try with exact match first (case-insensitive)
+            cursor.execute("""
+                SELECT 
+                    state,
+                    start_date,
+                    days_in_state,
+                    confidence_score,
+                    pattern_detected,
+                    technical_context,
+                    analysis_date
+                FROM my_schema.accumulation_distribution
+                WHERE UPPER(TRIM(scrip_id)) = UPPER(TRIM(%s))
+                AND analysis_date = %s
+                ORDER BY created_at DESC
+                LIMIT 1
+            """, (trading_symbol, today))
+            accumulation_result = cursor.fetchone()
+            logging.info(f"Accumulation query (today) for {trading_symbol}: found={accumulation_result is not None}")
+            
+            # Debug: Check what scrip_ids exist in the table
+            if not accumulation_result:
+                cursor.execute("""
+                    SELECT DISTINCT scrip_id, analysis_date, state
+                    FROM my_schema.accumulation_distribution
+                    WHERE scrip_id ILIKE %s
+                    ORDER BY analysis_date DESC
+                    LIMIT 5
+                """, (f'%{trading_symbol}%',))
+                similar_results = cursor.fetchall()
+                if similar_results:
+                    logging.info(f"Similar scrip_ids found for {trading_symbol}: {[dict(r) for r in similar_results]}")
+            
+            if accumulation_result:
+                accumulation_data = {
+                    "state": accumulation_result['state'] if accumulation_result['state'] else None,
+                    "start_date": str(accumulation_result['start_date']) if accumulation_result['start_date'] else None,
+                    "days_in_state": int(accumulation_result['days_in_state']) if accumulation_result['days_in_state'] else None,
+                    "confidence_score": float(accumulation_result['confidence_score']) if accumulation_result['confidence_score'] else None,
+                    "pattern_detected": accumulation_result['pattern_detected'] if accumulation_result['pattern_detected'] else None,
+                    "technical_context": accumulation_result['technical_context'] if accumulation_result['technical_context'] else None
+                }
+                logging.info(f"Accumulation data for {trading_symbol}: state={accumulation_data.get('state')}, confidence={accumulation_data.get('confidence_score')}")
+            else:
+                # Try to get the latest available state if today's data is not available
+                cursor.execute("""
+                    SELECT 
+                        state,
+                        start_date,
+                        days_in_state,
+                        confidence_score,
+                        pattern_detected,
+                        technical_context,
+                        analysis_date
+                    FROM my_schema.accumulation_distribution
+                    WHERE UPPER(TRIM(scrip_id)) = UPPER(TRIM(%s))
+                    ORDER BY analysis_date DESC
+                    LIMIT 1
+                """, (trading_symbol,))
+                accumulation_result = cursor.fetchone()
+                logging.info(f"Accumulation query (latest) for {trading_symbol}: found={accumulation_result is not None}")
+                if accumulation_result:
+                    accumulation_data = {
+                        "state": accumulation_result['state'] if accumulation_result['state'] else None,
+                        "start_date": str(accumulation_result['start_date']) if accumulation_result['start_date'] else None,
+                        "days_in_state": int(accumulation_result['days_in_state']) if accumulation_result['days_in_state'] else None,
+                        "confidence_score": float(accumulation_result['confidence_score']) if accumulation_result['confidence_score'] else None,
+                        "pattern_detected": accumulation_result['pattern_detected'] if accumulation_result['pattern_detected'] else None,
+                        "technical_context": accumulation_result['technical_context'] if accumulation_result['technical_context'] else None
+                    }
+                    logging.info(f"Accumulation data (latest) for {trading_symbol}: state={accumulation_data.get('state')}")
+        except Exception as e:
+            logging.debug(f"Could not fetch accumulation/distribution data for {trading_symbol}: {e}")
+        
         conn.close()
         
         return {
             "trading_symbol": trading_symbol,
             "data": data,
-            "fundamental_data": fundamental_data
+            "fundamental_data": fundamental_data,
+            "prediction_data": prediction_data,
+            "accumulation_data": accumulation_data
         }
     except Exception as e:
         logging.error(f"Error fetching candlestick data: {e}")
