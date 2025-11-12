@@ -1240,7 +1240,7 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Predicted Gain %</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Ghost Confidence</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
-                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px; white-space: normal; word-wrap: break-word; max-width: 100px;" title="Accumulation/Distribution state">Accumulation/<br/>Distribution</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px; white-space: normal; word-wrap: break-word; max-width: 100px;" title="Accumulation /Distribution state">Accumulation/<br/>Distribution</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;" title="Days in accumulation/distribution state">Days in State</th>
                                 </tr>
                             </thead>
@@ -1358,7 +1358,7 @@
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Mean Absolute Percentage Error">MAPE (%)</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 14px;" title="Root Mean Squared Error">RMSE</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Days</th>
-                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px; white-space: normal; word-wrap: break-word; max-width: 120px;" title="Accumulation/Distribution state">Accumulation/<br/>Distribution</th>
+                                    <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px; white-space: normal; word-wrap: break-word; max-width: 120px;" title="Accumulation /Distribution state">Accumulation/<br/>Distribution</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;" title="Days in accumulation/distribution state">Days in State</th>
                                     <th style="padding: 12px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 14px;">Rationale</th>
                                 </tr>
@@ -1449,7 +1449,7 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;" title="Mean Absolute Percentage Error">MAPE (%)</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;" title="Root Mean Squared Error">RMSE</th>
-                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px; white-space: normal; word-wrap: break-word; max-width: 100px;" title="Accumulation/Distribution state">Accumulation/<br/>Distribution</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px; white-space: normal; word-wrap: break-word; max-width: 100px;" title="Accumulation /Distribution state">Accumulation/<br/>Distribution</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;" title="Days in accumulation/distribution state">Days in State</th>
                                 </tr>
                             </thead>
@@ -1978,7 +1978,7 @@
                 </div>
                 <!-- Wyckoff Analysis Buttons -->
                 <div style="display: flex; gap: 10px; margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd; align-items: center; flex-wrap: wrap;">
-                    <button onclick="calculateWyckoffForAll()" id="btnCalculateAll" class="btn btn-primary" style="padding: 8px 16px; font-size: 13px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" title="Calculate Wyckoff Accumulation/Distribution for all holdings">
+                    <button onclick="calculateWyckoffForAll()" id="btnCalculateAll" class="btn btn-primary" style="padding: 8px 16px; font-size: 13px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;" title="Calculate Wyckoff Accumulation /Distribution for all holdings">
                         📊 Calculate Wyckoff for All Holdings
                     </button>
                     <button onclick="calculateWyckoffForSelected()" id="btnCalculateSelected" class="btn btn-secondary" style="padding: 8px 16px; font-size: 13px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; display: none;" title="Calculate Wyckoff for selected stocks">
@@ -2009,7 +2009,7 @@
                             <th onclick="sortHoldings('today_pnl')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_today_pnl">Today's P&L ↕</th>
                             <th onclick="sortHoldings('prophet_prediction_pct')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_prophet_prediction_pct">Ghost Prediction (60D) ↕</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Confidence</th>
-                            <th onclick="sortHoldings('accumulation_state')" style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px; white-space: normal; word-wrap: break-word; background-color: #e7f3ff; max-width: 120px;" id="header_accumulation_state" title="Wyckoff Accumulation/Distribution state">Accumulation/<br/>Distribution ↕</th>
+                            <th onclick="sortHoldings('accumulation_state')" style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px; white-space: normal; word-wrap: break-word; background-color: #e7f3ff; max-width: 120px;" id="header_accumulation_state" title="Wyckoff Accumulation /Distribution state">Accumulation/<br/>Distribution ↕</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px; background-color: #e7f3ff;" title="Days in Wyckoff accumulation/distribution state">Wyckoff Days</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Actions</th>
                         </tr>
@@ -3438,7 +3438,7 @@
                 'header_today_pnl': 'Today\'s P&L',
                 'header_prophet_prediction_pct': 'Ghost Prediction (60D)',
                 'header_below_supertrend': 'Supertrend Alert',
-                'header_accumulation_state': 'Accumulation/Distribution'
+                'header_accumulation_state': 'Accumulation /Distribution'
             };
             
             headers.forEach(headerId => {
@@ -5725,6 +5725,31 @@
                 });
         }
         
+        // Update Margin Balance (for status bar)
+        function updateMarginBalance() {
+            const balanceElement = document.getElementById('marginBalance');
+            if (!balanceElement) {
+                return;
+            }
+            
+            fetch('/api/margin_data')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Error loading margin data:', data.error);
+                        balanceElement.textContent = 'Balance: Error';
+                        return;
+                    }
+                    
+                    const liveBalance = data.live_balance || 0;
+                    balanceElement.textContent = `Balance: ₹${liveBalance.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                })
+                .catch(error => {
+                    console.error('Error fetching margin data:', error);
+                    balanceElement.textContent = 'Balance: Error';
+                });
+        }
+        
         // Load Margin Calculator
         function loadMarginCalculator() {
             const container = document.getElementById('availableMarginDisplay');
@@ -7647,6 +7672,7 @@
         // Cleanup polling when page unloads
         window.addEventListener('beforeunload', function() {
             stopGainersLosersPolling();
+            stopTopGainersPolling();
             stopOrderFlowAnalysisAutoRefresh();
             stopFootprintAnalysisAutoRefresh();
             stopMicroLevelsAutoRefresh();
@@ -7685,6 +7711,7 @@
                 } else {
                     // Stop polling when switching away from Stocks tab
                     stopGainersLosersPolling();
+                    stopTopGainersPolling(); // Also stop top gainers polling
                 }
                 
                 // Load data based on tab name
@@ -8589,16 +8616,30 @@
                         }
                         // Start polling for predictions after a short delay
                         // Predictions are saved immediately as they are calculated
+                        
+                        // Clear any existing polling interval first
+                        if (topGainersPollInterval) {
+                            clearInterval(topGainersPollInterval);
+                            topGainersPollInterval = null;
+                        }
+                        
                         setTimeout(() => {
                             // Poll for new predictions every 10 seconds
                             let pollCount = 0;
                             const maxPolls = 60; // Poll for up to 10 minutes
-                            const pollInterval = setInterval(() => {
+                            
+                            // Clear any existing interval before creating a new one
+                            if (topGainersPollInterval) {
+                                clearInterval(topGainersPollInterval);
+                            }
+                            
+                            topGainersPollInterval = setInterval(() => {
                                 pollCount++;
                                 loadTopGainers(); // Refresh the top gainers table
                                 
                                 if (pollCount >= maxPolls) {
-                                    clearInterval(pollInterval);
+                                    clearInterval(topGainersPollInterval);
+                                    topGainersPollInterval = null;
                                     if (statusDiv) {
                                         statusDiv.innerHTML = `<span style="color: #ffc107;">⏱ Prediction generation may still be running. Check application logs for completion status.</span>`;
                                     }
@@ -8817,6 +8858,16 @@
         let selectedSectorFilter = null;
         let sectorSortMode = 'none'; // 'none', 'alphabetical', 'avg_gain'
         let sectorSortDirection = 'asc'; // 'asc', 'desc'
+        let topGainersPollInterval = null; // Store polling interval to prevent multiple intervals
+        
+        // Function to stop top gainers polling
+        function stopTopGainersPolling() {
+            if (topGainersPollInterval) {
+                clearInterval(topGainersPollInterval);
+                topGainersPollInterval = null;
+                console.log('Top gainers polling stopped');
+            }
+        }
         
         // Load sectoral averages
         function loadSectoralAverages() {
@@ -8925,7 +8976,7 @@
                         box-shadow: ${isSelected ? `0 2px 4px ${gradientColor}40` : '0 1px 2px rgba(0,0,0,0.1)'};
                     " onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 3px 6px ${gradientColor}60';" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='${isSelected ? `0 2px 4px ${gradientColor}40` : '0 1px 2px rgba(0,0,0,0.1)'}';">
                         <div style="font-weight: bold; font-size: 13px; color: #333; margin-bottom: 5px;">${sectorCode}</div>
-                        <div style="font-size: 11px; color: ${gradientColor}; margin-bottom: 3px; font-weight: bold;">Avg Gain: <strong>+${avgGain.toFixed(2)}%</strong></div>
+                        <div style="font-size: 11px; color: ${gradientColor}; margin-bottom: 3px; font-weight: bold;">Avg Gain: <strong>${avgGain >= 0 ? '+' : ''}${avgGain.toFixed(2)}%</strong></div>
                         <div style="font-size: 11px; color: ${confidenceColor}; margin-bottom: 3px;">Avg Confidence: <strong>${avgConfidence.toFixed(0)}%</strong></div>
                         <div style="font-size: 11px; color: #666;">Stocks: <strong>${stockCount}</strong></div>
                     </div>

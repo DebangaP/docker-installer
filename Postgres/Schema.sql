@@ -2031,3 +2031,19 @@ CREATE TABLE IF NOT EXISTS my_schema.accumulation_distribution_history (
 CREATE INDEX IF NOT EXISTS idx_acc_dist_scrip_date ON my_schema.accumulation_distribution(scrip_id, analysis_date DESC);
 CREATE INDEX IF NOT EXISTS idx_acc_dist_state ON my_schema.accumulation_distribution(state);
 CREATE INDEX IF NOT EXISTS idx_acc_dist_history_scrip ON my_schema.accumulation_distribution_history(scrip_id, start_date DESC);
+
+-- Supertrend values table (calculated once per day)
+CREATE TABLE IF NOT EXISTS my_schema.supertrend_values (
+    scrip_id VARCHAR(50) NOT NULL,
+    calculation_date DATE NOT NULL,
+    supertrend_value FLOAT,
+    supertrend_direction INTEGER, -- -1 if price is below supertrend, 1 if price is above supertrend
+    close_price FLOAT,
+    days_below_supertrend INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (scrip_id, calculation_date)
+);
+
+-- Index for supertrend values table
+CREATE INDEX IF NOT EXISTS idx_supertrend_scrip_date ON my_schema.supertrend_values(scrip_id, calculation_date DESC);

@@ -260,6 +260,18 @@ class ProphetPricePredictor:
             df = df.drop_duplicates(subset=['ds'], keep='last')
             df = df.sort_values('ds')
             
+            # Log data quality metrics for debugging
+            if len(df) > 0:
+                min_price = df['y'].min()
+                max_price = df['y'].max()
+                latest_price = df['y'].iloc[-1]
+                price_range_pct = ((max_price - min_price) / min_price * 100) if min_price > 0 else 0
+                logger.debug(f"Price data quality for {scrip_id}: {len(df)} data points, price range: {min_price:.2f} - {max_price:.2f} ({price_range_pct:.1f}%), latest: {latest_price:.2f}")
+                
+                # Check for suspicious data patterns
+                if price_range_pct > 500:  # More than 500% range might indicate stock split or bad data
+                    logger.warning(f"Large price range detected for {scrip_id}: {price_range_pct:.1f}% (min={min_price:.2f}, max={max_price:.2f})")
+            
             return df
             
         except Exception as e:
@@ -455,6 +467,9 @@ class ProphetPricePredictor:
             # Get current price if not provided
             if current_price is None:
                 current_price = float(df['y'].iloc[-1])
+                logger.debug(f"Using latest price from data for {scrip_id}: {current_price:.2f} (date: {df['ds'].iloc[-1]})")
+            else:
+                logger.debug(f"Using provided current_price for {scrip_id}: {current_price:.2f}")
             
             # Prepare data for Prophet (requires 'ds' and 'y' columns)
             prophet_df = df[['ds', 'y']].copy()
@@ -603,6 +618,15 @@ class ProphetPricePredictor:
             predicted_price = convert_numpy_to_native(predicted_row['yhat'])
             predicted_price = float(predicted_price) if predicted_price is not None else 0.0
             
+            # Sanity check: predicted price should be reasonable (within 0.1x to 10x of current price)
+            # This catches data quality issues or calculation errors
+            if current_price > 0 and predicted_price > 0:
+                price_ratio = predicted_price / current_price
+                if price_ratio < 0.1 or price_ratio > 10.0:
+                    logger.error(f"WARNING: Unusual predicted price for {scrip_id}: current_price={current_price:.2f}, predicted_price={predicted_price:.2f}, ratio={price_ratio:.2f}")
+                    logger.error(f"  This may indicate a data quality issue. Check historical prices for {scrip_id}")
+                    # Don't fail, but log the warning
+            
             # Calculate percentage change
             price_change_pct = ((predicted_price - current_price) / current_price) * 100
             
@@ -640,6 +664,9 @@ class ProphetPricePredictor:
                 'data_points_used': len(prophet_df),
                 'model_params': model_params  # Include model parameters
             }
+            
+            # Log prediction summary for debugging
+            logger.info(f"Prophet prediction for {scrip_id}: current={current_price:.2f}, predicted={predicted_price:.2f}, change_pct={price_change_pct:.2f}%, confidence={confidence:.2f}%")
             
             # Add cross-validation metrics if available
             if cv_metrics:
@@ -844,6 +871,13 @@ class ProphetPricePredictor:
             if current_price is None or predicted_price is None:
                 logger.warning(f"Skipping prediction for {scrip_id}: invalid price values (current={current_price}, predicted={predicted_price})")
                 return False
+            
+            # Additional validation: check for unreasonable price ratios
+            if current_price > 0 and predicted_price > 0:
+                price_ratio = predicted_price / current_price
+                if price_ratio < 0.5 or price_ratio > 5.0:
+                    logger.error(f"CRITICAL: Unusual predicted_price_30d for {scrip_id}: current={current_price:.2f}, predicted={predicted_price:.2f}, ratio={price_ratio:.2f}")
+                    logger.error(f"  This may indicate corrupted data. Prediction will still be saved but should be reviewed.")
             
             # Ensure prediction_confidence has a default value
             if prediction_confidence is None:

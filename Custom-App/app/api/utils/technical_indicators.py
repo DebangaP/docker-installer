@@ -71,28 +71,58 @@ def calculate_supertrend(high, low, close, period=14, multiplier=3.0):
         return np.full(len(close), np.nan), np.zeros(len(close))
 
 
-def get_latest_supertrend(scrip_id: str, conn=None):
+def get_latest_supertrend(scrip_id: str, conn=None, force_recalculate: bool = False):
     """Get the latest supertrend value, direction, corresponding close price, and days below supertrend
-    Uses the same logic as the candlestick endpoint
+    First checks database for today's value. Only calculates if not found or force_recalculate=True.
+    
     Returns: (supertrend_value, direction, close_price, days_below_supertrend) or None if error
     direction: -1 if price is below supertrend, 1 if price is above supertrend
     days_below_supertrend: number of consecutive days below supertrend in the latest downtrend
     """
-    print(f"---XXX--- get_latest_supertrend called for {scrip_id}")
+    from datetime import date
+    
+    calculation_date = date.today()
+    
     try:
         # Always create a new connection to avoid connection issues
-        # The passed conn might be closed or in use by other queries
-        print(f"---XXX--- Step 1: Creating new connection for {scrip_id}")
         conn = get_db_connection()
         should_close = True
-        print(f"---XXX--- Step 2: Created new connection for {scrip_id}")
         
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        print(f"---XXX--- Step 3: Created cursor for {scrip_id}")
+        
+        # First, check if we have today's value in database (unless force_recalculate)
+        if not force_recalculate:
+            cursor.execute("""
+                SELECT 
+                    supertrend_value,
+                    supertrend_direction,
+                    close_price,
+                    days_below_supertrend
+                FROM my_schema.supertrend_values
+                WHERE scrip_id = %s
+                AND calculation_date = %s
+            """, (scrip_id, calculation_date))
+            
+            row = cursor.fetchone()
+            if row:
+                # Found in database, return it
+                result = (
+                    float(row['supertrend_value']) if row['supertrend_value'] is not None else None,
+                    int(row['supertrend_direction']) if row['supertrend_direction'] is not None else None,
+                    float(row['close_price']) if row['close_price'] is not None else None,
+                    int(row['days_below_supertrend']) if row['days_below_supertrend'] is not None else None
+                )
+                cursor.close()
+                if should_close:
+                    conn.close()
+                logging.debug(f"Supertrend retrieved from database for {scrip_id} (date: {calculation_date})")
+                return result
+        
+        # Not found in database or force_recalculate, need to calculate
+        logging.debug(f"Calculating supertrend for {scrip_id} (not found in database or force_recalculate=True)")
         
         # Get OHLC data for candlestick - same query as api_candlestick endpoint
         # Get last 90 days of data ordered by date ASC (oldest to newest) to properly calculate days below supertrend
-        print(f"---XXX--- Step 4: Executing query for {scrip_id}")
         cursor.execute("""
             SELECT 
                 price_high,
@@ -108,20 +138,13 @@ def get_latest_supertrend(scrip_id: str, conn=None):
             ORDER BY price_date ASC
         """, (scrip_id,))
         
-        print(f"---XXX--- Step 5: Fetching rows for {scrip_id}")
         rows = cursor.fetchall()
-        cursor.close()
-        print(f"---XXX--- Step 6: Closed cursor for {scrip_id}")
-        
-        if should_close:
-            conn.close()
-            print(f"---XXX--- Step 7: Closed connection for {scrip_id}")
-        
-        print(f"---XXX--- Found {len(rows) if rows else 0} rows for {scrip_id}")
         
         if not rows or len(rows) < 14:
-            print(f"---XXX--- Not enough data for {scrip_id}: {len(rows) if rows else 0} rows")
             logging.debug(f"Not enough data for supertrend calculation for {scrip_id}: {len(rows) if rows else 0} rows")
+            cursor.close()
+            if should_close:
+                conn.close()
             return None
         
         # Extract arrays - same as candlestick endpoint
@@ -144,16 +167,16 @@ def get_latest_supertrend(scrip_id: str, conn=None):
         # Calculate supertrend - same as candlestick endpoint
         try:
             supertrend, supertrend_direction = calculate_supertrend(highs_array, lows_array, closes_array)
-            print('---XXX--- Supertrend')
-            print(supertrend)
         except Exception as calc_error:
             logging.warning(f"Error calculating supertrend for {scrip_id}: {calc_error}")
             import traceback
             logging.warning(traceback.format_exc())
+            cursor.close()
+            if should_close:
+                conn.close()
             return None
         
         # Get the latest non-NaN supertrend value (last element in array)
-        # Same logic as candlestick endpoint - get last value
         latest_supertrend = None
         latest_direction = None
         latest_close = None
@@ -170,15 +193,14 @@ def get_latest_supertrend(scrip_id: str, conn=None):
         
         if latest_supertrend is None:
             logging.debug(f"No valid supertrend value found for {scrip_id} (all NaN)")
+            cursor.close()
+            if should_close:
+                conn.close()
             return None
         
         # Calculate days below supertrend (only for latest downtrend)
-        # Count consecutive calendar days with direction = -1 (below supertrend) from the latest day backwards
-        # This looks back at least 90 days or from when supertrend data is available
         days_below_supertrend = 0
         if latest_direction == -1:  # Currently below supertrend
-            # Count backwards from latest_index, counting actual calendar days
-            # Normalize dates to date objects for proper comparison
             from datetime import date as date_type
             prev_date = None
             for i in range(latest_index, -1, -1):
@@ -201,15 +223,41 @@ def get_latest_supertrend(scrip_id: str, conn=None):
                 else:
                     break  # Stop counting when we hit a day above supertrend
         
+        # Store in database for future use
+        try:
+            cursor.execute("""
+                INSERT INTO my_schema.supertrend_values 
+                    (scrip_id, calculation_date, supertrend_value, supertrend_direction, close_price, days_below_supertrend, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (scrip_id, calculation_date) 
+                DO UPDATE SET
+                    supertrend_value = EXCLUDED.supertrend_value,
+                    supertrend_direction = EXCLUDED.supertrend_direction,
+                    close_price = EXCLUDED.close_price,
+                    days_below_supertrend = EXCLUDED.days_below_supertrend,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (scrip_id, calculation_date, latest_supertrend, latest_direction, latest_close, days_below_supertrend))
+            conn.commit()
+            logging.debug(f"Supertrend stored in database for {scrip_id} (date: {calculation_date})")
+        except Exception as db_error:
+            logging.warning(f"Error storing supertrend in database for {scrip_id}: {db_error}")
+            conn.rollback()
+        
+        cursor.close()
+        if should_close:
+            conn.close()
+        
         logging.debug(f"Supertrend calculated for {scrip_id}: value={latest_supertrend}, direction={latest_direction}, close={latest_close}, days_below={days_below_supertrend}")
         return (latest_supertrend, latest_direction, latest_close, days_below_supertrend)
         
     except Exception as e:
-        print(f"---XXX--- Exception in get_latest_supertrend for {scrip_id}: {e}")
+        logging.error(f"Error getting supertrend for {scrip_id}: {e}")
         import traceback
-        print(f"---XXX--- Traceback: {traceback.format_exc()}")
-        logging.debug(f"Error getting supertrend for {scrip_id}: {e}")
-        logging.debug(traceback.format_exc())
+        logging.error(traceback.format_exc())
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals() and should_close:
+            conn.close()
         return None
 
 

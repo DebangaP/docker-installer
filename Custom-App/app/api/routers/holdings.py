@@ -1,7 +1,7 @@
 """
 Holdings router for all holdings, positions, mutual funds, and portfolio-related endpoints.
 """
-from fastapi import APIRouter, Query, Body
+from fastapi import APIRouter, Query, Body, BackgroundTasks
 from typing import Optional, List
 from pydantic import BaseModel
 from common.Boilerplate import get_db_connection, kite
@@ -48,6 +48,7 @@ except ImportError:
 
 from api.utils.cache import cached_json_response, cache_get_json, cache_set_json
 from api.utils.technical_indicators import get_latest_supertrend
+from api.utils.supertrend_cache import get_cached_supertrend, set_cached_supertrend
 from api.services.holdings_service import HoldingsService
 
 router = APIRouter(prefix="/api", tags=["holdings"])
@@ -67,11 +68,20 @@ class WyckoffCalculateSelectedRequest(BaseModel):
 
 
 @router.get("/holdings")
-async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=1), sort_by: str = Query("below_supertrend"), sort_dir: str = Query("desc"), search: str = Query(None)):
+async def api_holdings(
+    background_tasks: BackgroundTasks,
+    page: int = Query(1, ge=1), 
+    per_page: int = Query(10, ge=1), 
+    sort_by: str = Query("below_supertrend"), 
+    sort_dir: str = Query("desc"), 
+    search: str = Query(None)
+):
     """API endpoint to get paginated holdings data with sorting and GTT info
     Default sort: by Supertrend Alert (desc) - stocks below supertrend shown first
+    
+    Supertrend calculations run in background to avoid blocking the dashboard.
     """
-    print(f"---XXX--- api_holdings called: page={page}, per_page={per_page}, sort_by={sort_by}, search={search}")
+    #print(f"---XXX--- api_holdings called: page={page}, per_page={per_page}, sort_by={sort_by}, search={search}")
     try:
         # Small cache for hot endpoint (exclude search from cache key for real-time search)
         if not search:
@@ -80,7 +90,7 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
             if cached:
                 print(f"---XXX--- Returning cached result for {cache_key}")
                 return cached
-        print(f"---XXX--- Not using cache, proceeding with fresh data")
+        #print(f"---XXX--- Not using cache, proceeding with fresh data")
         # If sorting by today_pnl, prophet_prediction_pct, below_supertrend, or accumulation_state, we need to get all holdings, enrich them, sort, then paginate
         if sort_by == 'today_pnl' or sort_by == 'prophet_prediction_pct' or sort_by == 'below_supertrend' or sort_by == 'accumulation_state':
             # Get all holdings without pagination
@@ -265,29 +275,61 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
         
         conn.close()
         
-        # Get accumulation/distribution data for all holdings
+        # Get accumulation/distribution data for all holdings (batch query for efficiency)
         from indicators.AccumulationDistributionAnalyzer import AccumulationDistributionAnalyzer
         analyzer = AccumulationDistributionAnalyzer()
         accumulation_map = {}
         
         try:
-            for holding in holdings_info["holdings"]:
-                symbol = holding["trading_symbol"]
-                if symbol:
-                    state_data = analyzer.get_current_state(symbol, date.today())
-                    if state_data:
-                        accumulation_map[symbol] = state_data
+            # Batch query: get all accumulation/distribution data in one query
+            symbols_list = [holding["trading_symbol"] for holding in holdings_info["holdings"] if holding.get("trading_symbol")]
+            if symbols_list:
+                conn3 = get_db_connection()
+                cursor3 = conn3.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                
+                try:
+                    # Query all accumulation/distribution data at once
+                    cursor3.execute("""
+                        SELECT DISTINCT ON (scrip_id)
+                            scrip_id,
+                            state,
+                            start_date,
+                            days_in_state,
+                            obv_value,
+                            ad_value,
+                            momentum_score,
+                            pattern_detected,
+                            volume_analysis,
+                            confidence_score,
+                            technical_context
+                        FROM my_schema.accumulation_distribution
+                        WHERE scrip_id = ANY(%s)
+                        AND analysis_date = %s
+                        ORDER BY scrip_id, created_at DESC
+                    """, (symbols_list, date.today()))
+                    
+                    rows = cursor3.fetchall()
+                    for row in rows:
+                        symbol = row['scrip_id']
+                        accumulation_map[symbol] = dict(row)
+                    
+                    logging.debug(f"Loaded {len(accumulation_map)} accumulation/distribution records in batch")
+                except Exception as e:
+                    logging.warning(f"Error in batch accumulation/distribution query: {e}")
+                finally:
+                    cursor3.close()
+                    conn3.close()
         except Exception as e:
             logging.debug(f"Error loading accumulation/distribution data: {e}")
             accumulation_map = {}
         
         # Convert holdings to serializable format
         holdings_list = []
-        print(f"---XXX--- Starting holdings loop, total holdings: {len(holdings_info.get('holdings', []))}")
+        #print(f"---XXX--- Starting holdings loop, total holdings: {len(holdings_info.get('holdings', []))}")
         for holding in holdings_info["holdings"]:
             symbol = holding["trading_symbol"]
             instrument_token = holding["instrument_token"]
-            print(f"---XXX--- Processing holding: {symbol}")
+            #print(f"---XXX--- Processing holding: {symbol}")
             today_pnl_info = today_pnl_map.get(instrument_token, {'today_pnl': 0.0, 'today_price': 0.0, 'prev_price': 0.0, 'pct_change': 0.0, 'today_change': '0 (0%)'})
             
             # Get Prophet prediction for this holding
@@ -353,34 +395,47 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                     prophet_cv_mape = None
                     prophet_cv_rmse = None
             
-            # Check if stock is below supertrend
-            print(f"---XXX--- About to check supertrend for {symbol}")
+            # Check if stock is below supertrend (use cache first, fallback to calculation)
+            #print(f"---XXX--- About to check supertrend for {symbol}")
             below_supertrend = False
             supertrend_value = None
             days_below_supertrend = None
-            try:
-                print(f"---XXX--- Calling get_latest_supertrend for {symbol}")
-                # Don't pass conn - let the function create its own connection
-                supertrend_result = get_latest_supertrend(symbol, conn=None)
-                print(f"---XXX--- Result for {symbol}: {supertrend_result}")
-                if supertrend_result is not None:
+            
+            # Try to get from cache first (for performance)
+            supertrend_result = get_cached_supertrend(symbol)
+            
+            if supertrend_result is None:
+                # Cache miss - try to get from database (get_latest_supertrend checks DB first)
+                # This will only calculate if not found in DB for today
+                try:
+                    supertrend_result = get_latest_supertrend(symbol, conn=None, force_recalculate=False)
+                    
+                    if supertrend_result is not None:
+                        # Found in DB or calculated, cache it
+                        set_cached_supertrend(symbol, supertrend_result)
+                    else:
+                        # Not found and couldn't calculate, trigger background task
+                        logging.debug(f"Supertrend not available for {symbol}, will be calculated in background")
+                        from api.background_tasks.supertrend_calculator import calculate_supertrend_for_holdings
+                        background_tasks.add_task(calculate_supertrend_for_holdings, symbols=[symbol])
+                except Exception as e:
+                    logging.warning(f"Error getting supertrend for {symbol}: {e}")
+                    supertrend_result = None
+            
+            # Process the result if we have it
+            if supertrend_result is not None:
+                try:
                     supertrend_value, supertrend_direction, supertrend_close, days_below_supertrend = supertrend_result
-                    print(f"---XXX--- Unpacked for {symbol}: value={supertrend_value}, direction={supertrend_direction}, close={supertrend_close}, days_below={days_below_supertrend}")
                     
                     # Compare the close price used in supertrend calculation with the supertrend value
-                    # This is the most accurate comparison since they're from the same calculation
                     if supertrend_close is not None and supertrend_value is not None:
                         below_supertrend = supertrend_close < supertrend_value
                     else:
                         # Fallback: use direction if close price is not available
-                        # direction = -1 means price is below supertrend, direction = 1 means price is above supertrend
                         below_supertrend = (supertrend_direction == -1)
-                else:
-                    logging.debug(f"Supertrend result is None for {symbol}")
-            except Exception as e:
-                logging.warning(f"Could not check supertrend for {symbol}: {e}")
-                import traceback
-                logging.warning(traceback.format_exc())
+                except Exception as e:
+                    logging.warning(f"Error unpacking supertrend result for {symbol}: {e}")
+                    supertrend_result = None
             
             # Get accumulation/distribution data
             accumulation_state = None
@@ -392,7 +447,7 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                 days_in_accumulation_state = acc_data.get('days_in_state')
                 accumulation_confidence = acc_data.get('confidence_score')
             
-            print(f"---XXX--- Adding to holdings_list for {symbol}: supertrend_value={supertrend_value}, below_supertrend={below_supertrend}")
+            #print(f"---XXX--- Adding to holdings_list for {symbol}: supertrend_value={supertrend_value}, below_supertrend={below_supertrend}")
             holdings_list.append({
                 "trading_symbol": symbol,
                 "instrument_token": instrument_token,
@@ -420,7 +475,7 @@ async def api_holdings(page: int = Query(1, ge=1), per_page: int = Query(10, ge=
                 "days_in_accumulation_state": days_in_accumulation_state,
                 "accumulation_confidence": accumulation_confidence
             })
-            print(f"---XXX--- Added to holdings_list for {symbol}")
+            #print(f"---XXX--- Added to holdings_list for {symbol}")
         
         # If sorting by today_pnl, prophet_prediction_pct, below_supertrend, or accumulation_state, sort the enriched list and then paginate
         if sort_by == 'today_pnl':
@@ -2609,6 +2664,40 @@ async def calculate_wyckoff_for_selected(
             "processed": 0,
             "results": [],
             "errors": []
+        }
+
+
+@router.post("/holdings/calculate-supertrend")
+async def calculate_supertrend_for_all_holdings(
+    background_tasks: BackgroundTasks
+):
+    """
+    Trigger background calculation of Supertrend values for all holdings.
+    This runs asynchronously and does not block the response.
+    
+    Returns:
+        Dict with status message
+    """
+    try:
+        from api.background_tasks.supertrend_calculator import calculate_supertrend_for_holdings
+        
+        # Add background task to calculate supertrend for all holdings
+        background_tasks.add_task(calculate_supertrend_for_holdings, symbols=None)
+        
+        logging.info("Supertrend calculation task queued for all holdings")
+        
+        return {
+            "success": True,
+            "message": "Supertrend calculation started in background for all holdings. Check application logs for progress.",
+            "status": "queued"
+        }
+    except Exception as e:
+        logging.error(f"Error queuing Supertrend calculation: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
         }
 
 

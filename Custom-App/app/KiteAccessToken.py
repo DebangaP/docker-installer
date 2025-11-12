@@ -3676,25 +3676,26 @@ async def api_prophet_sectoral_averages(
         
         run_date = result['max_run_date']
         
-        # Get sectoral averages
-        # Note: This counts ALL stocks that meet criteria, but the table may only show top N
-        # To ensure consistency, we could limit this to top stocks, but for now we show all
+        # Get sectoral averages for ALL sectors that have predictions
+        # Include all predictions (positive, negative, any confidence) to show complete sectoral view
+        # Exclude sectors with 3 or fewer stocks
         cursor.execute("""
             SELECT 
                 ms.sector_code,
                 AVG(pp.predicted_price_change_pct) as avg_gain_pct,
                 AVG(pp.prediction_confidence) as avg_confidence,
-                COUNT(*) as stock_count
+                COUNT(pp.scrip_id) as stock_count
             FROM my_schema.prophet_predictions pp
-            LEFT JOIN my_schema.master_scrips ms ON pp.scrip_id = ms.scrip_id
+            INNER JOIN my_schema.master_scrips ms ON pp.scrip_id = ms.scrip_id
             WHERE pp.run_date = %s
-            AND pp.prediction_days = %s
-            AND pp.status = 'ACTIVE'
-            AND pp.predicted_price_change_pct > 0
-            AND pp.prediction_confidence >= 50.0
-            AND ms.sector_code IS NOT NULL
+                AND pp.prediction_days = %s
+                AND pp.status = 'ACTIVE'
+                AND ms.sector_code IS NOT NULL
+                AND ms.sector_code != ''
+                AND ms.scrip_country = 'IN'
             GROUP BY ms.sector_code
-            ORDER BY avg_gain_pct DESC
+            HAVING COUNT(pp.scrip_id) > 3
+            ORDER BY avg_gain_pct DESC NULLS LAST
         """, (run_date, prediction_days))
         
         rows = cursor.fetchall()
@@ -3704,10 +3705,16 @@ async def api_prophet_sectoral_averages(
         for sector in sectoral_averages:
             if sector.get('avg_gain_pct') is not None:
                 sector['avg_gain_pct'] = float(sector['avg_gain_pct'])
+            else:
+                sector['avg_gain_pct'] = 0.0
             if sector.get('avg_confidence') is not None:
                 sector['avg_confidence'] = float(sector['avg_confidence'])
+            else:
+                sector['avg_confidence'] = 0.0
             if sector.get('stock_count') is not None:
                 sector['stock_count'] = int(sector['stock_count'])
+            else:
+                sector['stock_count'] = 0
         
         cursor.close()
         conn.close()
