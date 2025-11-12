@@ -40,9 +40,6 @@ To be noted that this is not a Production grade app.
 **Your Holdings**
 
 **Click on any particular stock to see its daily Candlestick chart**
-<img width="1525" height="717" alt="image" src="https://github.com/user-attachments/assets/dad863fb-17dd-4ea2-bd75-90ad90d7bce3" />
-
-**Useful Candlestick charts**
 <img width="1522" height="778" alt="image" src="https://github.com/user-attachments/assets/9206f67b-bb9e-4af1-b50c-b26c95b98cea" />
 
 
