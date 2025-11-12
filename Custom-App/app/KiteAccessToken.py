@@ -391,6 +391,9 @@ SHOW_OPTIONS_TAB = os.getenv("SHOW_OPTIONS_TAB", "False").lower() == "true"
 SHOW_UTILITIES_TAB = os.getenv("SHOW_UTILITIES_TAB", "False").lower() == "true"
 SHOW_FUNDAMENTALS_TAB = os.getenv("SHOW_FUNDAMENTALS_TAB", "False").lower() == "true"
 
+# Debug logging for tab visibility settings
+logging.info(f"Tab visibility settings - SHOW_STOCKS_TAB: {SHOW_STOCKS_TAB}, SHOW_OPTIONS_TAB: {SHOW_OPTIONS_TAB}, SHOW_UTILITIES_TAB: {SHOW_UTILITIES_TAB}, SHOW_FUNDAMENTALS_TAB: {SHOW_FUNDAMENTALS_TAB}")
+
 # Small JSON cache helpers using Redis
 def cache_get_json(key: str):
     try:
@@ -597,6 +600,7 @@ async def home(
             "total_ticks": tick_data['total_ticks'],
             "holdings_info": holdings_info,
             "show_holdings": SHOW_HOLDINGS,
+            "show_stocks_tab": SHOW_STOCKS_TAB,
             "show_options_tab": SHOW_OPTIONS_TAB,
             "show_utilities_tab": SHOW_UTILITIES_TAB,
             "show_fundamentals_tab": SHOW_FUNDAMENTALS_TAB
