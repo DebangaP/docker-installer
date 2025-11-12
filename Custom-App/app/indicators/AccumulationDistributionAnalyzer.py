@@ -226,10 +226,10 @@ class AccumulationDistributionAnalyzer:
             highs = price_data['high'].values
             recent_data = price_data.tail(20)
             
-            # Check 1: Price makes higher highs but volume decreases
-            if len(recent_data) >= 10:
-                first_half = recent_data.head(10)
-                second_half = recent_data.tail(10)
+            # Check 1: Price makes higher highs but volume decreases (FIXED: non-overlapping periods)
+            if len(recent_data) >= 20:
+                first_half = recent_data.iloc[:10]  # First 10 days (non-overlapping)
+                second_half = recent_data.iloc[10:]  # Last 10 days (non-overlapping)
                 
                 first_half_high = first_half['high'].max()
                 second_half_high = second_half['high'].max()
@@ -319,10 +319,10 @@ class AccumulationDistributionAnalyzer:
             lows = price_data['low'].values
             recent_data = price_data.tail(20)
             
-            # Check 1: Price makes lower lows but volume decreases
-            if len(recent_data) >= 10:
-                first_half = recent_data.head(10)
-                second_half = recent_data.tail(10)
+            # Check 1: Price makes lower lows but volume decreases (FIXED: non-overlapping periods)
+            if len(recent_data) >= 20:
+                first_half = recent_data.iloc[:10]  # First 10 days (non-overlapping)
+                second_half = recent_data.iloc[10:]  # Last 10 days (non-overlapping)
                 
                 first_half_low = first_half['low'].min()
                 second_half_low = second_half['low'].min()
@@ -379,6 +379,91 @@ class AccumulationDistributionAnalyzer:
             logger.debug(f"Error detecting Wyckoff accumulation: {e}")
         
         return False
+    
+    def _detect_ad_divergence(self, price_data: pd.DataFrame, ad_line: pd.Series) -> Tuple[bool, bool]:
+        """
+        Detect A/D line divergences with price
+        
+        Bullish divergence: Price makes lower lows, A/D makes higher lows (accumulation signal)
+        Bearish divergence: Price makes higher highs, A/D makes lower highs (distribution signal)
+        
+        Args:
+            price_data: DataFrame with OHLC data
+            ad_line: Series of A/D line values
+            
+        Returns:
+            Tuple of (bullish_divergence, bearish_divergence) booleans
+        """
+        if len(price_data) < 20 or len(ad_line) < 20:
+            return False, False
+        
+        try:
+            recent_data = price_data.tail(20)
+            recent_ad = ad_line.tail(20)
+            
+            # Find price peaks and A/D peaks for bearish divergence
+            # Look for local maxima (peaks)
+            price_highs = []
+            ad_highs = []
+            
+            for i in range(1, len(recent_data) - 1):
+                if (recent_data.iloc[i]['high'] >= recent_data.iloc[i-1]['high'] and 
+                    recent_data.iloc[i]['high'] >= recent_data.iloc[i+1]['high']):
+                    price_highs.append((i, recent_data.iloc[i]['high']))
+            
+            for i in range(1, len(recent_ad) - 1):
+                if (recent_ad.iloc[i] >= recent_ad.iloc[i-1] and 
+                    recent_ad.iloc[i] >= recent_ad.iloc[i+1]):
+                    ad_highs.append((i, recent_ad.iloc[i]))
+            
+            # Bearish divergence: Price makes higher highs, A/D makes lower highs
+            if len(price_highs) >= 2 and len(ad_highs) >= 2:
+                # Get last two peaks
+                latest_price_peak_idx, latest_price_peak = price_highs[-1]
+                prev_price_peak_idx, prev_price_peak = price_highs[-2]
+                
+                # Find corresponding A/D peaks (closest in time)
+                latest_ad_peak_idx, latest_ad_peak = ad_highs[-1]
+                prev_ad_peak_idx, prev_ad_peak = ad_highs[-2]
+                
+                # Check if price is making higher highs while A/D is making lower highs
+                if (latest_price_peak > prev_price_peak * 1.01 and 
+                    latest_ad_peak < prev_ad_peak * 0.99):
+                    return False, True  # Bearish divergence detected
+            
+            # Find price troughs and A/D troughs for bullish divergence
+            price_lows = []
+            ad_lows = []
+            
+            for i in range(1, len(recent_data) - 1):
+                if (recent_data.iloc[i]['low'] <= recent_data.iloc[i-1]['low'] and 
+                    recent_data.iloc[i]['low'] <= recent_data.iloc[i+1]['low']):
+                    price_lows.append((i, recent_data.iloc[i]['low']))
+            
+            for i in range(1, len(recent_ad) - 1):
+                if (recent_ad.iloc[i] <= recent_ad.iloc[i-1] and 
+                    recent_ad.iloc[i] <= recent_ad.iloc[i+1]):
+                    ad_lows.append((i, recent_ad.iloc[i]))
+            
+            # Bullish divergence: Price makes lower lows, A/D makes higher lows
+            if len(price_lows) >= 2 and len(ad_lows) >= 2:
+                # Get last two troughs
+                latest_price_trough_idx, latest_price_trough = price_lows[-1]
+                prev_price_trough_idx, prev_price_trough = price_lows[-2]
+                
+                # Find corresponding A/D troughs (closest in time)
+                latest_ad_trough_idx, latest_ad_trough = ad_lows[-1]
+                prev_ad_trough_idx, prev_ad_trough = ad_lows[-2]
+                
+                # Check if price is making lower lows while A/D is making higher lows
+                if (latest_price_trough < prev_price_trough * 0.99 and 
+                    latest_ad_trough > prev_ad_trough * 1.01):
+                    return True, False  # Bullish divergence detected
+                    
+        except Exception as e:
+            logger.debug(f"Error detecting A/D divergence: {e}")
+        
+        return False, False
     
     def _analyze_volume_patterns(self, price_data: pd.DataFrame, volume: pd.Series) -> Dict:
         """
@@ -502,50 +587,64 @@ class AccumulationDistributionAnalyzer:
             wyckoff_distribution = self._detect_wyckoff_distribution(price_data, volumes, obv)
             wyckoff_accumulation = self._detect_wyckoff_accumulation(price_data, volumes, obv)
             
+            # Detect A/D divergences (ENHANCED: new signal)
+            ad_bullish_div, ad_bearish_div = self._detect_ad_divergence(price_data, ad_line)
+            
             # Analyze volume patterns
             volume_analysis = self._analyze_volume_patterns(price_data, volumes)
             
             # Calculate momentum score
             momentum_score = self._calculate_momentum_score(price_data)
             
-            # Determine state based on signals
-            distribution_signals = 0
-            accumulation_signals = 0
+            # ENHANCED: Weighted signal scoring system
+            distribution_score = 0.0
+            accumulation_score = 0.0
             
-            # Distribution signals
+            # Distribution signals (with weights)
             if head_shoulders:
-                distribution_signals += 1
+                distribution_score += 2.0  # Strong pattern signal
             if double_top:
-                distribution_signals += 1
+                distribution_score += 2.0  # Strong pattern signal
             if wyckoff_distribution:
-                distribution_signals += 1
+                distribution_score += 1.5  # Medium pattern signal
             if volume_analysis.get('sideways_after_rally'):
-                distribution_signals += 1
+                distribution_score += 1.0  # Volume pattern signal
             if volume_analysis.get('price_stagnation_with_volume'):
-                distribution_signals += 1
+                distribution_score += 1.0  # Volume pattern signal
+            if ad_bearish_div:
+                distribution_score += 1.5  # Strong divergence signal
             if momentum_score < 40:  # Declining momentum
-                distribution_signals += 1
+                # Scale based on how low the momentum is (lower = stronger signal)
+                distribution_score += (40 - momentum_score) / 40.0 * 1.5
             
-            # Accumulation signals
+            # Accumulation signals (with weights)
             if wyckoff_accumulation:
-                accumulation_signals += 1
+                accumulation_score += 1.5  # Medium pattern signal
+            if ad_bullish_div:
+                accumulation_score += 1.5  # Strong divergence signal
             if momentum_score > 60:  # Rising momentum
-                accumulation_signals += 1
-            if volume_analysis.get('volume_trend') == 'increasing' and closes.iloc[-1] > closes.iloc[-10]:
-                accumulation_signals += 1
+                # Scale based on how high the momentum is (higher = stronger signal)
+                accumulation_score += (momentum_score - 60) / 40.0 * 1.5
+            if volume_analysis.get('volume_trend') == 'increasing' and len(closes) >= 10:
+                if closes.iloc[-1] > closes.iloc[-10]:
+                    accumulation_score += 1.0  # Volume trend signal
             
-            # Determine state
-            if distribution_signals > accumulation_signals and distribution_signals >= 2:
+            # Determine state with weighted threshold
+            if distribution_score > accumulation_score and distribution_score >= 2.0:
                 state = 'DISTRIBUTION'
-                confidence = min(100.0, 50.0 + (distribution_signals * 10.0))
-            elif accumulation_signals > distribution_signals and accumulation_signals >= 2:
+                confidence = min(100.0, 50.0 + (distribution_score * 15.0))
+            elif accumulation_score > distribution_score and accumulation_score >= 2.0:
                 state = 'ACCUMULATION'
-                confidence = min(100.0, 50.0 + (accumulation_signals * 10.0))
+                confidence = min(100.0, 50.0 + (accumulation_score * 15.0))
             else:
                 state = 'NEUTRAL'
                 confidence = 50.0
             
-            # Determine pattern detected
+            # Calculate signal counts for backward compatibility
+            distribution_signals = int(distribution_score)
+            accumulation_signals = int(accumulation_score)
+            
+            # Determine pattern detected (ENHANCED: include A/D divergence)
             pattern_detected = None
             if head_shoulders:
                 pattern_detected = 'Head and Shoulders'
@@ -555,15 +654,23 @@ class AccumulationDistributionAnalyzer:
                 pattern_detected = 'Wyckoff Distribution'
             elif wyckoff_accumulation:
                 pattern_detected = 'Wyckoff Accumulation'
+            elif ad_bearish_div:
+                pattern_detected = 'A/D Bearish Divergence'
+            elif ad_bullish_div:
+                pattern_detected = 'A/D Bullish Divergence'
             
-            # Build technical context
+            # Build technical context (ENHANCED: include new signals and scores)
             technical_context = {
                 'distribution_signals': distribution_signals,
                 'accumulation_signals': accumulation_signals,
+                'distribution_score': round(distribution_score, 2),
+                'accumulation_score': round(accumulation_score, 2),
                 'head_shoulders': head_shoulders,
                 'double_top': double_top,
                 'wyckoff_distribution': wyckoff_distribution,
                 'wyckoff_accumulation': wyckoff_accumulation,
+                'ad_bullish_divergence': ad_bullish_div,
+                'ad_bearish_divergence': ad_bearish_div,
                 'volume_analysis': volume_analysis,
                 'momentum_score': momentum_score
             }

@@ -381,12 +381,15 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 ANALYSIS_DATE = None  # Set to None for current date, or specify date like '2025-10-20'
 
 # Global SHOW_HOLDINGS configuration - controls visibility of holdings sections
-SHOW_HOLDINGS = os.getenv("SHOW_HOLDINGS", "True").lower() == "true"
+# Only True if explicitly set to "True" in .env, otherwise False
+SHOW_HOLDINGS = os.getenv("SHOW_HOLDINGS", "False").lower() == "true"
 
 # Global tab visibility configurations - controls visibility of specific tabs
-SHOW_OPTIONS_TAB = os.getenv("SHOW_OPTIONS_TAB", "True").lower() == "true"
-SHOW_UTILITIES_TAB = os.getenv("SHOW_UTILITIES_TAB", "True").lower() == "true"
-SHOW_FUNDAMENTALS_TAB = os.getenv("SHOW_FUNDAMENTALS_TAB", "True").lower() == "true"
+# Only True if explicitly set to "True" in .env, otherwise False
+SHOW_STOCKS_TAB = os.getenv("SHOW_STOCKS_TAB", "False").lower() == "true"
+SHOW_OPTIONS_TAB = os.getenv("SHOW_OPTIONS_TAB", "False").lower() == "true"
+SHOW_UTILITIES_TAB = os.getenv("SHOW_UTILITIES_TAB", "False").lower() == "true"
+SHOW_FUNDAMENTALS_TAB = os.getenv("SHOW_FUNDAMENTALS_TAB", "False").lower() == "true"
 
 # Small JSON cache helpers using Redis
 def cache_get_json(key: str):
@@ -536,6 +539,7 @@ async def dashboard(request: Request, page: int = Query(1, ge=1)):
                 "total_ticks": tick_data['total_ticks'],
                 "holdings_info": holdings_info,
                 "show_holdings": SHOW_HOLDINGS,
+                "show_stocks_tab": SHOW_STOCKS_TAB,
                 "show_options_tab": SHOW_OPTIONS_TAB,
                 "show_utilities_tab": SHOW_UTILITIES_TAB,
                 "show_fundamentals_tab": SHOW_FUNDAMENTALS_TAB

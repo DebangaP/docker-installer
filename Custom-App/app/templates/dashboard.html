@@ -591,9 +591,11 @@
             <button class="sidebar-tab" onclick="switchTab('holdings')" data-tab="holdings">
                 💼 Holdings
             </button>
+            {% if show_stocks_tab %}
             <button class="sidebar-tab" onclick="switchTab('gainers-losers')" data-tab="gainers-losers">
                 📈 Stocks
             </button>
+            {% endif %}
             {% if show_options_tab %}
             <button class="sidebar-tab" onclick="switchTab('options')" data-tab="options">
                 📊 Options
@@ -624,9 +626,11 @@
             <button class="tab-button" onclick="switchTab('holdings')">
                 💼 Holdings
             </button>
+            {% if show_stocks_tab %}
             <button class="tab-button" onclick="switchTab('gainers-losers')">
                 📈 Stocks
             </button>
+            {% endif %}
             {% if show_options_tab %}
             <button class="tab-button" onclick="switchTab('options')">
                 📊 Options
@@ -1219,6 +1223,7 @@
         {% endif %}
 
         <!-- Stocks Tab Content -->
+        {% if show_stocks_tab %}
         <div id="gainers-losers-tab" class="tab-content">
             <!-- Gainers and Losers Section - Side by Side -->
             <div style="margin-bottom: 20px; display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap;">
@@ -1510,6 +1515,7 @@
             </div>
         </div>
         <!-- End Stocks Tab Content -->
+        {% endif %}
 
         {% if show_utilities_tab %}
         <!-- Utilities Tab Content -->
@@ -2010,7 +2016,9 @@
                             <th onclick="sortHoldings('prophet_prediction_pct')" style="padding: 12px; border: 1px solid #ddd; text-align: right; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px;" id="header_prophet_prediction_pct">Ghost Prediction (60D) ↕</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Confidence</th>
                             <th onclick="sortHoldings('accumulation_state')" style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; cursor: pointer; user-select: none; font-size: 14px; white-space: normal; word-wrap: break-word; background-color: #e7f3ff; max-width: 120px;" id="header_accumulation_state" title="Wyckoff Accumulation /Distribution state">Accumulation/<br/>Distribution ↕</th>
-                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px; background-color: #e7f3ff;" title="Days in Wyckoff accumulation/distribution state">Wyckoff Days</th>
+                            <th onclick="sortHoldings('accumulation_pattern')" style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; cursor: pointer; user-select: none; font-size: 13px; background-color: #e7f3ff; max-width: 150px;" id="header_accumulation_pattern" title="Wyckoff Distribution pattern detected">Wyckoff Distribution ↕</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 13px; background-color: #e7f3ff;" title="Wyckoff Confidence score (0-100)">Wyckoff Confidence</th>
+                            <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 13px; background-color: #e7f3ff; max-width: 120px;" title="A/D Divergence signals">A/D Divergence</th>
                             <th style="padding: 12px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 14px;">Actions</th>
                         </tr>
                     </thead>
@@ -2151,11 +2159,34 @@
                                     <span style="color: #999; font-size: 12px;">N/A</span>
                                 {% endif %}
                             </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                                {% if holding.accumulation_pattern is defined and holding.accumulation_pattern %}
+                                    <span style="color: #333; font-weight: 500;" title="{{ holding.accumulation_pattern }}">{{ holding.accumulation_pattern }}</span>
+                                {% else %}
+                                    <span style="color: #999; font-size: 11px;">-</span>
+                                {% endif %}
+                            </td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
-                                {% if holding.days_in_accumulation_state is defined and holding.days_in_accumulation_state is not none and holding.days_in_accumulation_state > 0 %}
-                                    <span style="color: #666; font-weight: bold; font-size: 14px;">{{ holding.days_in_accumulation_state }}</span>
+                                {% if holding.accumulation_confidence is defined and holding.accumulation_confidence is not none %}
+                                    {% set conf = holding.accumulation_confidence %}
+                                    {% if conf >= 70 %}
+                                        <span style="color: #28a745; font-weight: bold;">{{ "%.0f"|format(conf) }}%</span>
+                                    {% elif conf >= 50 %}
+                                        <span style="color: #ffc107; font-weight: bold;">{{ "%.0f"|format(conf) }}%</span>
+                                    {% else %}
+                                        <span style="color: #dc3545; font-weight: bold;">{{ "%.0f"|format(conf) }}%</span>
+                                    {% endif %}
                                 {% else %}
                                     <span style="color: #999; font-size: 12px;">-</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                                {% if holding.ad_bullish_divergence is defined and holding.ad_bullish_divergence %}
+                                    <span style="color: #28a745; font-weight: bold; font-size: 11px;" title="A/D Bullish Divergence detected">✓ Bullish</span>
+                                {% elif holding.ad_bearish_divergence is defined and holding.ad_bearish_divergence %}
+                                    <span style="color: #dc3545; font-weight: bold; font-size: 11px;" title="A/D Bearish Divergence detected">⚠ Bearish</span>
+                                {% else %}
+                                    <span style="color: #999; font-size: 11px;">-</span>
                                 {% endif %}
                             </td>
                             <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">
@@ -2264,14 +2295,14 @@
                 { id: 'section-portfolio-hedge', title: 'Portfolio Hedging' },
                 { id: 'section-holdings', title: 'Current Holdings' },
                 { id: 'section-mf-holdings', title: 'Mutual Fund Holdings' }
-            ],
+            ]{% if show_stocks_tab %},
             'gainers-losers': [
                 { id: 'section-gainers', title: 'Top Gainers' },
                 { id: 'section-losers', title: 'Top Losers' },
                 { id: 'section-swing-trades', title: 'Swing Trade Recommendations' },
                 { id: 'section-top-gainers', title: 'Sectoral Predictions' },
                 { id: 'section-stock-search', title: 'Search Stock Prediction' }
-            ]{% if show_options_tab or show_fundamentals_tab or show_utilities_tab %},{% endif %}
+            ]{% endif %}{% if show_options_tab or show_fundamentals_tab or show_utilities_tab %},{% endif %}
             {% if show_options_tab %}'options': [
                 { id: 'section-options-scanner', title: 'Options Chain Scanner' },
                 { id: 'section-top5-options', title: 'Top 5 Options by Open Interest' },
@@ -3237,18 +3268,14 @@
         let selectedHoldings = new Set();
 
         function calculateWyckoffForAll() {
-            if (!confirm('Calculate Wyckoff Accumulation/Distribution analysis for all holdings? This may take a few minutes.')) {
-                return;
-            }
-            
             const btn = document.getElementById('btnCalculateAll');
             const originalText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '⏳ Calculating...';
+            btn.innerHTML = '⏳ Starting...';
             btn.style.opacity = '0.6';
             
             const statusMsg = document.getElementById('wyckoffStatusMessage');
-            statusMsg.textContent = 'Calculating for all holdings...';
+            statusMsg.textContent = 'Starting calculation in background...';
             statusMsg.style.color = '#007bff';
             
             fetch('/api/holdings/calculate-wyckoff-all', {
@@ -3263,24 +3290,15 @@
                 btn.style.opacity = '1';
                 
                 if (data.success) {
-                    const msg = `✅ Processed ${data.processed || 0} holdings. ` +
-                               `Accumulation: ${data.accumulation_count || 0}, ` +
-                               `Distribution: ${data.distribution_count || 0}, ` +
-                               `Neutral: ${data.neutral_count || 0}`;
-                    statusMsg.textContent = msg;
+                    statusMsg.textContent = `✅ ${data.message || 'Calculation started in background. Check application logs for progress.'}`;
                     statusMsg.style.color = '#28a745';
                     
-                    if (data.errors && data.errors.length > 0) {
-                        console.warn('Some errors occurred:', data.errors);
-                        statusMsg.textContent += ` (${data.errors.length} errors)`;
-                    }
-                    
-                    // Refresh holdings table after a short delay
+                    // Refresh holdings table after a delay (calculation is async)
                     setTimeout(() => {
-                        location.reload();
-                    }, 2000);
+                        loadHoldingsPage(1);
+                    }, 5000);
                 } else {
-                    statusMsg.textContent = `❌ Error: ${data.error || 'Failed to calculate'}`;
+                    statusMsg.textContent = `❌ Error: ${data.error || 'Failed to start calculation'}`;
                     statusMsg.style.color = '#dc3545';
                 }
             })
@@ -3302,18 +3320,14 @@
                 return;
             }
             
-            if (!confirm(`Calculate Wyckoff analysis for ${selectedSymbols.length} selected stock(s)?`)) {
-                return;
-            }
-            
             const btn = document.getElementById('btnCalculateSelected');
             const originalText = btn.innerHTML;
             btn.disabled = true;
-            btn.innerHTML = '⏳ Calculating...';
+            btn.innerHTML = '⏳ Starting...';
             btn.style.opacity = '0.6';
             
             const statusMsg = document.getElementById('wyckoffStatusMessage');
-            statusMsg.textContent = `Calculating for ${selectedSymbols.length} selected stock(s)...`;
+            statusMsg.textContent = `Starting calculation in background for ${selectedSymbols.length} stock(s)...`;
             statusMsg.style.color = '#007bff';
             
             fetch('/api/holdings/calculate-wyckoff', {
@@ -3331,23 +3345,15 @@
                 btn.style.opacity = '1';
                 
                 if (data.success) {
-                    const successCount = data.success_count || 0;
-                    const failedCount = data.failed_count || 0;
-                    const msg = `✅ Processed ${data.processed || 0} stocks. ` +
-                               `Success: ${successCount}, Failed: ${failedCount}`;
-                    statusMsg.textContent = msg;
+                    statusMsg.textContent = `✅ ${data.message || 'Calculation started in background. Check application logs for progress.'}`;
                     statusMsg.style.color = '#28a745';
                     
-                    if (data.errors && data.errors.length > 0) {
-                        console.warn('Some errors occurred:', data.errors);
-                    }
-                    
-                    // Refresh holdings table after a short delay
+                    // Refresh holdings table after a delay (calculation is async)
                     setTimeout(() => {
-                        location.reload();
-                    }, 2000);
+                        loadHoldingsPage(1);
+                    }, 5000);
                 } else {
-                    statusMsg.textContent = `❌ Error: ${data.error || 'Failed to calculate'}`;
+                    statusMsg.textContent = `❌ Error: ${data.error || 'Failed to start calculation'}`;
                     statusMsg.style.color = '#dc3545';
                 }
             })
@@ -3429,7 +3435,7 @@
         
         // Update sort indicators in table headers
         function updateSortIndicators() {
-            const headers = ['header_trading_symbol', 'header_invested_amount', 'header_current_amount', 'header_pnl', 'header_today_pnl', 'header_prophet_prediction_pct', 'header_below_supertrend'];
+            const headers = ['header_trading_symbol', 'header_invested_amount', 'header_current_amount', 'header_pnl', 'header_today_pnl', 'header_prophet_prediction_pct', 'header_below_supertrend', 'header_accumulation_state', 'header_accumulation_pattern'];
             const labelMap = {
                 'header_trading_symbol': 'Symbol',
                 'header_invested_amount': 'Invested Amount',
@@ -3438,7 +3444,8 @@
                 'header_today_pnl': 'Today\'s P&L',
                 'header_prophet_prediction_pct': 'Ghost Prediction (60D)',
                 'header_below_supertrend': 'Supertrend Alert',
-                'header_accumulation_state': 'Accumulation /Distribution'
+                'header_accumulation_state': 'Accumulation /Distribution',
+                'header_accumulation_pattern': 'Wyckoff Distribution'
             };
             
             headers.forEach(headerId => {
@@ -3567,10 +3574,28 @@
                                         `}
                                     ` : '<span style="color: #999; font-size: 12px;">N/A</span>'}
                                 </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                                    ${holding.accumulation_pattern ? `
+                                        <span style="color: #333; font-weight: 500;" title="${holding.accumulation_pattern}">${holding.accumulation_pattern}</span>
+                                    ` : '<span style="color: #999; font-size: 11px;">-</span>'}
+                                </td>
                                 <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 13px;">
-                                    ${holding.days_in_accumulation_state !== null && holding.days_in_accumulation_state !== undefined && holding.days_in_accumulation_state > 0 ? `
-                                        <span style="color: #666; font-weight: bold; font-size: 14px;">${holding.days_in_accumulation_state}</span>
+                                    ${holding.accumulation_confidence !== null && holding.accumulation_confidence !== undefined ? `
+                                        ${holding.accumulation_confidence >= 70 ? `
+                                            <span style="color: #28a745; font-weight: bold;">${Math.round(holding.accumulation_confidence)}%</span>
+                                        ` : holding.accumulation_confidence >= 50 ? `
+                                            <span style="color: #ffc107; font-weight: bold;">${Math.round(holding.accumulation_confidence)}%</span>
+                                        ` : `
+                                            <span style="color: #dc3545; font-weight: bold;">${Math.round(holding.accumulation_confidence)}%</span>
+                                        `}
                                     ` : '<span style="color: #999; font-size: 12px;">-</span>'}
+                                </td>
+                                <td style="padding: 12px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                                    ${holding.ad_bullish_divergence ? `
+                                        <span style="color: #28a745; font-weight: bold; font-size: 11px;" title="A/D Bullish Divergence detected">✓ Bullish</span>
+                                    ` : holding.ad_bearish_divergence ? `
+                                        <span style="color: #dc3545; font-weight: bold; font-size: 11px;" title="A/D Bearish Divergence detected">⚠ Bearish</span>
+                                    ` : '<span style="color: #999; font-size: 11px;">-</span>'}
                                 </td>
                                 <td style="padding: 12px; border: 1px solid #ddd; text-align: center;">
                                     <div style="display: flex; gap: 4px; justify-content: center; flex-wrap: wrap;">

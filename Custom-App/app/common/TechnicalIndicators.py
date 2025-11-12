@@ -378,9 +378,13 @@ def detect_declining_momentum(close: pd.Series, period: int = 14) -> float:
     else:
         momentum_ratio = 1.0
     
-    # Calculate rate of change (ROC) for recent period
-    if len(close) >= period + 1:
+    # Calculate rate of change (ROC) for recent period (FIXED: bounds checking)
+    if len(close) > period + 1:
+        # Ensure we have enough data points
         roc = ((close.iloc[-1] - close.iloc[-period-1]) / close.iloc[-period-1]) * 100
+    elif len(close) > 1:
+        # Fallback: use first available point
+        roc = ((close.iloc[-1] - close.iloc[0]) / close.iloc[0]) * 100
     else:
         roc = 0.0
     

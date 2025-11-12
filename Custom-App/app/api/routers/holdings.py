@@ -91,8 +91,8 @@ async def api_holdings(
                 print(f"---XXX--- Returning cached result for {cache_key}")
                 return cached
         #print(f"---XXX--- Not using cache, proceeding with fresh data")
-        # If sorting by today_pnl, prophet_prediction_pct, below_supertrend, or accumulation_state, we need to get all holdings, enrich them, sort, then paginate
-        if sort_by == 'today_pnl' or sort_by == 'prophet_prediction_pct' or sort_by == 'below_supertrend' or sort_by == 'accumulation_state':
+        # If sorting by today_pnl, prophet_prediction_pct, below_supertrend, accumulation_state, or accumulation_pattern, we need to get all holdings, enrich them, sort, then paginate
+        if sort_by == 'today_pnl' or sort_by == 'prophet_prediction_pct' or sort_by == 'below_supertrend' or sort_by == 'accumulation_state' or sort_by == 'accumulation_pattern':
             # Get all holdings without pagination
             holdings_info = holdings_service.get_holdings_data(page=1, per_page=10000, sort_by='trading_symbol', sort_dir='asc', search=search)
         else:
@@ -437,15 +437,35 @@ async def api_holdings(
                     logging.warning(f"Error unpacking supertrend result for {symbol}: {e}")
                     supertrend_result = None
             
-            # Get accumulation/distribution data
+            # Get accumulation/distribution data (ENHANCED: include additional signals)
             accumulation_state = None
             days_in_accumulation_state = None
             accumulation_confidence = None
+            accumulation_pattern = None
+            ad_bullish_divergence = None
+            ad_bearish_divergence = None
+            distribution_score = None
+            accumulation_score = None
             if symbol and symbol in accumulation_map:
                 acc_data = accumulation_map[symbol]
                 accumulation_state = acc_data.get('state')
                 days_in_accumulation_state = acc_data.get('days_in_state')
                 accumulation_confidence = acc_data.get('confidence_score')
+                accumulation_pattern = acc_data.get('pattern_detected')
+                
+                # Extract additional signals from technical_context
+                technical_context = acc_data.get('technical_context')
+                if technical_context:
+                    if isinstance(technical_context, str):
+                        import json
+                        try:
+                            technical_context = json.loads(technical_context)
+                        except:
+                            technical_context = {}
+                    ad_bullish_divergence = technical_context.get('ad_bullish_divergence')
+                    ad_bearish_divergence = technical_context.get('ad_bearish_divergence')
+                    distribution_score = technical_context.get('distribution_score')
+                    accumulation_score = technical_context.get('accumulation_score')
             
             #print(f"---XXX--- Adding to holdings_list for {symbol}: supertrend_value={supertrend_value}, below_supertrend={below_supertrend}")
             holdings_list.append({
@@ -473,7 +493,12 @@ async def api_holdings(
                 "days_below_supertrend": days_below_supertrend,
                 "accumulation_state": accumulation_state,
                 "days_in_accumulation_state": days_in_accumulation_state,
-                "accumulation_confidence": accumulation_confidence
+                "accumulation_confidence": accumulation_confidence,
+                "accumulation_pattern": accumulation_pattern,
+                "ad_bullish_divergence": ad_bullish_divergence,
+                "ad_bearish_divergence": ad_bearish_divergence,
+                "distribution_score": distribution_score,
+                "accumulation_score": accumulation_score
             })
             #print(f"---XXX--- Added to holdings_list for {symbol}")
         
@@ -528,6 +553,18 @@ async def api_holdings(
             holdings_list.sort(key=lambda x: (
                 get_state_priority(x.get('accumulation_state')),
                 x.get('days_in_accumulation_state') if x.get('days_in_accumulation_state') is not None else 0
+            ), reverse=sort_reverse)
+            
+            # Apply pagination after sorting
+            total_count = len(holdings_list)
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            holdings_list = holdings_list[start_idx:end_idx]
+        elif sort_by == 'accumulation_pattern':
+            sort_reverse = sort_dir.lower() == 'desc'
+            # Sort by accumulation_pattern (pattern name), handling None values
+            holdings_list.sort(key=lambda x: (
+                x.get('accumulation_pattern') if x.get('accumulation_pattern') is not None else ''
             ), reverse=sort_reverse)
             
             # Apply pagination after sorting
@@ -1456,16 +1493,22 @@ async def download_holdings_excel():
             row_dict['below_supertrend'] = below_supertrend
             row_dict['days_below_supertrend'] = days_below_supertrend
             
-            # Add accumulation/distribution data
+            # Add accumulation/distribution data (ENHANCED: include additional signals)
             accumulation_state = None
             days_in_accumulation_state = None
+            accumulation_pattern = None
+            accumulation_confidence = None
             if symbol and symbol in accumulation_map:
                 acc_data = accumulation_map[symbol]
                 accumulation_state = acc_data.get('state')
                 days_in_accumulation_state = acc_data.get('days_in_state')
+                accumulation_pattern = acc_data.get('pattern_detected')
+                accumulation_confidence = acc_data.get('confidence_score')
             
             row_dict['accumulation_state'] = accumulation_state
             row_dict['days_in_accumulation_state'] = days_in_accumulation_state
+            row_dict['accumulation_pattern'] = accumulation_pattern
+            row_dict['accumulation_confidence'] = accumulation_confidence
             
             holdings_list.append(row_dict)
         
@@ -1479,7 +1522,8 @@ async def download_holdings_excel():
             'invested_amount', 'current_amount', 'pnl', 'pnl_pct_change',
             'today_pnl', 'today_pnl_pct',
             'ghost_prediction_pct', 'confidence', 'prediction_days',
-            'accumulation_state', 'days_in_accumulation_state'
+            'accumulation_state', 'days_in_accumulation_state',
+            'accumulation_pattern', 'accumulation_confidence'
         ]
         
         # Only include columns that exist
@@ -1511,7 +1555,9 @@ async def download_holdings_excel():
             'confidence': 'Confidence %',
             'prediction_days': 'Prediction Days',
             'accumulation_state': 'Accumulation/Distribution',
-            'days_in_accumulation_state': 'Days in State'
+            'days_in_accumulation_state': 'Days in State',
+            'accumulation_pattern': 'Pattern',
+            'accumulation_confidence': 'Confidence %'
         })
         
         output = io.BytesIO()
@@ -1716,16 +1762,22 @@ async def download_holdings_csv():
             row_dict['below_supertrend'] = below_supertrend
             row_dict['days_below_supertrend'] = days_below_supertrend
             
-            # Add accumulation/distribution data
+            # Add accumulation/distribution data (ENHANCED: include additional signals)
             accumulation_state = None
             days_in_accumulation_state = None
+            accumulation_pattern = None
+            accumulation_confidence = None
             if symbol and symbol in accumulation_map:
                 acc_data = accumulation_map[symbol]
                 accumulation_state = acc_data.get('state')
                 days_in_accumulation_state = acc_data.get('days_in_state')
+                accumulation_pattern = acc_data.get('pattern_detected')
+                accumulation_confidence = acc_data.get('confidence_score')
             
             row_dict['accumulation_state'] = accumulation_state
             row_dict['days_in_accumulation_state'] = days_in_accumulation_state
+            row_dict['accumulation_pattern'] = accumulation_pattern
+            row_dict['accumulation_confidence'] = accumulation_confidence
             
             holdings_list.append(row_dict)
         
@@ -1739,7 +1791,8 @@ async def download_holdings_csv():
             'invested_amount', 'current_amount', 'pnl', 'pnl_pct_change',
             'today_pnl', 'today_pnl_pct',
             'ghost_prediction_pct', 'confidence', 'prediction_days',
-            'accumulation_state', 'days_in_accumulation_state'
+            'accumulation_state', 'days_in_accumulation_state',
+            'accumulation_pattern', 'accumulation_confidence'
         ]
         
         # Only include columns that exist
@@ -1771,7 +1824,9 @@ async def download_holdings_csv():
             'confidence': 'Confidence %',
             'prediction_days': 'Prediction Days',
             'accumulation_state': 'Accumulation/Distribution',
-            'days_in_accumulation_state': 'Days in State'
+            'days_in_accumulation_state': 'Days in State',
+            'accumulation_pattern': 'Pattern',
+            'accumulation_confidence': 'Confidence %'
         })
         
         output = StringIO()
@@ -1969,16 +2024,22 @@ async def download_holdings_pdf():
             row_dict['below_supertrend'] = below_supertrend
             row_dict['days_below_supertrend'] = days_below_supertrend
             
-            # Add accumulation/distribution data
+            # Add accumulation/distribution data (ENHANCED: include additional signals)
             accumulation_state = None
             days_in_accumulation_state = None
+            accumulation_pattern = None
+            accumulation_confidence = None
             if symbol and symbol in accumulation_map:
                 acc_data = accumulation_map[symbol]
                 accumulation_state = acc_data.get('state')
                 days_in_accumulation_state = acc_data.get('days_in_state')
+                accumulation_pattern = acc_data.get('pattern_detected')
+                accumulation_confidence = acc_data.get('confidence_score')
             
             row_dict['accumulation_state'] = accumulation_state
             row_dict['days_in_accumulation_state'] = days_in_accumulation_state
+            row_dict['accumulation_pattern'] = accumulation_pattern
+            row_dict['accumulation_confidence'] = accumulation_confidence
             
             holdings_list.append(row_dict)
         
@@ -2634,27 +2695,41 @@ async def download_pnl_summary_pdf():
 
 @router.post("/holdings/calculate-wyckoff")
 async def calculate_wyckoff_for_selected(
-    request: WyckoffCalculateSelectedRequest
+    request: WyckoffCalculateSelectedRequest,
+    background_tasks: BackgroundTasks
 ):
     """
-    Calculate Wyckoff Accumulation/Distribution for selected stocks
+    Calculate Wyckoff Accumulation/Distribution for selected stocks.
+    This runs asynchronously in the background to avoid blocking the API.
     
     Args:
         request: Request body with symbols and force_recalculate flag
+        background_tasks: FastAPI BackgroundTasks for async execution
     
     Returns:
-        Dict with results and statistics
+        Dict with status message (calculation runs in background)
     """
     try:
-        from api.services.wyckoff_service import WyckoffService
+        from api.background_tasks.wyckoff_calculator import calculate_wyckoff_for_holdings
         
-        wyckoff_service = WyckoffService()
-        results = wyckoff_service.calculate_for_symbols(request.symbols, request.force_recalculate)
+        # Add background task to calculate Wyckoff for selected symbols
+        background_tasks.add_task(
+            calculate_wyckoff_for_holdings,
+            symbols=request.symbols,
+            force_recalculate=request.force_recalculate
+        )
         
-        return results
+        logging.info(f"Wyckoff calculation task queued for {len(request.symbols)} symbols")
+        
+        return {
+            "success": True,
+            "message": f"Wyckoff calculation started in background for {len(request.symbols)} stock(s). Check application logs for progress.",
+            "status": "queued",
+            "total": len(request.symbols)
+        }
         
     except Exception as e:
-        logging.error(f"Error calculating Wyckoff for selected stocks: {e}")
+        logging.error(f"Error queuing Wyckoff calculation for selected stocks: {e}")
         import traceback
         logging.error(traceback.format_exc())
         return {
@@ -2703,27 +2778,40 @@ async def calculate_supertrend_for_all_holdings(
 
 @router.post("/holdings/calculate-wyckoff-all")
 async def calculate_wyckoff_for_all_holdings(
-    request: WyckoffCalculateRequest = WyckoffCalculateRequest()
+    request: WyckoffCalculateRequest = WyckoffCalculateRequest(),
+    background_tasks: BackgroundTasks = None
 ):
     """
-    Calculate Wyckoff Accumulation/Distribution for all holdings
+    Calculate Wyckoff Accumulation/Distribution for all holdings.
+    This runs asynchronously in the background to avoid blocking the API.
     
     Args:
         request: Request body with force_recalculate flag (optional, defaults to False)
+        background_tasks: FastAPI BackgroundTasks for async execution
     
     Returns:
-        Dict with summary statistics
+        Dict with status message (calculation runs in background)
     """
     try:
-        from api.services.wyckoff_service import WyckoffService
+        from api.background_tasks.wyckoff_calculator import calculate_wyckoff_for_holdings
         
-        wyckoff_service = WyckoffService()
-        results = wyckoff_service.calculate_for_all_holdings(request.force_recalculate)
+        # Add background task to calculate Wyckoff for all holdings
+        background_tasks.add_task(
+            calculate_wyckoff_for_holdings,
+            symbols=None,  # None means calculate for all holdings
+            force_recalculate=request.force_recalculate
+        )
         
-        return results
+        logging.info("Wyckoff calculation task queued for all holdings")
+        
+        return {
+            "success": True,
+            "message": "Wyckoff calculation started in background for all holdings. Check application logs for progress.",
+            "status": "queued"
+        }
         
     except Exception as e:
-        logging.error(f"Error calculating Wyckoff for all holdings: {e}")
+        logging.error(f"Error queuing Wyckoff calculation for all holdings: {e}")
         import traceback
         logging.error(traceback.format_exc())
         return {
