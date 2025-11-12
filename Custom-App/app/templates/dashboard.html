@@ -7758,6 +7758,8 @@
                         // Load index projections
                         loadIndexProjections();
                         // Load top gainers when Stocks tab is active (with 60 days)
+                        // Stop any existing polling first
+                        stopTopGainersPolling();
                         loadTopGainers();
                         // Check if predictions exist, show warning if not
                         checkProphetPredictionsExist();
@@ -7765,6 +7767,8 @@
                     } else {
                         // Reload index projections when tab is switched to (refresh existing data)
                         loadIndexProjections();
+                        // Stop polling when switching back to this tab (to prevent unnecessary refreshes)
+                        stopTopGainersPolling();
                     }
                 } else if (tabName === 'holdings') {
                     if (!TabLoadTracker.isLoaded(tabName)) {
@@ -8663,30 +8667,48 @@
                         }
                         
                         setTimeout(() => {
-                            // Poll for new predictions every 10 seconds
-                            let pollCount = 0;
-                            const maxPolls = 60; // Poll for up to 10 minutes
-                            
-                            // Clear any existing interval before creating a new one
-                            if (topGainersPollInterval) {
-                                clearInterval(topGainersPollInterval);
-                            }
-                            
-                            topGainersPollInterval = setInterval(() => {
-                                pollCount++;
-                                loadTopGainers(); // Refresh the top gainers table
-                                
-                                if (pollCount >= maxPolls) {
-                                    clearInterval(topGainersPollInterval);
-                                    topGainersPollInterval = null;
-                                    if (statusDiv) {
-                                        statusDiv.innerHTML = `<span style="color: #ffc107;">⏱ Prediction generation may still be running. Check application logs for completion status.</span>`;
+                            // Check if predictions already exist before starting polling
+                            fetch(`/api/prophet_predictions/top_gainers?limit=1&prediction_days=${predictionDays}`)
+                                .then(response => response.json())
+                                .then(checkData => {
+                                    // If predictions already exist, just load them and don't start polling
+                                    if (checkData.success && checkData.top_gainers && checkData.top_gainers.length > 0) {
+                                        console.log('Predictions already exist, loading without polling');
+                                        loadTopGainers();
+                                        return;
                                     }
-                                }
-                            }, 10000); // Poll every 10 seconds
-                            
-                            // Also try loading immediately
-                            loadTopGainers();
+                                    
+                                    // Only start polling if predictions don't exist yet
+                                    console.log('No predictions found, starting polling...');
+                                    let pollCount = 0;
+                                    const maxPolls = 60; // Poll for up to 10 minutes
+                                    
+                                    // Clear any existing interval before creating a new one
+                                    if (topGainersPollInterval) {
+                                        clearInterval(topGainersPollInterval);
+                                    }
+                                    
+                                    topGainersPollInterval = setInterval(() => {
+                                        pollCount++;
+                                        loadTopGainers(); // Refresh the top gainers table
+                                        
+                                        if (pollCount >= maxPolls) {
+                                            clearInterval(topGainersPollInterval);
+                                            topGainersPollInterval = null;
+                                            if (statusDiv) {
+                                                statusDiv.innerHTML = `<span style="color: #ffc107;">⏱ Prediction generation may still be running. Check application logs for completion status.</span>`;
+                                            }
+                                        }
+                                    }, 10000); // Poll every 10 seconds
+                                    
+                                    // Also try loading immediately
+                                    loadTopGainers();
+                                })
+                                .catch(error => {
+                                    console.error('Error checking for existing predictions:', error);
+                                    // If check fails, just load without polling
+                                    loadTopGainers();
+                                });
                         }, 2000);
                     } else {
                         if (statusDiv) {
@@ -9332,6 +9354,13 @@
                     // Store all gainers and reset to page 1
                     allTopGainers = topGainers;
                     topGainersCurrentPage = 1;
+                    
+                    // Stop polling if predictions are successfully loaded
+                    if (topGainersPollInterval) {
+                        clearInterval(topGainersPollInterval);
+                        topGainersPollInterval = null;
+                        console.log('Top gainers polling stopped - predictions loaded successfully');
+                    }
                     
                     // Load sectoral averages
                     loadSectoralAverages();

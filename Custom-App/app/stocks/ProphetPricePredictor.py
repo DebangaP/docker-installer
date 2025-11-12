@@ -484,6 +484,44 @@ class ProphetPricePredictor:
             if len(prophet_df) < self.min_data_points:
                 return None
             
+            # Detect and handle outliers in today's price to prevent negative predictions
+            # Option 1: Exclude today's data if it's an extreme outlier
+            exclude_today_if_extreme = True  # Can be made configurable via environment variable
+            if exclude_today_if_extreme and len(prophet_df) >= 10:
+                recent_prices = prophet_df['y'].tail(10).values
+                latest_price = prophet_df['y'].iloc[-1]
+                recent_mean = recent_prices[:-1].mean()  # Mean of previous 9 days
+                recent_std = recent_prices[:-1].std()
+                
+                if recent_std > 0:
+                    z_score = abs((latest_price - recent_mean) / recent_std)
+                    if z_score > 4:  # Very extreme outlier (>4 standard deviations)
+                        logger.warning(f"Excluding extreme outlier for {scrip_id}: latest_price={latest_price:.2f}, recent_mean={recent_mean:.2f}, z_score={z_score:.2f}")
+                        prophet_df = prophet_df.iloc[:-1]  # Remove last row (today's data)
+                        if len(prophet_df) < self.min_data_points:
+                            logger.warning(f"After excluding outlier, insufficient data for {scrip_id}")
+                            return None
+                        current_price = float(prophet_df['y'].iloc[-1])  # Update current_price to previous day
+                        logger.info(f"Updated current_price to previous day: {current_price:.2f}")
+            
+            # Option 2: Cap moderate outliers instead of excluding
+            if len(prophet_df) >= 5:
+                recent_prices = prophet_df['y'].tail(5).values
+                latest_price = prophet_df['y'].iloc[-1]
+                recent_mean = recent_prices[:-1].mean()  # Mean of previous 4 days
+                recent_std = recent_prices[:-1].std()
+                
+                # Check if latest price is a moderate outlier (2-4 standard deviations)
+                if recent_std > 0:
+                    z_score = abs((latest_price - recent_mean) / recent_std)
+                    if 2 < z_score <= 4:  # Moderate outlier
+                        logger.warning(f"Moderate outlier detected for {scrip_id}: latest_price={latest_price:.2f}, recent_mean={recent_mean:.2f}, z_score={z_score:.2f}")
+                        # Cap the outlier to 2 standard deviations from mean
+                        capped_price = recent_mean + (2 * np.sign(latest_price - recent_mean) * recent_std)
+                        logger.info(f"Capping outlier price from {latest_price:.2f} to {capped_price:.2f}")
+                        prophet_df.loc[prophet_df.index[-1], 'y'] = capped_price
+                        current_price = capped_price
+            
             # Initialize and fit Prophet model
             # Disable default seasonalities that may not be applicable to stock data
             try:
@@ -494,7 +532,7 @@ class ProphetPricePredictor:
                 # Define default Prophet model parameters
                 default_model_params = {
                     'changepoint_prior_scale': 0.05,  # More conservative changepoints for stock data
-                    'changepoint_range': 0.95,  # Allow changepoints in first 95% of data (default is 0.8)
+                    'changepoint_range': 0.9,  # Reduced from 0.95 to prevent changepoints too close to end
                     'seasonality_prior_scale': 10.0,
                     'interval_width': 0.80  # 80% confidence interval
                 }
@@ -517,34 +555,39 @@ class ProphetPricePredictor:
                     
                     # Define parameter grid to test
                     param_grid = [
-                        default_model_params,  # Default parameters
+                        {
+                            'changepoint_prior_scale': 0.05,
+                            'changepoint_range': 0.85,  # Reduced from 0.95
+                            'seasonality_prior_scale': 10.0,
+                            'interval_width': 0.80
+                        },
                         {
                             'changepoint_prior_scale': 0.01,
-                            'changepoint_range': 0.95,
+                            'changepoint_range': 0.85,  # Reduced from 0.95
                             'seasonality_prior_scale': 10.0,
                             'interval_width': 0.80
                         },
                         {
                             'changepoint_prior_scale': 0.10,
-                            'changepoint_range': 0.95,
+                            'changepoint_range': 0.85,  # Reduced from 0.95
                             'seasonality_prior_scale': 10.0,
                             'interval_width': 0.80
                         },
                         {
                             'changepoint_prior_scale': 0.05,
-                            'changepoint_range': 0.90,
+                            'changepoint_range': 0.80,  # Even more conservative
                             'seasonality_prior_scale': 10.0,
                             'interval_width': 0.80
                         },
                         {
                             'changepoint_prior_scale': 0.05,
-                            'changepoint_range': 0.95,
+                            'changepoint_range': 0.85,
                             'seasonality_prior_scale': 5.0,
                             'interval_width': 0.80
                         },
                         {
                             'changepoint_prior_scale': 0.05,
-                            'changepoint_range': 0.95,
+                            'changepoint_range': 0.85,
                             'seasonality_prior_scale': 15.0,
                             'interval_width': 0.80
                         }
@@ -567,12 +610,16 @@ class ProphetPricePredictor:
                         logger.debug(f"Not enough data for cross-validation for {scrip_id}. Using default parameters.")
                 
                 # Ensure Prophet is properly initialized with cmdstanpy backend
+                # Reduce changepoint_range to prevent detecting changepoints too close to the end
+                # This prevents today's outlier from creating a changepoint that leads to negative predictions
+                adjusted_changepoint_range = min(0.85, model_params['changepoint_range'])
+                
                 model = Prophet(
                     daily_seasonality=False,
                     weekly_seasonality=True,
                     yearly_seasonality=False,
                     changepoint_prior_scale=model_params['changepoint_prior_scale'],
-                    changepoint_range=model_params['changepoint_range'],
+                    changepoint_range=adjusted_changepoint_range,  # Use adjusted range
                     seasonality_prior_scale=model_params['seasonality_prior_scale'],
                     interval_width=model_params['interval_width']
                 )
@@ -620,6 +667,15 @@ class ProphetPricePredictor:
             predicted_price = convert_numpy_to_native(predicted_row['yhat'])
             predicted_price = float(predicted_price) if predicted_price is not None else 0.0
             
+            # Ensure predicted price is not negative or unreasonably low
+            # This prevents Prophet from predicting negative values due to outlier data
+            if predicted_price < 0:
+                logger.warning(f"Negative prediction detected for {scrip_id}: {predicted_price:.2f}. Setting to 0.1 * current_price")
+                predicted_price = max(0.1 * current_price, 0.01)  # At least 10% of current price or 0.01
+            elif current_price > 0 and predicted_price < 0.01 * current_price:
+                logger.warning(f"Unreasonably low prediction for {scrip_id}: {predicted_price:.2f} (current: {current_price:.2f}). Capping to 0.1 * current_price")
+                predicted_price = 0.1 * current_price
+            
             # Sanity check: predicted price should be reasonable (within 0.1x to 10x of current price)
             # This catches data quality issues or calculation errors
             if current_price > 0 and predicted_price > 0:
@@ -627,7 +683,13 @@ class ProphetPricePredictor:
                 if price_ratio < 0.1 or price_ratio > 10.0:
                     logger.error(f"WARNING: Unusual predicted price for {scrip_id}: current_price={current_price:.2f}, predicted_price={predicted_price:.2f}, ratio={price_ratio:.2f}")
                     logger.error(f"  This may indicate a data quality issue. Check historical prices for {scrip_id}")
-                    # Don't fail, but log the warning
+                    # Cap to reasonable range
+                    if price_ratio < 0.1:
+                        predicted_price = 0.1 * current_price
+                        logger.warning(f"Capped predicted_price to 0.1 * current_price = {predicted_price:.2f}")
+                    elif price_ratio > 10.0:
+                        predicted_price = 10.0 * current_price
+                        logger.warning(f"Capped predicted_price to 10.0 * current_price = {predicted_price:.2f}")
             
             # Calculate percentage change
             price_change_pct = ((predicted_price - current_price) / current_price) * 100
