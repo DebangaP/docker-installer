@@ -676,19 +676,19 @@ class ProphetPricePredictor:
                 logger.warning(f"Unreasonably low prediction for {scrip_id}: {predicted_price:.2f} (current: {current_price:.2f}). Capping to 0.1 * current_price")
                 predicted_price = 0.1 * current_price
             
-            # Sanity check: predicted price should be reasonable (within 0.1x to 10x of current price)
+            # Sanity check: predicted price should be reasonable (within 0.5x to 2x of current price)
             # This catches data quality issues or calculation errors
             if current_price > 0 and predicted_price > 0:
                 price_ratio = predicted_price / current_price
-                if price_ratio < 0.1 or price_ratio > 10.0:
+                if price_ratio < 0.5 or price_ratio > 2:
                     logger.error(f"WARNING: Unusual predicted price for {scrip_id}: current_price={current_price:.2f}, predicted_price={predicted_price:.2f}, ratio={price_ratio:.2f}")
                     logger.error(f"  This may indicate a data quality issue. Check historical prices for {scrip_id}")
                     # Cap to reasonable range
-                    if price_ratio < 0.1:
-                        predicted_price = 0.1 * current_price
+                    if price_ratio < 0.5:
+                        predicted_price = 0.5 * current_price
                         logger.warning(f"Capped predicted_price to 0.1 * current_price = {predicted_price:.2f}")
-                    elif price_ratio > 10.0:
-                        predicted_price = 10.0 * current_price
+                    elif price_ratio > 2.0:
+                        predicted_price = 2.0 * current_price
                         logger.warning(f"Capped predicted_price to 10.0 * current_price = {predicted_price:.2f}")
             
             # Calculate percentage change
