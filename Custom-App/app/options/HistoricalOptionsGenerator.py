@@ -211,13 +211,16 @@ class HistoricalOptionsGenerator:
             cursor = conn.cursor()
             
             query = """
-                SELECT close
+                SELECT price_close
                 FROM my_schema.rt_intraday_price
                 WHERE scrip_id = (
-                    SELECT id FROM my_schema.master_scrips 
-                    WHERE instrument_token = %s LIMIT 1
+                    SELECT tradingsymbol FROM my_schema.instruments 
+                    WHERE instrument_token = %s 
+                    AND expiry IS NULL 
+                    AND strike IS NULL
+                    LIMIT 1
                 )
-                AND price_date = %s
+                AND price_date::date = %s
                 ORDER BY price_date DESC
                 LIMIT 1
             """
