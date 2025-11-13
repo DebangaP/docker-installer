@@ -40,7 +40,8 @@ To be noted that this is not a Production grade app.
 **Your Holdings**
 
 **Click on any particular stock to see its daily Candlestick chart**
-<img width="1525" height="717" alt="image" src="https://github.com/user-attachments/assets/dad863fb-17dd-4ea2-bd75-90ad90d7bce3" />
+<img width="1522" height="778" alt="image" src="https://github.com/user-attachments/assets/9206f67b-bb9e-4af1-b50c-b26c95b98cea" />
+
 
 **Top Gainers and Losers for the last trading day**
 <img width="1741" height="546" alt="image" src="https://github.com/user-attachments/assets/58b6b3fd-7f49-4c31-bddd-4510f022216c" />
