@@ -246,39 +246,81 @@ class YahooFundamentalsFetcher:
                     conn = get_db_connection()
                     cursor = conn.cursor()
                     
-                    for col in stmt_columns[:5]:  # Process first 5 quarters
-                        temp_series = income_stmt[col]
-                        temp_df = temp_series.to_frame()
-                        temp_df.reset_index(inplace=True)
+                    try:
+                        row_counter = 0
+                        for col in stmt_columns[:5]:  # Process first 5 quarters
+                            temp_series = income_stmt[col]
+                            temp_df = temp_series.to_frame()
+                            temp_df.reset_index(inplace=True)
+                            
+                            for _, row in temp_df.iterrows():
+                                row_counter += 1
+                                savepoint_name = f"sp_income_{row_counter}"
+                                try:
+                                    # Use savepoint for each insert to allow rollback without aborting entire transaction
+                                    cursor.execute(f"SAVEPOINT {savepoint_name}")
+                                    
+                                    insert_income = """
+                                        INSERT INTO my_schema.rt_quarterly_income 
+                                        (scrip_id, trans_date, trans_tag, trans_value) 
+                                        VALUES (%s, %s, %s, %s)
+                                        ON CONFLICT DO NOTHING
+                                    """
+                                    
+                                    # Validate and prepare data
+                                    trans_date = col.date() if hasattr(col, 'date') else col
+                                    if trans_date is None:
+                                        raise ValueError("trans_date cannot be None")
+                                    
+                                    trans_tag = str(row.iloc[0]) if len(row) > 0 else ''
+                                    if not trans_tag or trans_tag.strip() == '':
+                                        # Skip empty tags
+                                        cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
+                                        continue
+                                    
+                                    trans_value = str(row.iloc[1]) if len(row) > 1 else '0'
+                                    if trans_value is None:
+                                        trans_value = '0'
+                                    
+                                    cursor.execute(insert_income, (
+                                        scrip_id,
+                                        trans_date,
+                                        trans_tag,
+                                        trans_value
+                                    ))
+                                    
+                                    # Release savepoint on success
+                                    cursor.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+                                    result['income_count'] += 1
+                                    
+                                except psycopg2_errors.UniqueViolation:
+                                    # Rollback to savepoint and continue
+                                    try:
+                                        cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
+                                    except:
+                                        pass
+                                    continue
+                                except Exception as e:
+                                    # Rollback to savepoint on any error
+                                    try:
+                                        cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
+                                    except:
+                                        # If savepoint doesn't exist, rollback entire transaction
+                                        conn.rollback()
+                                    logger.debug(f"Error inserting income for {scrip_id}: {e}")
+                                    continue
                         
-                        for _, row in temp_df.iterrows():
-                            try:
-                                insert_income = """
-                                    INSERT INTO my_schema.rt_quarterly_income 
-                                    (scrip_id, trans_date, trans_tag, trans_value) 
-                                    VALUES (%s, %s, %s, %s)
-                                    ON CONFLICT DO NOTHING
-                                """
-                                trans_date = col.date() if hasattr(col, 'date') else col
-                                trans_tag = str(row.iloc[0]) if len(row) > 0 else ''
-                                trans_value = str(row.iloc[1]) if len(row) > 1 else '0'
-                                
-                                cursor.execute(insert_income, (
-                                    scrip_id,
-                                    trans_date,
-                                    trans_tag,
-                                    trans_value
-                                ))
-                                result['income_count'] += 1
-                            except psycopg2_errors.UniqueViolation:
-                                continue
-                            except Exception as e:
-                                logger.debug(f"Error inserting income for {scrip_id}: {e}")
-                                continue
-                    
-                    conn.commit()
-                    cursor.close()
-                    conn.close()
+                        # Commit only if no errors occurred
+                        conn.commit()
+                    except Exception as e:
+                        # Rollback on any transaction-level error
+                        conn.rollback()
+                        logger.error(f"Transaction error inserting income for {scrip_id}: {e}")
+                        import traceback
+                        logger.debug(traceback.format_exc())
+                    finally:
+                        cursor.close()
+                        conn.close()
             except Exception as e:
                 logger.warning(f"Error fetching income statement for {scrip_id}: {e}")
             
@@ -289,42 +331,77 @@ class YahooFundamentalsFetcher:
                     conn = get_db_connection()
                     cursor = conn.cursor()
                     
-                    for _, row in insider_trans.iterrows():
-                        try:
-                            insert_insider = """
-                                INSERT INTO my_schema.rt_insider_trans 
-                                (scrip_id, shares, value, text, insider, position, trans_date, ownership) 
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                                ON CONFLICT DO NOTHING
-                            """
-                            
-                            trans_date = row.get('TransactionDate', None)
-                            if trans_date:
-                                if hasattr(trans_date, 'date'):
-                                    trans_date = trans_date.date()
-                                elif isinstance(trans_date, str):
-                                    trans_date = datetime.strptime(trans_date[:10], '%Y-%m-%d').date()
-                            
-                            cursor.execute(insert_insider, (
-                                scrip_id,
-                                str(row.get('Shares', '')) if pd.notna(row.get('Shares')) else '',
-                                str(row.get('Value', '')) if pd.notna(row.get('Value')) else '',
-                                str(row.get('Text', '')) if pd.notna(row.get('Text')) else '',
-                                str(row.get('Insider', '')) if pd.notna(row.get('Insider')) else '',
-                                str(row.get('Position', '')) if pd.notna(row.get('Position')) else '',
-                                trans_date,
-                                str(row.get('Ownership', '')) if pd.notna(row.get('Ownership')) else ''
-                            ))
-                            result['insider_count'] += 1
-                        except psycopg2_errors.UniqueViolation:
-                            continue
-                        except Exception as e:
-                            logger.debug(f"Error inserting insider transaction for {scrip_id}: {e}")
-                            continue
-                    
-                    conn.commit()
-                    cursor.close()
-                    conn.close()
+                    try:
+                        row_counter = 0
+                        for _, row in insider_trans.iterrows():
+                            row_counter += 1
+                            savepoint_name = f"sp_insider_{row_counter}"
+                            try:
+                                # Use savepoint for each insert to allow rollback without aborting entire transaction
+                                cursor.execute(f"SAVEPOINT {savepoint_name}")
+                                
+                                insert_insider = """
+                                    INSERT INTO my_schema.rt_insider_trans 
+                                    (scrip_id, shares, value, text, insider, position, trans_date, ownership) 
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                    ON CONFLICT DO NOTHING
+                                """
+                                
+                                # Validate and prepare transaction date
+                                trans_date = row.get('TransactionDate', None)
+                                if trans_date:
+                                    if hasattr(trans_date, 'date'):
+                                        trans_date = trans_date.date()
+                                    elif isinstance(trans_date, str):
+                                        trans_date = datetime.strptime(trans_date[:10], '%Y-%m-%d').date()
+                                else:
+                                    # Skip rows without transaction date
+                                    cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
+                                    continue
+                                
+                                cursor.execute(insert_insider, (
+                                    scrip_id,
+                                    str(row.get('Shares', '')) if pd.notna(row.get('Shares')) else '',
+                                    str(row.get('Value', '')) if pd.notna(row.get('Value')) else '',
+                                    str(row.get('Text', '')) if pd.notna(row.get('Text')) else '',
+                                    str(row.get('Insider', '')) if pd.notna(row.get('Insider')) else '',
+                                    str(row.get('Position', '')) if pd.notna(row.get('Position')) else '',
+                                    trans_date,
+                                    str(row.get('Ownership', '')) if pd.notna(row.get('Ownership')) else ''
+                                ))
+                                
+                                # Release savepoint on success
+                                cursor.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+                                result['insider_count'] += 1
+                                
+                            except psycopg2_errors.UniqueViolation:
+                                # Rollback to savepoint and continue
+                                try:
+                                    cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
+                                except:
+                                    pass
+                                continue
+                            except Exception as e:
+                                # Rollback to savepoint on any error
+                                try:
+                                    cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
+                                except:
+                                    # If savepoint doesn't exist, rollback entire transaction
+                                    conn.rollback()
+                                logger.debug(f"Error inserting insider transaction for {scrip_id}: {e}")
+                                continue
+                        
+                        # Commit only if no errors occurred
+                        conn.commit()
+                    except Exception as e:
+                        # Rollback on any transaction-level error
+                        conn.rollback()
+                        logger.error(f"Transaction error inserting insider transactions for {scrip_id}: {e}")
+                        import traceback
+                        logger.debug(traceback.format_exc())
+                    finally:
+                        cursor.close()
+                        conn.close()
             except Exception as e:
                 logger.warning(f"Error fetching insider transactions for {scrip_id}: {e}")
             

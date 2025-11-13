@@ -750,7 +750,7 @@ class RealTimeTPOProfile:
 def plot_5day_tpo_chart(db_fetcher, table_name, instrument_token=256265, 
                         tick_size=5, market_start_time="09:15", market_end_time="15:30"):
     """
-    Generate a 5-day TPO chart with TPO profiles and volume profiles side by side
+    Generate a 5-day TPO chart with TPO profiles
     
     Args:
         db_fetcher: PostgresDataFetcher instance
@@ -794,14 +794,14 @@ def plot_5day_tpo_chart(db_fetcher, table_name, instrument_token=256265,
     # Take only the last 5 days
     trading_days = trading_days[-num_days:]
     
-    fig = plt.figure(figsize=(28, 12), facecolor='black')
+    fig = plt.figure(figsize=(20, 12), facecolor='black')
     
-    # Create subplots: 1 row x (num_days * 2 + 1) columns
-    # Each day has TPO (left) and Volume (right) side by side, plus price scale at the end
-    # Layout: [TPO1][Vol1][TPO2][Vol2][TPO3][Vol3][TPO4][Vol4][TPO5][Vol5][PriceScale]
+    # Create subplots: 1 row x (num_days + 1) columns
+    # Each day has TPO only, plus price scale at the end
+    # Layout: [TPO1][TPO2][TPO3][TPO4][TPO5][PriceScale]
     from matplotlib.gridspec import GridSpec
-    gs = GridSpec(1, num_days * 2 + 1, figure=fig, hspace=0.2, wspace=0.1,
-                 width_ratios=[1, 1] * num_days + [0.4])
+    gs = GridSpec(1, num_days + 1, figure=fig, hspace=0.2, wspace=0.1,
+                 width_ratios=[1] * num_days + [0.4])
     
     # Calculate global price range for all days (only from days with data)
     all_prices = []
@@ -856,32 +856,8 @@ def plot_5day_tpo_chart(db_fetcher, table_name, instrument_token=256265,
             tpo_profile = TPOProfile(tick_size=tick_size)
             tpo_profile.tpo_data = pd.DataFrame()
         
-        # Calculate volume profile for this day
-        if not is_empty and 'volume' in day_data.columns and 'last_price' in day_data.columns:
-            # Convert to float to handle Decimal types
-            day_data['last_price'] = day_data['last_price'].astype(float)
-            if 'volume' in day_data.columns:
-                day_data['volume'] = day_data['volume'].fillna(0).astype(float)
-            day_data['price_level'] = (day_data['last_price'] / tick_size).round() * tick_size
-            volume_profile = day_data.groupby('price_level')['volume'].sum().reset_index()
-            volume_profile.columns = ['price', 'volume']
-            volume_profile = volume_profile.sort_values('price', ascending=False)
-            
-            # Calculate POC from volume (price with highest volume)
-            if not volume_profile.empty:
-                poc_volume = volume_profile.loc[volume_profile['volume'].idxmax()]
-                volume_poc_price = poc_volume['price']
-                volume_poc_volume = poc_volume['volume']
-            else:
-                volume_poc_price = None
-                volume_poc_volume = 0
-        else:
-            volume_profile = pd.DataFrame()
-            volume_poc_price = None
-            volume_poc_volume = 0
-            
-        # TPO Profile (left side of day)
-        ax_tpo = fig.add_subplot(gs[0, day_idx * 2])
+        # TPO Profile
+        ax_tpo = fig.add_subplot(gs[0, day_idx])
         
         # Show blank chart if data is missing
         if is_empty:
@@ -955,7 +931,6 @@ def plot_5day_tpo_chart(db_fetcher, table_name, instrument_token=256265,
         ax_tpo.set_title(f'{trading_date.strftime("%m/%d")}', fontsize=11, fontweight='bold', color='white', pad=5)
         ax_tpo.set_ylim(y_min, y_max)
         ax_tpo.grid(True, alpha=0.3, axis='y', color='gray')
-        # TPO bars grow to the right (same direction as volume) for left-to-right display
         ax_tpo.set_facecolor('black')
         ax_tpo.tick_params(colors='white', labelsize=8)
         # Hide y-axis labels for inner days (only show on first day)
@@ -963,49 +938,9 @@ def plot_5day_tpo_chart(db_fetcher, table_name, instrument_token=256265,
             ax_tpo.set_yticklabels([])
         else:
             ax_tpo.set_ylabel('Price', fontsize=10, color='white')
-        
-        # Volume Profile (right side of day)
-        ax_vol = fig.add_subplot(gs[0, day_idx * 2 + 1])
-        
-        # Show blank chart if data is missing
-        if is_empty:
-            ax_vol.text(0.5, 0.5, 'No Data', 
-                       ha='center', va='center', fontsize=12, color='gray',
-                       transform=ax_vol.transAxes)
-        elif not volume_profile.empty:
-            vol_prices = volume_profile['price'].values
-            volumes = volume_profile['volume'].values
-            
-            # Color coding: blue/grey for volume, magenta for POC
-            vol_colors = []
-            for price in vol_prices:
-                if volume_poc_price and abs(price - volume_poc_price) < tick_size:
-                    vol_colors.append('#FF00FF')  # Magenta for POC
-                else:
-                    vol_colors.append('#4169E1')  # Blue for regular volume
-            
-            ax_vol.barh(vol_prices, volumes, height=tick_size*0.8,
-                       color=vol_colors, alpha=0.7, edgecolor='black', linewidth=0.5)
-            
-            # Add POC line extending from TPO to Volume (magenta line)
-            if volume_poc_price:
-                ax_vol.axhline(y=volume_poc_price, color='magenta', linewidth=2,
-                              linestyle='-', zorder=10)
-                # Also add POC line to TPO chart if it matches
-                if tpo_profile.poc and abs(volume_poc_price - tpo_profile.poc) < tick_size:
-                    ax_tpo.axhline(y=volume_poc_price, color='magenta', linewidth=2,
-                                  linestyle='-', zorder=10, alpha=0.7)
-        
-        ax_vol.set_xlabel('Volume', fontsize=9, color='white')
-        ax_vol.set_ylim(y_min, y_max)
-        ax_vol.grid(True, alpha=0.3, axis='y', color='gray')
-        ax_vol.set_facecolor('black')
-        ax_vol.tick_params(colors='white', labelsize=8)
-        # Hide y-axis labels for volume profiles
-        ax_vol.set_yticklabels([])
     
     # Add price scale on the right
-    ax_price_scale = fig.add_subplot(gs[0, num_days * 2])
+    ax_price_scale = fig.add_subplot(gs[0, num_days])
     
     # Create price scale with finer increments
     price_ticks = np.arange(y_min, y_max + tick_size, tick_size * 5)
@@ -1037,7 +972,7 @@ def plot_5day_tpo_chart(db_fetcher, table_name, instrument_token=256265,
     ax_price_scale.grid(True, alpha=0.2, axis='y', color='gray')
     
     # Add overall title
-    fig.suptitle('5-Day TPO Market Profile with Volume Profile', 
+    fig.suptitle('5-Day TPO Market Profile', 
                 fontsize=16, fontweight='bold', y=0.98, color='white')
     
     plt.tight_layout(rect=[0, 0, 0.95, 0.96])
@@ -1050,6 +985,212 @@ def plot_5day_tpo_chart(db_fetcher, table_name, instrument_token=256265,
     plt.close()
     
     return f"data:image/png;base64,{image_base64}"
+
+
+def plot_volume_profile(scrip_id: str, num_days: int = 5, tick_size: float = 5.0):
+    """
+    Generate a volume profile chart using data from rt_intraday_price table
+    
+    Args:
+        scrip_id: Stock symbol (e.g., 'NIFTY', 'RELIANCE')
+        num_days: Number of trading days to include (default: 5)
+        tick_size: Price tick size for volume profile calculation (default: 5.0)
+        
+    Returns:
+        Base64 encoded image string or None if no data available
+    """
+    import base64
+    import io
+    import psycopg2.extras
+    from common.Boilerplate import get_db_connection
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        
+        # Fetch volume data from rt_intraday_price for the last N trading days
+        cursor.execute("""
+            SELECT 
+                price_date::date as trading_date,
+                price_high,
+                price_low,
+                price_close,
+                volume
+            FROM my_schema.rt_intraday_price
+            WHERE scrip_id = %s
+            AND country = 'IN'
+            AND volume IS NOT NULL
+            AND volume > 0
+            AND price_high IS NOT NULL
+            AND price_low IS NOT NULL
+            AND price_close IS NOT NULL
+            AND price_date::date >= CURRENT_DATE - make_interval(days => %s)
+            ORDER BY price_date::date DESC
+            LIMIT %s
+        """, (scrip_id, num_days * 2, num_days))
+        
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        if not rows or len(rows) == 0:
+            logging.warning(f"No volume data found for {scrip_id}")
+            return None
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(rows)
+        df['trading_date'] = pd.to_datetime(df['trading_date'])
+        df = df.sort_values('trading_date')
+        
+        # Take only the last num_days
+        df = df.tail(num_days)
+        
+        if df.empty:
+            return None
+        
+        # Calculate price range
+        all_prices = []
+        for _, row in df.iterrows():
+            # Create price levels from low to high
+            low = float(row['price_low'])
+            high = float(row['price_high'])
+            price_levels = np.arange(
+                (low / tick_size).round() * tick_size,
+                (high / tick_size).round() * tick_size + tick_size,
+                tick_size
+            )
+            all_prices.extend(price_levels)
+        
+        if not all_prices:
+            return None
+        
+        y_min = min(all_prices)
+        y_max = max(all_prices)
+        
+        # Create figure
+        fig = plt.figure(figsize=(20, 12), facecolor='black')
+        from matplotlib.gridspec import GridSpec
+        gs = GridSpec(1, num_days + 1, figure=fig, hspace=0.2, wspace=0.1,
+                     width_ratios=[1] * num_days + [0.4])
+        
+        # Process each day
+        for day_idx, (_, day_row) in enumerate(df.iterrows()):
+            trading_date = day_row['trading_date']
+            high = float(day_row['price_high'])
+            low = float(day_row['price_low'])
+            close = float(day_row['price_close'])
+            volume = float(day_row['volume'])
+            
+            # Create price levels for this day
+            price_levels = np.arange(
+                (low / tick_size).round() * tick_size,
+                (high / tick_size).round() * tick_size + tick_size,
+                tick_size
+            )
+            
+            # Distribute volume across price levels (simplified - assumes uniform distribution)
+            # In reality, you'd need tick-by-tick data for accurate volume profile
+            num_levels = len(price_levels)
+            if num_levels > 0:
+                volume_per_level = volume / num_levels
+                
+                # Create volume profile DataFrame
+                volume_profile = pd.DataFrame({
+                    'price': price_levels,
+                    'volume': [volume_per_level] * num_levels
+                })
+                volume_profile = volume_profile.sort_values('price', ascending=False)
+                
+                # Find POC (price with highest volume)
+                poc_price = volume_profile.loc[volume_profile['volume'].idxmax(), 'price']
+                
+                # Plot volume profile
+                ax_vol = fig.add_subplot(gs[0, day_idx])
+                
+                vol_prices = volume_profile['price'].values
+                volumes = volume_profile['volume'].values
+                
+                # Color coding: blue for volume, magenta for POC
+                vol_colors = []
+                for price in vol_prices:
+                    if abs(price - poc_price) < tick_size:
+                        vol_colors.append('#FF00FF')  # Magenta for POC
+                    else:
+                        vol_colors.append('#4169E1')  # Blue for regular volume
+                
+                ax_vol.barh(vol_prices, volumes, height=tick_size*0.8,
+                           color=vol_colors, alpha=0.7, edgecolor='black', linewidth=0.5)
+                
+                # Add POC line
+                ax_vol.axhline(y=poc_price, color='magenta', linewidth=2,
+                              linestyle='-', zorder=10)
+                
+                # Add close price indicator
+                ax_vol.axhline(y=close, color='yellow', linewidth=1.5,
+                              linestyle='--', zorder=9, alpha=0.7)
+                
+                ax_vol.set_xlabel('Volume', fontsize=9, color='white')
+                ax_vol.set_title(f'{trading_date.strftime("%m/%d")}\nVol: {volume:,.0f}', 
+                               fontsize=11, fontweight='bold', color='white', pad=5)
+                ax_vol.set_ylim(y_min, y_max)
+                ax_vol.grid(True, alpha=0.3, axis='y', color='gray')
+                ax_vol.set_facecolor('black')
+                ax_vol.tick_params(colors='white', labelsize=8)
+                
+                # Hide y-axis labels for inner days
+                if day_idx > 0:
+                    ax_vol.set_yticklabels([])
+                else:
+                    ax_vol.set_ylabel('Price', fontsize=10, color='white')
+        
+        # Add price scale on the right
+        ax_price_scale = fig.add_subplot(gs[0, num_days])
+        price_ticks = np.arange(y_min, y_max + tick_size, tick_size * 5)
+        price_labels = [f'{p:.2f}' for p in price_ticks]
+        
+        # Add current price indicator
+        if not df.empty:
+            current_price = float(df.iloc[-1]['price_close'])
+            price_labels_with_current = []
+            for p in price_ticks:
+                if abs(p - current_price) < tick_size * 2:
+                    price_labels_with_current.append(f'{p:.2f} (C)')
+                else:
+                    price_labels_with_current.append(f'{p:.2f}')
+            price_labels = price_labels_with_current
+        
+        ax_price_scale.set_ylim(y_min, y_max)
+        ax_price_scale.set_yticks(price_ticks)
+        ax_price_scale.set_yticklabels(price_labels, fontsize=9, color='white')
+        ax_price_scale.set_ylabel('Price', fontsize=12, fontweight='bold', color='white')
+        ax_price_scale.set_facecolor('black')
+        ax_price_scale.spines['top'].set_color('white')
+        ax_price_scale.spines['bottom'].set_color('white')
+        ax_price_scale.spines['left'].set_color('white')
+        ax_price_scale.spines['right'].set_color('white')
+        ax_price_scale.tick_params(colors='white', labelsize=9)
+        ax_price_scale.grid(True, alpha=0.2, axis='y', color='gray')
+        
+        # Add overall title
+        fig.suptitle(f'{scrip_id} - {num_days}-Day Volume Profile', 
+                    fontsize=16, fontweight='bold', y=0.98, color='white')
+        
+        plt.tight_layout(rect=[0, 0, 0.95, 0.96])
+        
+        # Convert to base64
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='png', dpi=150, bbox_inches='tight', facecolor='black')
+        buffer.seek(0)
+        image_base64 = base64.b64encode(buffer.getvalue()).decode()
+        plt.close()
+        
+        return f"data:image/png;base64,{image_base64}"
+        
+    except Exception as e:
+        logging.error(f"Error generating volume profile: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return None
 
 
 # Example Usage

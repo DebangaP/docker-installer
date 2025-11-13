@@ -753,7 +753,7 @@ async def api_tpo_charts(analysis_date: str = Query(None)):
 
 @app.get("/api/tpo_5day_chart")
 async def api_tpo_5day_chart(analysis_date: str = Query(None)):
-    """API endpoint to generate 5-day TPO chart with volume profiles"""
+    """API endpoint to generate 5-day TPO chart"""
     try:
         from market.CalculateTPO import PostgresDataFetcher, plot_5day_tpo_chart
         import matplotlib
@@ -793,6 +793,46 @@ async def api_tpo_5day_chart(analysis_date: str = Query(None)):
         
     except Exception as e:
         logging.error(f"Error generating 5-day TPO chart: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/api/volume_profile")
+async def api_volume_profile(
+    scrip_id: str = Query("NIFTY", description="Stock symbol (e.g., NIFTY, RELIANCE)"),
+    num_days: int = Query(5, ge=1, le=20, description="Number of trading days"),
+    tick_size: float = Query(5.0, description="Price tick size")
+):
+    """API endpoint to generate volume profile chart"""
+    try:
+        from market.CalculateTPO import plot_volume_profile
+        import matplotlib
+        matplotlib.use('Agg')
+        
+        # Generate volume profile chart
+        chart_image = plot_volume_profile(
+            scrip_id=scrip_id,
+            num_days=num_days,
+            tick_size=tick_size
+        )
+        
+        if chart_image:
+            return {
+                "success": True,
+                "chart_image": chart_image,
+                "message": f"Volume profile chart generated successfully for {scrip_id}"
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"No volume data available for {scrip_id}"
+            }
+        
+    except Exception as e:
+        logging.error(f"Error generating volume profile: {e}")
         import traceback
         logging.error(traceback.format_exc())
         return {
@@ -1856,7 +1896,7 @@ async def api_add_new_stock(request: Request):
                 }
                 
                 db_connection.execute(insert_query, params)
-                db_connection.commit()
+                #db_connection.commit()
                 logging.info(f"Successfully added {symbol} to master_scrips")
                 needs_data_fetch = True
             
@@ -1913,21 +1953,71 @@ async def api_add_new_stock(request: Request):
                     # Extract values from yfinance data
                     # yfinance returns DataFrame with columns: Open, High, Low, Close, Adj Close, Volume
                     # Access by column name (dailyrow is a pandas Series with index as column names)
+                    def safe_get_value(series, key, default=None):
+                        """Safely extract scalar value from Series, handling Series returns"""
+                        try:
+                            if hasattr(series, 'index') and key in series.index:
+                                value = series[key]
+                                # If value is a Series, get the first element
+                                if isinstance(value, pd.Series):
+                                    value = value.iloc[0] if len(value) > 0 else default
+                                # Check if value is NaN - use .item() if it's a numpy scalar
+                                if hasattr(value, 'item'):
+                                    value = value.item()
+                                # Check if value is NaN (works with scalar values)
+                                if value is not None and pd.isna(value):
+                                    return default
+                                return value
+                            return default
+                        except (KeyError, IndexError, TypeError, ValueError):
+                            return default
+                    
+                    def safe_get_value_by_index(series, index, default=None):
+                        """Safely extract scalar value by positional index"""
+                        try:
+                            if hasattr(series, 'values') and len(series.values) > index:
+                                value = series.values[index]
+                                # If value is a Series, get the first element
+                                if isinstance(value, pd.Series):
+                                    value = value.iloc[0] if len(value) > 0 else default
+                                # Use .item() if it's a numpy scalar
+                                if hasattr(value, 'item'):
+                                    value = value.item()
+                                # Check if value is NaN (works with scalar values)
+                                if value is not None and pd.isna(value):
+                                    return default
+                                return value
+                            return default
+                        except (IndexError, TypeError, ValueError):
+                            return default
+                    
                     try:
-                        open_price = float(dailyrow['Open']) if 'Open' in dailyrow.index and not pd.isna(dailyrow['Open']) else None
-                        high_price = float(dailyrow['High']) if 'High' in dailyrow.index and not pd.isna(dailyrow['High']) else None
-                        low_price = float(dailyrow['Low']) if 'Low' in dailyrow.index and not pd.isna(dailyrow['Low']) else None
-                        close_price = float(dailyrow['Close']) if 'Close' in dailyrow.index and not pd.isna(dailyrow['Close']) else None
-                        volume_value = int(dailyrow['Volume']) if 'Volume' in dailyrow.index and not pd.isna(dailyrow['Volume']) else 0
-                    except (KeyError, IndexError):
+                        open_val = safe_get_value(dailyrow, 'Open')
+                        high_val = safe_get_value(dailyrow, 'High')
+                        low_val = safe_get_value(dailyrow, 'Low')
+                        close_val = safe_get_value(dailyrow, 'Close')
+                        volume_val = safe_get_value(dailyrow, 'Volume', default=0)
+                        
+                        open_price = float(open_val) if open_val is not None else None
+                        high_price = float(high_val) if high_val is not None else None
+                        low_price = float(low_val) if low_val is not None else None
+                        close_price = float(close_val) if close_val is not None else None
+                        volume_value = int(volume_val) if volume_val is not None and volume_val != 0 else 0
+                    except (KeyError, IndexError, ValueError, TypeError):
                         # Fallback to positional access if column names not available
                         # yfinance returns: Open, High, Low, Close, Adj Close, Volume
                         # So: values[0]=Open, values[1]=High, values[2]=Low, values[3]=Close, values[5]=Volume
-                        open_price = float(dailyrow.values[0]) if len(dailyrow.values) > 0 and not pd.isna(dailyrow.values[0]) else None
-                        high_price = float(dailyrow.values[1]) if len(dailyrow.values) > 1 and not pd.isna(dailyrow.values[1]) else None
-                        low_price = float(dailyrow.values[2]) if len(dailyrow.values) > 2 and not pd.isna(dailyrow.values[2]) else None
-                        close_price = float(dailyrow.values[3]) if len(dailyrow.values) > 3 and not pd.isna(dailyrow.values[3]) else None
-                        volume_value = int(dailyrow.values[5]) if len(dailyrow.values) > 5 and not pd.isna(dailyrow.values[5]) else 0
+                        open_val = safe_get_value_by_index(dailyrow, 0)
+                        high_val = safe_get_value_by_index(dailyrow, 1)
+                        low_val = safe_get_value_by_index(dailyrow, 2)
+                        close_val = safe_get_value_by_index(dailyrow, 3)
+                        volume_val = safe_get_value_by_index(dailyrow, 5, default=0)
+                        
+                        open_price = float(open_val) if open_val is not None else None
+                        high_price = float(high_val) if high_val is not None else None
+                        low_price = float(low_val) if low_val is not None else None
+                        close_price = float(close_val) if close_val is not None else None
+                        volume_value = int(volume_val) if volume_val is not None and volume_val != 0 else 0
                     
                     date_str = date.strftime('%Y-%m-%d') if hasattr(date, 'strftime') else str(date)[:10]
                     
@@ -1950,7 +2040,7 @@ async def api_add_new_stock(request: Request):
                     logging.warning(f"Error inserting price data for {symbol} on {date}: {str(e)}")
                     continue
             
-            db_connection.commit()
+            #db_connection.commit()
             
             result['success'] = True
             # Determine if this was a new stock or existing stock update
@@ -3485,17 +3575,56 @@ async def api_prophet_top_gainers(
                 
                 days_counts = {row['scrip_id']: row['days_count'] for row in cursor.fetchall()}
                 
-                # Get accumulation/distribution data
-                from indicators.AccumulationDistributionAnalyzer import AccumulationDistributionAnalyzer
+                # Get accumulation/distribution data (similar to candlestick API with fallback)
                 from datetime import date
-                analyzer = AccumulationDistributionAnalyzer()
+                today = date.today()
                 accumulation_map = {}
                 
                 for scrip_id in scrip_ids:
                     try:
-                        state_data = analyzer.get_current_state(scrip_id, date.today())
-                        if state_data:
-                            accumulation_map[scrip_id] = state_data
+                        # First try to get today's data
+                        cursor.execute("""
+                            SELECT 
+                                state,
+                                start_date,
+                                days_in_state,
+                                confidence_score,
+                                pattern_detected,
+                                technical_context,
+                                analysis_date
+                            FROM my_schema.accumulation_distribution
+                            WHERE UPPER(TRIM(scrip_id)) = UPPER(TRIM(%s))
+                            AND analysis_date = %s
+                            ORDER BY created_at DESC
+                            LIMIT 1
+                        """, (scrip_id, today))
+                        
+                        accumulation_result = cursor.fetchone()
+                        
+                        # If not found for today, get the latest available data
+                        if not accumulation_result:
+                            cursor.execute("""
+                                SELECT 
+                                    state,
+                                    start_date,
+                                    days_in_state,
+                                    confidence_score,
+                                    pattern_detected,
+                                    technical_context,
+                                    analysis_date
+                                FROM my_schema.accumulation_distribution
+                                WHERE UPPER(TRIM(scrip_id)) = UPPER(TRIM(%s))
+                                ORDER BY analysis_date DESC
+                                LIMIT 1
+                            """, (scrip_id,))
+                            accumulation_result = cursor.fetchone()
+                        
+                        if accumulation_result:
+                            accumulation_map[scrip_id] = {
+                                'state': accumulation_result['state'] if accumulation_result['state'] else None,
+                                'days_in_state': int(accumulation_result['days_in_state']) if accumulation_result['days_in_state'] else None,
+                                'confidence_score': float(accumulation_result['confidence_score']) if accumulation_result['confidence_score'] else None
+                            }
                     except Exception as e:
                         logging.debug(f"Error getting accumulation/distribution for {scrip_id}: {e}")
                 

@@ -757,7 +757,7 @@
         <!-- 5-Day TPO Chart Section (full width) -->
         <div class="card" id="section-5day-tpo" style="margin-bottom: 20px;">
             <div class="card-header">
-                <h3 class="card-title">📊 5-Day TPO Market Profile with Volume Profile</h3>
+                <h3 class="card-title">📊 5-Day TPO Market Profile</h3>
                 <span class="card-icon">📈</span>
                 <button onclick="load5DayTPOChart()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #007bff; color: white; border: none; margin-left: 10px;">
                     🔄 Refresh Chart
@@ -765,6 +765,23 @@
             </div>
             <div class="tpo-chart-container" style="height: 700px; background-color: #000;">
                 <img id="tpo5DayChartImage" src="" alt="5-Day TPO Chart" style="width: 100%; height: 100%; object-fit: contain; border-radius: 8px;" />
+            </div>
+        </div>
+
+        <!-- Volume Profile Chart Section (full width) -->
+        <div class="card" id="section-volume-profile" style="margin-bottom: 20px;">
+            <div class="card-header">
+                <h3 class="card-title">📊 Volume Profile Chart</h3>
+                <span class="card-icon">📊</span>
+                <div style="display: flex; gap: 10px; align-items: center; margin-left: 10px;">
+                    <input type="text" id="volumeProfileScripId" placeholder="Stock Symbol (e.g., NIFTY)" value="NIFTY" style="padding: 4px 8px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px; width: 150px;">
+                    <button onclick="loadVolumeProfile()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                        🔄 Load Volume Profile
+                    </button>
+                </div>
+            </div>
+            <div class="tpo-chart-container" style="height: 700px; background-color: #000;">
+                <img id="volumeProfileChartImage" src="" alt="Volume Profile Chart" style="width: 100%; height: 100%; object-fit: contain; border-radius: 8px;" />
             </div>
         </div>
 
@@ -3233,6 +3250,39 @@
                 .catch(error => {
                     console.error('Error fetching 5-day TPO chart:', error);
                     chartImage.alt = 'Error loading chart';
+                });
+        }
+        
+        // Load Volume Profile Chart
+        function loadVolumeProfile() {
+            const chartImage = document.getElementById('volumeProfileChartImage');
+            const scripIdInput = document.getElementById('volumeProfileScripId');
+            if (!chartImage || !scripIdInput) return;
+            
+            const scripId = scripIdInput.value.trim().toUpperCase();
+            if (!scripId) {
+                alert('Please enter a stock symbol');
+                return;
+            }
+            
+            chartImage.src = '';
+            chartImage.style.display = 'none';
+            
+            fetch(`/api/volume_profile?scrip_id=${encodeURIComponent(scripId)}&num_days=5&tick_size=5.0`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.chart_image) {
+                        chartImage.src = data.chart_image;
+                        chartImage.style.display = 'block';
+                    } else {
+                        chartImage.alt = data.error || `No volume data available for ${scripId}`;
+                        console.error('Error loading volume profile:', data.error || 'Unknown error');
+                        alert(data.error || `No volume data available for ${scripId}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching volume profile:', error);
+                    alert('Error loading volume profile. Please try again.');
                 });
         }
         
@@ -10011,6 +10061,46 @@
                             responsive: true,
                             maintainAspectRatio: false,
                             scales: {
+                                x: {
+                                    type: 'time',
+                                    adapters: {
+                                        date: {
+                                            locale: 'en'
+                                        }
+                                    },
+                                    time: {
+                                        unit: 'day',
+                                        displayFormats: {
+                                            millisecond: 'MMM D',
+                                            second: 'MMM D',
+                                            minute: 'MMM D',
+                                            hour: 'MMM D',
+                                            day: 'MMM D',  // Format: Oct 12 (moment.js format)
+                                            week: 'MMM D',
+                                            month: 'MMM D',
+                                            quarter: 'MMM D',
+                                            year: 'MMM D'
+                                        },
+                                        tooltipFormat: 'MMM D, YYYY'  // Tooltip: Oct 12, 2025 (moment.js format)
+                                    },
+                                    ticks: {
+                                        source: 'data',
+                                        maxRotation: 45,
+                                        minRotation: 45,
+                                        autoSkip: true,
+                                        maxTicksLimit: 20,
+                                        callback: function(value, index) {
+                                            // Use moment to format the date if available, otherwise use native Date
+                                            if (typeof moment !== 'undefined' && moment) {
+                                                return moment(value).format('MMM D');
+                                            } else {
+                                                const date = new Date(value);
+                                                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                                return `${monthNames[date.getMonth()]} ${date.getDate()}`;
+                                            }
+                                        }
+                                    }
+                                },
                                 y: {
                                     beginAtZero: false,
                                     ticks: {
