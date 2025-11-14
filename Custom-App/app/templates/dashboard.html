@@ -10075,13 +10075,13 @@
                                             second: 'MMM D',
                                             minute: 'MMM D',
                                             hour: 'MMM D',
-                                            day: 'MMM D',  // Format: Oct 12 (moment.js format)
+                                            day: 'MMM D',  // Format: Nov 11
                                             week: 'MMM D',
                                             month: 'MMM D',
                                             quarter: 'MMM D',
                                             year: 'MMM D'
                                         },
-                                        tooltipFormat: 'MMM D, YYYY'  // Tooltip: Oct 12, 2025 (moment.js format)
+                                        tooltipFormat: 'MMM D, YYYY'
                                     },
                                     ticks: {
                                         source: 'data',
@@ -10090,14 +10090,10 @@
                                         autoSkip: true,
                                         maxTicksLimit: 20,
                                         callback: function(value, index) {
-                                            // Use moment to format the date if available, otherwise use native Date
-                                            if (typeof moment !== 'undefined' && moment) {
-                                                return moment(value).format('MMM D');
-                                            } else {
-                                                const date = new Date(value);
-                                                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                                                return `${monthNames[date.getMonth()]} ${date.getDate()}`;
-                                            }
+                                            // Format date as "Nov 11" - consistent with volume chart
+                                            const date = new Date(value);
+                                            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                            return `${monthNames[date.getMonth()]} ${date.getDate()}`;
                                         }
                                     }
                                 },
@@ -10265,75 +10261,7 @@
                         });
                     }
                     
-                    // Add Ghost Prediction line (ENHANCED)
-                    if (data.prediction_data) {
-                        const pred = data.prediction_data;
-                        console.log('Processing prediction data:', pred);
-                        
-                        // Use predicted_price if available, otherwise calculate from current_price and change_pct
-                        let predictedPrice = pred.predicted_price;
-                        let currentPrice = pred.current_price;
-                        
-                        // If predicted_price is not available, calculate it
-                        if (!predictedPrice && currentPrice && pred.predicted_price_change_pct !== null && pred.predicted_price_change_pct !== undefined) {
-                            predictedPrice = currentPrice * (1 + (pred.predicted_price_change_pct / 100));
-                            console.log(`Calculated predicted_price: ${predictedPrice} from current_price: ${currentPrice} and change_pct: ${pred.predicted_price_change_pct}`);
-                        }
-                        
-                        // If current_price is not available, use latest close from chart data
-                        if (!currentPrice && data.data && data.data.length > 0) {
-                            currentPrice = data.data[data.data.length - 1].close;
-                            console.log(`Using latest close as current_price: ${currentPrice}`);
-                            
-                            // Recalculate predicted_price if we just got current_price
-                            if (!predictedPrice && pred.predicted_price_change_pct !== null && pred.predicted_price_change_pct !== undefined) {
-                                predictedPrice = currentPrice * (1 + (pred.predicted_price_change_pct / 100));
-                                console.log(`Recalculated predicted_price: ${predictedPrice}`);
-                            }
-                        }
-                        
-                        if (predictedPrice && currentPrice) {
-                            const latestDate = new Date(data.data[data.data.length - 1].date);
-                            const predictionDays = pred.prediction_days || 30;
-                            const futureDate = new Date(latestDate);
-                            futureDate.setDate(futureDate.getDate() + predictionDays);
-                            
-                            console.log(`Adding prediction line: from ${currentPrice} to ${predictedPrice} over ${predictionDays} days`);
-                            
-                            // Create prediction line data: from latest price to predicted price
-                            const predictionLineData = [
-                                {
-                                    x: latestDate.getTime(),
-                                    y: currentPrice
-                                },
-                                {
-                                    x: futureDate.getTime(),
-                                    y: predictedPrice
-                                }
-                            ];
-                            
-                            candlestickChart.data.datasets.push({
-                                label: `Ghost Prediction (${predictionDays}D)`,
-                                data: predictionLineData,
-                                type: 'line',
-                                borderColor: 'rgba(135, 206, 250, 1)',  // Sky blue
-                                backgroundColor: 'rgba(135, 206, 250, 0.1)',
-                                borderWidth: 2,
-                                borderDash: [10, 5],  // Dashed line
-                                pointRadius: [0, 4],  // No point at start, point at end
-                                pointBackgroundColor: 'rgba(135, 206, 250, 1)',
-                                pointBorderColor: 'rgba(135, 206, 250, 1)',
-                                pointBorderWidth: 2,
-                                tension: 0.1,
-                                fill: false,
-                                spanGaps: true
-                            });
-                        } else {
-                            console.log('Cannot add prediction line - missing data:', {predictedPrice, currentPrice, hasData: !!data.data});
-                        }
-                    } else {
-                        console.log('No prediction_data in response');
-                    }
+                    // Ghost Prediction line removed as per user request
                     
                     // Update the chart to render the new datasets
                     candlestickChart.update();
@@ -10402,10 +10330,37 @@
                             scales: {
                                 x: {
                                     type: 'time',
+                                    adapters: {
+                                        date: {
+                                            locale: 'en'
+                                        }
+                                    },
                                     time: {
                                         unit: 'day',
                                         displayFormats: {
-                                            day: 'MMM dd'
+                                            millisecond: 'MMM D',
+                                            second: 'MMM D',
+                                            minute: 'MMM D',
+                                            hour: 'MMM D',
+                                            day: 'MMM D',  // Format: Nov 11
+                                            week: 'MMM D',
+                                            month: 'MMM D',
+                                            quarter: 'MMM D',
+                                            year: 'MMM D'
+                                        },
+                                        tooltipFormat: 'MMM D, YYYY'
+                                    },
+                                    ticks: {
+                                        source: 'data',
+                                        maxRotation: 45,
+                                        minRotation: 45,
+                                        autoSkip: true,
+                                        maxTicksLimit: 20,
+                                        callback: function(value, index) {
+                                            // Format date as "Nov 11" instead of "Nov Fr"
+                                            const date = new Date(value);
+                                            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                            return `${monthNames[date.getMonth()]} ${date.getDate()}`;
                                         }
                                     },
                                     grid: {

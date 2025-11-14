@@ -191,7 +191,7 @@ class ProphetPricePredictor:
             cursor.execute("""
                 SELECT 
                     price_date as ds,
-                    price_close as y
+                    round(price_close) as y
                 FROM my_schema.rt_intraday_price
                 WHERE scrip_id = %s
                 AND country = 'IN'
@@ -392,55 +392,6 @@ class ProphetPricePredictor:
                 'cv_results_count': 0
             }
     
-    def evaluate_parameters(self, df: pd.DataFrame, param_grid: List[Dict]) -> Tuple[Dict, Dict]:
-        """
-        Evaluate different parameter settings using cross-validation
-        
-        Args:
-            df: Historical data DataFrame
-            param_grid: List of parameter dictionaries to test
-            
-        Returns:
-            Tuple of (best_params, best_metrics)
-        """
-        best_params = None
-        best_metrics = {'mape': float('inf'), 'rmse': float('inf')}
-        
-        logger.info(f"Evaluating {len(param_grid)} parameter configurations...")
-        
-        for params in param_grid:
-            try:
-                # Create model with current parameters
-                model = Prophet(
-                    daily_seasonality=params.get('daily_seasonality', False),
-                    weekly_seasonality=params.get('weekly_seasonality', True),
-                    yearly_seasonality=params.get('yearly_seasonality', False),
-                    changepoint_prior_scale=params.get('changepoint_prior_scale', 0.05),
-                    changepoint_range=params.get('changepoint_range', 0.95),
-                    seasonality_prior_scale=params.get('seasonality_prior_scale', 10.0),
-                    interval_width=params.get('interval_width', 0.80)
-                )
-                
-                # Fit model
-                model.fit(df)
-                
-                # Perform cross-validation
-                cv_metrics = self.perform_cross_validation(model, df)
-                
-                # Check if this is the best configuration
-                # Use MAPE as primary metric, RMSE as secondary
-                if cv_metrics['mape'] < best_metrics['mape'] or \
-                   (cv_metrics['mape'] == best_metrics['mape'] and cv_metrics['rmse'] < best_metrics['rmse']):
-                    best_params = params.copy()
-                    best_metrics = cv_metrics.copy()
-                    logger.debug(f"New best parameters: MAPE={cv_metrics['mape']:.2f}%, RMSE={cv_metrics['rmse']:.2f}")
-                
-            except Exception as e:
-                logger.warning(f"Error evaluating parameters {params}: {e}")
-                continue
-        
-        logger.info(f"Best parameters: {best_params}, MAPE: {best_metrics['mape']:.2f}%, RMSE: {best_metrics['rmse']:.2f}")
-        return best_params, best_metrics
     
     def predict_price(self, scrip_id: str, current_price: Optional[float] = None, prediction_days: Optional[int] = None) -> Optional[Dict]:
         """
@@ -540,74 +491,36 @@ class ProphetPricePredictor:
                 # Initialize metrics for cross-validation
                 cv_metrics = None
                 
-                # Perform cross-validation if enabled
-                # Need at least 180 days of data for meaningful cross-validation
+                # Always use default model parameters
+                model_params = default_model_params
+                
+                # Perform cross-validation if enabled (for metrics only, not parameter optimization)
                 data_days = len(prophet_df)
-                if self.enable_cross_validation:
-                    if data_days >= 140:
-                        logger.info(f"Cross-validation enabled for {scrip_id} (data_days={data_days}). Evaluating parameter settings...")
+                if self.enable_cross_validation and data_days >= 140:
+                    logger.info(f"Cross-validation enabled for {scrip_id} (data_days={data_days}). Running cross-validation on default model...")
+                    
+                    # Create a temporary model with default parameters for cross-validation
+                    temp_model = Prophet(
+                        daily_seasonality=False,
+                        weekly_seasonality=True,
+                        yearly_seasonality=False,
+                        changepoint_prior_scale=model_params['changepoint_prior_scale'],
+                        changepoint_range=model_params['changepoint_range'],
+                        seasonality_prior_scale=model_params['seasonality_prior_scale'],
+                        interval_width=model_params['interval_width']
+                    )
+                    temp_model.fit(prophet_df)
+                    
+                    # Perform cross-validation to get metrics
+                    cv_metrics = self.perform_cross_validation(temp_model, prophet_df)
+                    if cv_metrics and cv_metrics.get('mape') != float('inf'):
+                        logger.info(f"Cross-validation metrics for {scrip_id}: MAPE={cv_metrics.get('mape', 'N/A')}, RMSE={cv_metrics.get('rmse', 'N/A')}")
                     else:
-                        logger.debug(f"Cross-validation enabled but insufficient data for {scrip_id}: {data_days} days < 180 days required")
+                        logger.debug(f"Cross-validation did not produce valid metrics for {scrip_id}")
+                elif self.enable_cross_validation:
+                    logger.debug(f"Cross-validation enabled but insufficient data for {scrip_id}: {data_days} days < 140 days required")
                 else:
                     logger.debug(f"Cross-validation disabled for {scrip_id} (data_days={data_days})")
-                
-                if self.enable_cross_validation and data_days >= 140:
-                    
-                    # Define parameter grid to test
-                    param_grid = [
-                        {
-                            'changepoint_prior_scale': 0.05,
-                            'changepoint_range': 0.85,  # Reduced from 0.95
-                            'seasonality_prior_scale': 10.0,
-                            'interval_width': 0.80
-                        },
-                        {
-                            'changepoint_prior_scale': 0.01,
-                            'changepoint_range': 0.85,  # Reduced from 0.95
-                            'seasonality_prior_scale': 10.0,
-                            'interval_width': 0.80
-                        },
-                        {
-                            'changepoint_prior_scale': 0.10,
-                            'changepoint_range': 0.85,  # Reduced from 0.95
-                            'seasonality_prior_scale': 10.0,
-                            'interval_width': 0.80
-                        },
-                        {
-                            'changepoint_prior_scale': 0.05,
-                            'changepoint_range': 0.80,  # Even more conservative
-                            'seasonality_prior_scale': 10.0,
-                            'interval_width': 0.80
-                        },
-                        {
-                            'changepoint_prior_scale': 0.05,
-                            'changepoint_range': 0.85,
-                            'seasonality_prior_scale': 5.0,
-                            'interval_width': 0.80
-                        },
-                        {
-                            'changepoint_prior_scale': 0.05,
-                            'changepoint_range': 0.85,
-                            'seasonality_prior_scale': 15.0,
-                            'interval_width': 0.80
-                        }
-                    ]
-                    
-                    # Evaluate parameters and get best configuration
-                    best_params, best_metrics = self.evaluate_parameters(prophet_df, param_grid)
-                    
-                    if best_params:
-                        model_params = best_params
-                        cv_metrics = best_metrics
-                        logger.info(f"Best parameters for {scrip_id}: MAPE={best_metrics.get('mape', 'N/A')}, RMSE={best_metrics.get('rmse', 'N/A')}")
-                        logger.debug(f"cv_metrics set for {scrip_id}: {cv_metrics}")
-                    else:
-                        model_params = default_model_params
-                        logger.warning(f"Cross-validation failed for {scrip_id} (best_params=None). Using default parameters. best_metrics={best_metrics}")
-                else:
-                    model_params = default_model_params
-                    if self.enable_cross_validation:
-                        logger.debug(f"Not enough data for cross-validation for {scrip_id}. Using default parameters.")
                 
                 # Ensure Prophet is properly initialized with cmdstanpy backend
                 # Reduce changepoint_range to prevent detecting changepoints too close to the end
@@ -1440,6 +1353,51 @@ class ProphetPricePredictor:
             rows = cursor.fetchall()
             top_gainers = [dict(row) for row in rows]
             
+            # Fetch accumulation data separately for all gainers
+            if top_gainers:
+                scrip_ids = [gainer.get('scrip_id') for gainer in top_gainers if gainer.get('scrip_id')]
+                if scrip_ids:
+                    try:
+                        cursor.execute("""
+                            SELECT DISTINCT ON (scrip_id)
+                                scrip_id,
+                                state,
+                                days_in_state,
+                                confidence_score
+                            FROM my_schema.accumulation_distribution
+                            WHERE scrip_id = ANY(%s)
+                            ORDER BY scrip_id, analysis_date DESC
+                        """, (scrip_ids,))
+                        accumulation_rows = cursor.fetchall()
+                        accumulation_map = {row['scrip_id']: dict(row) for row in accumulation_rows}
+                        
+                        # Add accumulation data to each gainer
+                        for gainer in top_gainers:
+                            scrip_id = gainer.get('scrip_id')
+                            if scrip_id and scrip_id in accumulation_map:
+                                acc_data = accumulation_map[scrip_id]
+                                gainer['accumulation_state'] = acc_data.get('state')
+                                gainer['days_in_accumulation_state'] = acc_data.get('days_in_state')
+                                gainer['accumulation_confidence'] = acc_data.get('confidence_score')
+                            else:
+                                gainer['accumulation_state'] = None
+                                gainer['days_in_accumulation_state'] = None
+                                gainer['accumulation_confidence'] = None
+                        
+                        logger.debug(f"Added accumulation data for {len(accumulation_map)} stocks out of {len(scrip_ids)} total")
+                    except Exception as e:
+                        logger.warning(f"Error fetching accumulation data: {e}")
+                        # Set None for all if query fails
+                        for gainer in top_gainers:
+                            gainer['accumulation_state'] = None
+                            gainer['days_in_accumulation_state'] = None
+                            gainer['accumulation_confidence'] = None
+            
+            # Log accumulation data for debugging
+            if top_gainers:
+                sample_gainer = top_gainers[0]
+                logger.debug(f"Sample gainer accumulation data: scrip_id={sample_gainer.get('scrip_id')}, accumulation_state={sample_gainer.get('accumulation_state')}, days_in_accumulation_state={sample_gainer.get('days_in_accumulation_state')}")
+            
             # Check if Nifty50 is already in the list
             nifty_included = False
             nifty_prediction = None
@@ -1468,6 +1426,29 @@ class ProphetPricePredictor:
                     nifty_result = cursor.fetchone()
                     if nifty_result:
                         nifty_prediction = dict(nifty_result)
+                        # Fetch accumulation data for Nifty50
+                        try:
+                            cursor.execute("""
+                                SELECT state, days_in_state, confidence_score
+                                FROM my_schema.accumulation_distribution
+                                WHERE scrip_id = %s
+                                ORDER BY analysis_date DESC
+                                LIMIT 1
+                            """, (nifty_id,))
+                            acc_result = cursor.fetchone()
+                            if acc_result:
+                                nifty_prediction['accumulation_state'] = acc_result.get('state')
+                                nifty_prediction['days_in_accumulation_state'] = acc_result.get('days_in_state')
+                                nifty_prediction['accumulation_confidence'] = acc_result.get('confidence_score')
+                            else:
+                                nifty_prediction['accumulation_state'] = None
+                                nifty_prediction['days_in_accumulation_state'] = None
+                                nifty_prediction['accumulation_confidence'] = None
+                        except Exception as e:
+                            logger.warning(f"Error fetching accumulation data for Nifty50: {e}")
+                            nifty_prediction['accumulation_state'] = None
+                            nifty_prediction['days_in_accumulation_state'] = None
+                            nifty_prediction['accumulation_confidence'] = None
                         break
             
             # Parse prediction_details JSON and extract cv_metrics for each gainer
