@@ -768,23 +768,6 @@
             </div>
         </div>
 
-        <!-- Volume Profile Chart Section (full width) -->
-        <div class="card" id="section-volume-profile" style="margin-bottom: 20px;">
-            <div class="card-header">
-                <h3 class="card-title">📊 Volume Profile Chart</h3>
-                <span class="card-icon">📊</span>
-                <div style="display: flex; gap: 10px; align-items: center; margin-left: 10px;">
-                    <input type="text" id="volumeProfileScripId" placeholder="Stock Symbol (e.g., NIFTY)" value="NIFTY" style="padding: 4px 8px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px; width: 150px;">
-                    <button onclick="loadVolumeProfile()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                        🔄 Load Volume Profile
-                    </button>
-                </div>
-            </div>
-            <div class="tpo-chart-container" style="height: 700px; background-color: #000;">
-                <img id="volumeProfileChartImage" src="" alt="Volume Profile Chart" style="width: 100%; height: 100%; object-fit: contain; border-radius: 8px;" />
-            </div>
-        </div>
-
         <!-- Pre-market TPO Analysis Section -->
         <div class="card" id="section-premarket" style="margin-bottom: 20px;">
             <div class="card-header" style="background-color: #007bff; color: white;">
@@ -1767,6 +1750,25 @@
                     </div>
                 </div>
                 
+                <!-- Cron Job Status Monitor Section -->
+                <div class="card" id="section-cron-status" style="margin-bottom: 20px; margin-top: 20px;">
+                    <div class="card-header" style="background-color: #17a2b8; color: white;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h3 class="card-title" style="color: white;">📊 Cron Jobs Status Monitor</h3>
+                            <button onclick="loadCronJobsStatus()" class="btn" style="padding: 6px 12px; background-color: white; color: #17a2b8; border: none; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer;">
+                                🔄 Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div style="padding: 15px;">
+                        <div id="cronJobsStatusContainer" style="font-size: 12px;">
+                            <div style="text-align: center; padding: 20px; color: #666;">
+                                Click Refresh to load cron jobs status
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Cron Utilities Section -->
                 <div class="card" id="section-cron" style="margin-bottom: 20px; margin-top: 20px;">
                     <div class="card-header" style="background-color: #fd7e14; color: white;">
@@ -2295,6 +2297,10 @@
     <script src="/static/tpo-charts.js"></script>
     
     <script>
+        // Base URL for task API endpoints (background tasks container on port 8001)
+        // Use the same hostname as the current page, but port 8001
+        const TASKS_API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8001`;
+        
         // Sidebar Navigation Configuration
         const sidebarSections = {
             'live-market': [
@@ -3250,39 +3256,6 @@
                 .catch(error => {
                     console.error('Error fetching 5-day TPO chart:', error);
                     chartImage.alt = 'Error loading chart';
-                });
-        }
-        
-        // Load Volume Profile Chart
-        function loadVolumeProfile() {
-            const chartImage = document.getElementById('volumeProfileChartImage');
-            const scripIdInput = document.getElementById('volumeProfileScripId');
-            if (!chartImage || !scripIdInput) return;
-            
-            const scripId = scripIdInput.value.trim().toUpperCase();
-            if (!scripId) {
-                alert('Please enter a stock symbol');
-                return;
-            }
-            
-            chartImage.src = '';
-            chartImage.style.display = 'none';
-            
-            fetch(`/api/volume_profile?scrip_id=${encodeURIComponent(scripId)}&num_days=5&tick_size=5.0`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success && data.chart_image) {
-                        chartImage.src = data.chart_image;
-                        chartImage.style.display = 'block';
-                    } else {
-                        chartImage.alt = data.error || `No volume data available for ${scripId}`;
-                        console.error('Error loading volume profile:', data.error || 'Unknown error');
-                        alert(data.error || `No volume data available for ${scripId}`);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching volume profile:', error);
-                    alert('Error loading volume profile. Please try again.');
                 });
         }
         
@@ -6622,8 +6595,8 @@
             btn.innerHTML = '⏳ Refreshing...';
             statusDiv.innerHTML = '<span style="color: #666;">Starting stock price refresh process...</span>';
             
-            // Call API endpoint
-            fetch('/api/refresh_stock_prices', {
+            // Call API endpoint (task endpoint on port 8001)
+            fetch(`${TASKS_API_BASE_URL}/api/refresh_stock_prices`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -6733,6 +6706,131 @@
                 btn.innerHTML = '🚀 Start KiteWS (Runs until 3:30 PM IST)';
                 statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message || 'Failed to start KiteWS'}</span>`;
             });
+        }
+        
+        // Load and display cron jobs status
+        function loadCronJobsStatus() {
+            const container = document.getElementById('cronJobsStatusContainer');
+            if (!container) {
+                console.error('Cron jobs status container not found');
+                return;
+            }
+            
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">⏳ Loading cron jobs status...</div>';
+            
+            fetch('/api/cron_jobs_status')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success || !data.status) {
+                        container.innerHTML = `<div style="padding: 20px; color: #dc3545; text-align: center;">❌ Error: ${data.error || 'Failed to load cron jobs status'}</div>`;
+                        return;
+                    }
+                    
+                    const status = data.status;
+                    const jobs = status.jobs;
+                    const summary = status.summary;
+                    
+                    // Build status table
+                    let html = `
+                        <div style="margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 4px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                                <div><strong>Total Jobs:</strong> ${summary.total}</div>
+                                <div style="color: #28a745;"><strong>Running:</strong> ${summary.running}</div>
+                                <div style="color: #dc3545;"><strong>Expected but Not Running:</strong> ${summary.expected_but_not_running}</div>
+                                <div style="color: #6c757d;"><strong>Not Expected:</strong> ${summary.not_expected}</div>
+                            </div>
+                            <div style="margin-top: 5px; font-size: 11px; color: #666;">
+                                Last checked: ${new Date(status.timestamp).toLocaleString()}
+                            </div>
+                        </div>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                                <thead>
+                                    <tr style="background-color: #f8f9fa;">
+                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Job Name</th>
+                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Schedule</th>
+                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Status</th>
+                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Processes</th>
+                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">PIDs</th>
+                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Last Run</th>
+                                        <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Log File</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    
+                    // Sort jobs: running first, then expected but not running, then others
+                    const sortedJobs = Object.values(jobs).sort((a, b) => {
+                        if (a.is_running && !b.is_running) return -1;
+                        if (!a.is_running && b.is_running) return 1;
+                        if (a.status === 'expected_but_not_running' && b.status !== 'expected_but_not_running') return -1;
+                        if (a.status !== 'expected_but_not_running' && b.status === 'expected_but_not_running') return 1;
+                        return a.name.localeCompare(b.name);
+                    });
+                    
+                    sortedJobs.forEach(job => {
+                        const statusColor = job.status_color === 'green' ? '#28a745' : 
+                                          job.status_color === 'red' ? '#dc3545' : '#6c757d';
+                        const statusIcon = job.is_running ? '✅' : 
+                                        job.status === 'expected_but_not_running' ? '❌' : '⚪';
+                        const statusText = job.is_running ? 'Running' : 
+                                         job.status === 'expected_but_not_running' ? 'Expected but Not Running' : 
+                                         'Not Expected';
+                        
+                        const pidsText = job.pids.length > 0 ? job.pids.join(', ') : '-';
+                        const lastRunText = job.last_run_timestamp_readable || job.last_run_timestamp || 'Never';
+                        const logInfo = job.log_info;
+                        const logText = logInfo && logInfo.exists ? 
+                            `${logInfo.last_modified_readable || 'N/A'}<br><small style="color: #666;">${logInfo.size_mb} MB</small>` : 
+                            'No log file';
+                        
+                        html += `
+                            <tr style="border-bottom: 1px solid #eee;">
+                                <td style="padding: 8px; border: 1px solid #ddd; font-weight: 600;">${job.name}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; font-size: 11px; color: #666;">${job.schedule}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">
+                                    <span style="color: ${statusColor}; font-weight: 600;">${statusIcon} ${statusText}</span>
+                                </td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${job.process_count}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 11px; font-family: monospace;">${pidsText}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; font-size: 11px; color: #666;">${lastRunText}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; font-size: 11px;">${logText}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                    
+                    container.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error loading cron jobs status:', error);
+                    container.innerHTML = `<div style="padding: 20px; color: #dc3545; text-align: center;">❌ Error: ${error.message || 'Failed to load cron jobs status'}</div>`;
+                });
+        }
+        
+        // Auto-refresh cron jobs status every 30 seconds when on utilities tab
+        let cronStatusInterval = null;
+        function startCronStatusAutoRefresh() {
+            // Load immediately
+            loadCronJobsStatus();
+            
+            // Then refresh every 30 seconds
+            if (cronStatusInterval) {
+                clearInterval(cronStatusInterval);
+            }
+            cronStatusInterval = setInterval(loadCronJobsStatus, 30000);
+        }
+        
+        function stopCronStatusAutoRefresh() {
+            if (cronStatusInterval) {
+                clearInterval(cronStatusInterval);
+                cronStatusInterval = null;
+            }
         }
         
         function refreshHoldings() {
@@ -7751,10 +7849,16 @@
             stopOrderFlowAnalysisAutoRefresh();
             stopFootprintAnalysisAutoRefresh();
             stopMicroLevelsAutoRefresh();
+            stopCronStatusAutoRefresh();
         });
 
         // Tab Switching Functionality
         function switchTab(tabName) {
+            // Stop auto-refresh for utilities tab if switching away
+            if (tabName !== 'utilities') {
+                stopCronStatusAutoRefresh();
+            }
+            
             // Hide all tab contents
             document.querySelectorAll('.tab-content').forEach(tab => {
                 tab.classList.remove('active');
@@ -7787,6 +7891,13 @@
                     // Stop polling when switching away from Stocks tab
                     stopGainersLosersPolling();
                     stopTopGainersPolling(); // Also stop top gainers polling
+                }
+                
+                // Start/stop cron status auto-refresh for utilities tab
+                if (tabName === 'utilities') {
+                    startCronStatusAutoRefresh();
+                } else {
+                    stopCronStatusAutoRefresh();
                 }
                 
                 // Load data based on tab name
@@ -8692,7 +8803,7 @@
                 tbody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Starting background prediction generation... Predictions will appear as they are calculated.</td></tr>';
             }
             
-            let url = `/api/prophet_predictions/generate?prediction_days=${predictionDays}`;
+            let url = `${TASKS_API_BASE_URL}/api/prophet_predictions/generate?prediction_days=${predictionDays}`;
             if (limit) {
                 url += `&limit=${limit}`;
             }

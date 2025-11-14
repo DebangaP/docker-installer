@@ -642,6 +642,58 @@ async def api_system_status():
         "last_update": status['last_update']
     }, "/api/system_status")
 
+@app.get("/api/cron_jobs_status")
+async def api_cron_jobs_status():
+    """API endpoint to get status of all cron jobs"""
+    try:
+        from common.CronJobStatusChecker import CronJobStatusChecker
+        
+        checker = CronJobStatusChecker()
+        status = checker.get_all_jobs_status()
+        
+        return {
+            "success": True,
+            "status": status
+        }
+    except Exception as e:
+        logging.error(f"Error getting cron jobs status: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "status": None
+        }
+
+@app.get("/api/cron_job_status/{job_name}")
+async def api_cron_job_status(job_name: str):
+    """API endpoint to get status of a specific cron job"""
+    try:
+        from common.CronJobStatusChecker import CronJobStatusChecker
+        
+        checker = CronJobStatusChecker()
+        status = checker.get_job_status(job_name)
+        
+        if status:
+            return {
+                "success": True,
+                "status": status
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"Job '{job_name}' not found"
+            }
+    except Exception as e:
+        logging.error(f"Error getting cron job status for {job_name}: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "status": None
+        }
+
 @app.get("/api/tpo_charts")
 async def api_tpo_charts(analysis_date: str = Query(None)):
     """API endpoint to generate TPO chart images"""

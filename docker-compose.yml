@@ -26,7 +26,7 @@ services:
       - ./postgres:/docker-entrypoint-initdb.d
       - postgres-data:/var/lib/postgresql/data1     #if there are initialization errors after multiple runs --> docker rm -f $(docker ps -a -q),  docker volume rm customapp_postgres-data
     ports:
-      - "5434:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 10s
@@ -35,10 +35,10 @@ services:
     networks:
       - app-network
 
-  python:     # if there are older builds, then the new packages in requirements.txt won't be installed. Run "docker compose build --no-cache"
+  python:     # Frontend container - FastAPI server only
     build:
       context: ./Custom-App
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.main
     ports:
       - "8000:8000"  # FastAPI
     restart: unless-stopped
@@ -60,6 +60,22 @@ services:
       - app-network
     volumes:
       - redis-data:/data
+
+  python-tasks:     # Background tasks container - cron jobs + on-demand API
+    build:
+      context: ./Custom-App
+      dockerfile: app/task-services/Dockerfile.tasks
+    ports:
+      - "8001:8001"  # FastAPI for on-demand task triggers
+    restart: unless-stopped
+    volumes:
+      - ./Custom-App/app:/app
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+    # Command is set in Dockerfile.tasks, no need to override here
+
 
 volumes:
   grafana-storage:

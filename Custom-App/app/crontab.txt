@@ -18,17 +18,20 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 0 10 * * 0,6 root cd /app && python /app/kite/KiteFetchOptions.py >> /app/logs/options_fetch.log 2>&1 &
 0 15 * * 0,6 root cd /app && python /app/kite/KiteFetchOptions.py >> /app/logs/options_fetch.log 2>&1 &
 
-# Update OHLC price data every 30 minutes during market hours
-*/30 9-16 * * 1-5 root python /app/kite/InsertOHLC.py &
+# Update OHLC price data once daily (after market close)
+0 16 * * 1-5 root cd /app && python /app/kite/InsertOHLC.py >> /app/logs/insert_ohlc.log 2>&1 &
 
-
-# Refresh swing trade recommendations every 30 minutes during market hours (same frequency as OHLC)
+# Refresh swing trade recommendations every 30 minutes during market hours
 */30 9-16 * * 1-5 root cd /app && python /app/stocks/RefreshSwingTrades.py >> /app/logs/swing_trades_refresh.log 2>&1 &
 
 # Refresh MF NAV data daily (after market close)
-0 18 * * 1-5 root cd /app && python /app/holdings/RefreshMFNAV.py >> /app/logs/mf_nav_refresh.log 2>&1 &
+0 16 * * 1-5 root cd /app && python /app/holdings/RefreshMFNAV.py >> /app/logs/mf_nav_refresh.log 2>&1 &
 
 # Run daily Accumulation/ distribution Analysis at 4:30 pm
 30 16 * * 1-5 root cd /app && python /app/market/AccumDistAnalysis.py >> /app/logs/accum_dist.log 2>&1 &
 
+# Run daily Prophet predictions at 7:00 PM (after market close, OHLC update, and accumulation analysis)
+0 16 * * 1-5 root cd /app && python /app/scheduled_jobs/PredictionScheduler.py >> /app/logs/prediction_scheduler.log 2>&1 &
 
+# Monitor cron jobs status every 10 minutes during market hours
+*/10 9-16 * * 1-5 root cd /app && python /app/scheduled_jobs/CronJobMonitor.py >> /app/logs/cron_monitor.log 2>&1 &
