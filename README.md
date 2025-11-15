@@ -19,7 +19,6 @@ To be noted that this is not a Production grade app.
 
 
 9. Once Access Token is generated, its valid for an entire day
-10. Visit **http://localhost:3001/d/my-dashboard/sample-dashboard?orgId=1&from=now-90d&to=now&timezone=browser** to see your Grafana Dashboard (user=admin/ password=adminpassword)
 
 **NIFTY50 Ticks**
 
