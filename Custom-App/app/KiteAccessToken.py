@@ -805,7 +805,7 @@ async def api_tpo_charts(analysis_date: str = Query(None)):
 
 @app.get("/api/tpo_5day_chart")
 async def api_tpo_5day_chart(analysis_date: str = Query(None)):
-    """API endpoint to generate 5-day TPO chart with volume profiles"""
+    """API endpoint to generate 5-day TPO chart"""
     try:
         from market.CalculateTPO import PostgresDataFetcher, plot_5day_tpo_chart
         import matplotlib

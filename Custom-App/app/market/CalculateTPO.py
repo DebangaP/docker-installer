@@ -295,8 +295,8 @@ class PostgresDataFetcher:
         if not table_name.isidentifier():
             raise ValueError("Invalid table name")
         
-        # Build query: select timestamp, last_price, and volume for TPO and volume profile
-        query = "SELECT timestamp, last_price, volume FROM my_schema.\"{}\"".format(table_name)
+        # Build query: select timestamp and last_price for TPO profile
+        query = "SELECT timestamp, last_price FROM my_schema.\"{}\"".format(table_name)
         params = {}
         
         conditions = []

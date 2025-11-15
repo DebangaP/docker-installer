@@ -35,6 +35,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends tzdata && \
 # Create logs directory
 RUN mkdir -p /app/logs && chmod 755 /app/logs
 
+# Copy entrypoint script to handle line ending conversion
+COPY app/entrypoint.sh /entrypoint.sh
+# Convert line endings from CRLF to LF (fixes Windows line ending issues)
+RUN sed -i 's/\r$//' /entrypoint.sh || true
+RUN chmod +x /entrypoint.sh
+
 # Expose ports for FastAPI (8000)
 EXPOSE 8000
 

@@ -45,10 +45,13 @@ RUN chmod 0644 /etc/cron.d/crontab && \
 # Copy start-tasks.sh script and run_tasks_api.py wrapper
 COPY app/task-services/start-tasks.sh /start-tasks.sh
 COPY app/task-services/run_tasks_api.py /app/task-services/run_tasks_api.py
-RUN chmod +x /start-tasks.sh /app/task-services/run_tasks_api.py
+COPY app/task-services/entrypoint.sh /entrypoint.sh
+# Convert line endings from CRLF to LF (fixes Windows line ending issues)
+RUN sed -i 's/\r$//' /start-tasks.sh /entrypoint.sh || true
+RUN chmod +x /start-tasks.sh /app/task-services/run_tasks_api.py /entrypoint.sh
 
 # Expose port for FastAPI (8001)
 EXPOSE 8001
 
-# Default command
-CMD ["bash", "/start-tasks.sh"]
+# Default command - use entrypoint to handle line ending conversion at runtime
+CMD ["bash", "/entrypoint.sh"]
