@@ -26,7 +26,7 @@ services:
       - ./postgres:/docker-entrypoint-initdb.d
       - postgres-data:/var/lib/postgresql/data1     #if there are initialization errors after multiple runs --> docker rm -f $(docker ps -a -q),  docker volume rm customapp_postgres-data
     ports:
-      - "5433:5432"
+      - "5434:5432"
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 10s
@@ -49,7 +49,7 @@ services:
       - postgres
     networks:
       - app-network
-    command: ["bash", "/start.sh"]
+    command: ["bash", "/entrypoint.sh"]
 
   redis:
     image: redis:7-alpine
@@ -67,7 +67,7 @@ services:
       dockerfile: app/task-services/Dockerfile.tasks
     ports:
       - "8001:8001"  # FastAPI for on-demand task triggers
-    restart: unless-stopped
+    #restart: unless-stopped
     volumes:
       - ./Custom-App/app:/app
     depends_on:

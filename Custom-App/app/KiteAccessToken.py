@@ -4881,7 +4881,7 @@ async def api_positions():
         return cached_json_response({"error": str(e), "positions": []}, "/api/positions")
 
 @app.get("/api/candlestick/{trading_symbol}")
-async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90)):
+async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90), prediction_days: int = Query(None, description="Number of prediction days to filter by (optional)")):
     """API endpoint to get candlestick chart data for a stock"""
     try:
         logging.info(f"Candlestick API called for trading_symbol='{trading_symbol}' (type: {type(trading_symbol)}, len: {len(trading_symbol) if trading_symbol else 0})")
@@ -5033,26 +5033,9 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
         # Get Prophet prediction data (ENHANCED: add Ghost Prediction)
         prediction_data = None
         try:
-            # First try with ACTIVE status
-            cursor.execute("""
-                SELECT 
-                    predicted_price_change_pct,
-                    prediction_confidence,
-                    prediction_days,
-                    prediction_details,
-                    run_date,
-                    status
-                FROM my_schema.prophet_predictions
-                WHERE UPPER(TRIM(scrip_id)) = UPPER(TRIM(%s))
-                AND (status = 'ACTIVE' OR status IS NULL)
-                ORDER BY run_date DESC, prediction_days DESC
-                LIMIT 1
-            """, (trading_symbol,))
-            prediction_result = cursor.fetchone()
-            logging.info(f"Prediction query (ACTIVE) for {trading_symbol}: found={prediction_result is not None}")
-            
-            # If not found, try without status filter
-            if not prediction_result:
+            # Build query with optional prediction_days filter
+            if prediction_days is not None:
+                # First try with ACTIVE status and specific prediction_days
                 cursor.execute("""
                     SELECT 
                         predicted_price_change_pct,
@@ -5063,11 +5046,68 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
                         status
                     FROM my_schema.prophet_predictions
                     WHERE UPPER(TRIM(scrip_id)) = UPPER(TRIM(%s))
+                    AND (status = 'ACTIVE' OR status IS NULL)
+                    AND prediction_days = %s
+                    ORDER BY run_date DESC
+                    LIMIT 1
+                """, (trading_symbol, prediction_days))
+                prediction_result = cursor.fetchone()
+                logging.info(f"Prediction query (ACTIVE, prediction_days={prediction_days}) for {trading_symbol}: found={prediction_result is not None}")
+                
+                # If not found, try without status filter but with prediction_days
+                if not prediction_result:
+                    cursor.execute("""
+                        SELECT 
+                            predicted_price_change_pct,
+                            prediction_confidence,
+                            prediction_days,
+                            prediction_details,
+                            run_date,
+                            status
+                        FROM my_schema.prophet_predictions
+                        WHERE UPPER(TRIM(scrip_id)) = UPPER(TRIM(%s))
+                        AND prediction_days = %s
+                        ORDER BY run_date DESC
+                        LIMIT 1
+                    """, (trading_symbol, prediction_days))
+                    prediction_result = cursor.fetchone()
+                    logging.info(f"Prediction query (any status, prediction_days={prediction_days}) for {trading_symbol}: found={prediction_result is not None}")
+            else:
+                # First try with ACTIVE status (original behavior)
+                cursor.execute("""
+                    SELECT 
+                        predicted_price_change_pct,
+                        prediction_confidence,
+                        prediction_days,
+                        prediction_details,
+                        run_date,
+                        status
+                    FROM my_schema.prophet_predictions
+                    WHERE UPPER(TRIM(scrip_id)) = UPPER(TRIM(%s))
+                    AND (status = 'ACTIVE' OR status IS NULL)
                     ORDER BY run_date DESC, prediction_days DESC
                     LIMIT 1
                 """, (trading_symbol,))
                 prediction_result = cursor.fetchone()
-                logging.info(f"Prediction query (any status) for {trading_symbol}: found={prediction_result is not None}")
+                logging.info(f"Prediction query (ACTIVE) for {trading_symbol}: found={prediction_result is not None}")
+                
+                # If not found, try without status filter
+                if not prediction_result:
+                    cursor.execute("""
+                        SELECT 
+                            predicted_price_change_pct,
+                            prediction_confidence,
+                            prediction_days,
+                            prediction_details,
+                            run_date,
+                            status
+                        FROM my_schema.prophet_predictions
+                        WHERE UPPER(TRIM(scrip_id)) = UPPER(TRIM(%s))
+                        ORDER BY run_date DESC, prediction_days DESC
+                        LIMIT 1
+                    """, (trading_symbol,))
+                    prediction_result = cursor.fetchone()
+                    logging.info(f"Prediction query (any status) for {trading_symbol}: found={prediction_result is not None}")
             
             # Debug: Check what scrip_ids exist in the table
             if not prediction_result:

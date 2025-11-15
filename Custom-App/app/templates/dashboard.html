@@ -9962,8 +9962,15 @@
             if (!currentStockSymbol) return;
             
             const days = document.getElementById('chartDays').value;
+            const daysSelect = document.getElementById('predictionDaysSelect');
+            const predictionDays = daysSelect ? parseInt(daysSelect.value) : null;
             
-            fetch(`/api/candlestick/${currentStockSymbol}?days=${days}`)
+            let url = `/api/candlestick/${currentStockSymbol}?days=${days}`;
+            if (predictionDays) {
+                url += `&prediction_days=${predictionDays}`;
+            }
+            
+            fetch(url)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error) {
