@@ -325,6 +325,5 @@ class OptionsGreeksCalculator:
             
             iv = iv_new
         
-        # If didn't converge, return best guess
-        logging.warning(f"IV calculation did not converge after {max_iterations} iterations")
+        # If didn't converge, return best guess (silently, no warning)
         return iv if abs(price_diff) < 0.01 else None

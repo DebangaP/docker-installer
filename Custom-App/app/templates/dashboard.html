@@ -1245,7 +1245,7 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Predicted Gain %</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Ghost Confidence</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
-                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px; white-space: normal; word-wrap: break-word; max-width: 100px;" title="Accumulation /Distribution state">Accumulation/<br/>Distribution</th>
+                                    <th onclick="sortGainers('accumulation_state')" style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px; white-space: normal; word-wrap: break-word; max-width: 100px; cursor: pointer; user-select: none;" id="header_gainers_accumulation_state" title="Accumulation /Distribution state">Accumulation/<br/>Distribution ↕</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;" title="Days in accumulation/distribution state">Days in State</th>
                                 </tr>
                             </thead>
@@ -1421,7 +1421,7 @@
                         <button onclick="generateProphetPredictionsWithDays()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #17a2b8; color: white; border: none;">
                             ⚡ Generate Predictions
                         </button>
-                        <button onclick="loadTopGainers()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #28a745; border: none;">
+                        <button onclick="loadTopGainers(); loadTopLosers();" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #28a745; border: none;">
                             🔄 Refresh
                         </button>
                     </div>
@@ -1454,7 +1454,7 @@
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;" title="Mean Absolute Percentage Error">MAPE (%)</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;" title="Root Mean Squared Error">RMSE</th>
-                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px; white-space: normal; word-wrap: break-word; max-width: 100px;" title="Accumulation /Distribution state">Accumulation/<br/>Distribution</th>
+                                    <th onclick="sortTopGainersByAccumulation()" style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px; white-space: normal; word-wrap: break-word; max-width: 100px; cursor: pointer; user-select: none;" id="header_top_gainers_accumulation_state" title="Accumulation /Distribution state">Accumulation/<br/>Distribution ↕</th>
                                     <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;" title="Days in accumulation/distribution state">Days in State</th>
                                 </tr>
                             </thead>
@@ -1467,6 +1467,45 @@
                     </div>
                     <div id="topGainersPagination" style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 15px; padding: 10px;"></div>
                     <div id="topGainersStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                    
+                    <!-- Top Potential Losers Header -->
+                    <div style="margin-top: 30px; margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 4px; border-left: 4px solid #dc3545; display: flex; justify-content: space-between; align-items: center;">
+                        <h4 style="margin: 0; color: #333; font-size: 16px; font-weight: 600;">📉 Top Potential Losers (Confidence > 50%) <span id="topLosersTitleSuffix" style="font-size: 14px; color: #666; font-weight: normal;">(Top 20 by default)</span></h4>
+                        <button id="clearSectorFilterLosersBtn" onclick="clearSectorFilterLosers()" style="display: none; padding: 6px 12px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">
+                            ✕ Clear Sector Filter
+                        </button>
+                    </div>
+                    <div id="topLosersContainer" style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                            <thead>
+                                <tr style="background-color: #f8f9fa;">
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 12px;">Rank</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 12px;">Symbol</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: left; font-weight: 600; font-size: 12px; cursor: pointer;" onclick="sortBySectorColumnLosers()" title="Click to sort by sector">
+                                        Sector <span id="sectorSortIndicatorLosers" style="font-size: 10px;"></span>
+                                    </th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Sparkline (last 30D)</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Current Price</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Prediction (60D) Target</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;">Ghost Predicted Loss %</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Ghost Confidence</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Days in Leaderboard</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;">Prediction Days</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;" title="Mean Absolute Percentage Error">MAPE (%)</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: right; font-weight: 600; font-size: 12px;" title="Root Mean Squared Error">RMSE</th>
+                                    <th onclick="sortTopLosersByAccumulation()" style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px; white-space: normal; word-wrap: break-word; max-width: 100px; cursor: pointer; user-select: none;" id="header_top_losers_accumulation_state" title="Accumulation /Distribution state">Accumulation/<br/>Distribution ↕</th>
+                                    <th style="padding: 6px 8px; border: 1px solid #ddd; text-align: center; font-weight: 600; font-size: 12px;" title="Days in accumulation/distribution state">Days in State</th>
+                                </tr>
+                            </thead>
+                            <tbody id="topLosersTableBody">
+                                <tr>
+                                    <td colspan="14" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Click Refresh to load top losers</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="topLosersPagination" style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 15px; padding: 10px;"></div>
+                    <div id="topLosersStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
                 </div>
             </div>
             
@@ -3806,6 +3845,178 @@
         let lastKnownLatestTimestamp = null;
         let gainersLosersPollInterval = null;
         
+        // Variables for gainers sorting
+        let allGainersData = [];
+        let gainersSortColumn = null;
+        let gainersSortDirection = 'asc';
+        
+        // Sort gainers function
+        function sortGainers(column) {
+            if (gainersSortColumn === column) {
+                // Toggle direction
+                gainersSortDirection = gainersSortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                gainersSortColumn = column;
+                gainersSortDirection = 'asc';
+            }
+            
+            // Update header indicator
+            updateGainersSortIndicator();
+            
+            // Re-render the table with sorted data
+            renderGainersTable();
+        }
+        
+        // Update sort indicator in gainers table header
+        function updateGainersSortIndicator() {
+            const header = document.getElementById('header_gainers_accumulation_state');
+            if (header) {
+                if (gainersSortColumn === 'accumulation_state') {
+                    header.innerHTML = `Accumulation/<br/>Distribution ${gainersSortDirection === 'asc' ? '↑' : '↓'}`;
+                } else {
+                    header.innerHTML = `Accumulation/<br/>Distribution ↕`;
+                }
+            }
+        }
+        
+        // Render gainers table with sorting
+        function renderGainersTable() {
+            const tbody = document.getElementById('gainersTableBody');
+            if (!tbody) return;
+            
+            tbody.innerHTML = '';
+            
+            if (!allGainersData || allGainersData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="11" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">No gainers data available</td></tr>';
+                return;
+            }
+            
+            // Create a copy for sorting
+            let sortedGainers = [...allGainersData];
+            
+            // Apply sorting
+            if (gainersSortColumn === 'accumulation_state') {
+                sortedGainers.sort((a, b) => {
+                    const stateA = (a.accumulation_state || '').toUpperCase();
+                    const stateB = (b.accumulation_state || '').toUpperCase();
+                    
+                    // Define sort order: ACCUMULATION < DISTRIBUTION < NEUTRAL < N/A
+                    const stateOrder = {
+                        'ACCUMULATION': 1,
+                        'DISTRIBUTION': 2,
+                        'NEUTRAL': 3,
+                        '': 4
+                    };
+                    
+                    const orderA = stateOrder[stateA] || 4;
+                    const orderB = stateOrder[stateB] || 4;
+                    
+                    if (gainersSortDirection === 'asc') {
+                        return orderA - orderB;
+                    } else {
+                        return orderB - orderA;
+                    }
+                });
+            }
+            
+            const symbols = [];
+            sortedGainers.forEach((gainer, index) => {
+                try {
+                    const symbol = gainer.scrip_id || '-';
+                    symbols.push(symbol);
+                    const previousPrice = gainer.previous_price || 0;
+                    const currentPrice = gainer.current_price || 0;
+                    const gain = gainer.gain || 0;
+                    
+                    // Prophet prediction data
+                    const prophetPredictionPct = gainer.prophet_prediction_pct;
+                    const prophetConfidence = gainer.prophet_confidence;
+                    const predictionDays = gainer.prediction_days;
+                    
+                    // Format Prophet prediction display
+                    let prophetPredictionDisplay = '<span style="color: #999; font-size: 12px;">N/A</span>';
+                    if (prophetPredictionPct !== null && prophetPredictionPct !== undefined && !isNaN(prophetPredictionPct)) {
+                        try {
+                            const pctValue = parseFloat(prophetPredictionPct);
+                            if (pctValue >= 0) {
+                                prophetPredictionDisplay = `<div style="color: #28a745; font-weight: bold;">+${pctValue.toFixed(2)}%</div>`;
+                            } else {
+                                prophetPredictionDisplay = `<div style="color: #dc3545; font-weight: bold;">${pctValue.toFixed(2)}%</div>`;
+                            }
+                        } catch (e) {
+                            console.error('Error formatting prophet prediction:', e, prophetPredictionPct);
+                        }
+                    }
+                    
+                    let prophetConfidenceDisplay = '<span style="color: #999; font-size: 12px;">N/A</span>';
+                    if (prophetConfidence !== null && prophetConfidence !== undefined && !isNaN(prophetConfidence)) {
+                        try {
+                            const confValue = parseFloat(prophetConfidence);
+                            if (confValue >= 80) {
+                                prophetConfidenceDisplay = `<span style="color: #28a745; font-weight: bold;">${confValue.toFixed(0)}%</span>`;
+                            } else if (confValue >= 70) {
+                                prophetConfidenceDisplay = `<span style="color: #ffc107; font-weight: bold;">${confValue.toFixed(0)}%</span>`;
+                            } else {
+                                prophetConfidenceDisplay = `<span style="color: #dc3545; font-weight: bold;">${confValue.toFixed(0)}%</span>`;
+                            }
+                        } catch (e) {
+                            console.error('Error formatting prophet confidence:', e, prophetConfidence);
+                        }
+                    }
+                    
+                    const predictionDaysDisplay = (predictionDays !== null && predictionDays !== undefined && !isNaN(predictionDays))
+                        ? `${predictionDays} days`
+                        : '<span style="color: #999; font-size: 12px;">N/A</span>';
+                    
+                    const row = `
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666; font-size: 12px;">${index + 1}</td>
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
+                            <td style="padding: 4px; border: 1px solid #ddd; text-align: center;">
+                                <canvas id="sparkline-gainer-${symbol}" width="100" height="35" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
+                            </td>
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">₹${Number(previousPrice).toFixed(2)}</td>
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; font-size: 12px;">₹${Number(currentPrice).toFixed(2)}</td>
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: #28a745; font-size: 12px;">
+                                ${gain >= 0 ? '+' : ''}${Number(gain).toFixed(2)}%
+                            </td>
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">${prophetPredictionDisplay}</td>
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">${prophetConfidenceDisplay}</td>
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">${predictionDaysDisplay}</td>
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                                ${gainer.accumulation_state ? `
+                                    ${gainer.accumulation_state === 'ACCUMULATION' ? `
+                                        <span style="color: #28a745; font-weight: bold; font-size: 11px;">✓ Accumulation</span>
+                                    ` : gainer.accumulation_state === 'DISTRIBUTION' ? `
+                                        <span style="color: #dc3545; font-weight: bold; font-size: 11px;">⚠ Distribution</span>
+                                    ` : `
+                                        <span style="color: #999; font-size: 11px;">Neutral</span>
+                                    `}
+                                ` : '<span style="color: #999; font-size: 11px;">N/A</span>'}
+                            </td>
+                            <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                                ${gainer.days_in_accumulation_state !== null && gainer.days_in_accumulation_state !== undefined && gainer.days_in_accumulation_state > 0 ? `
+                                    <span style="color: #666; font-weight: bold; font-size: 12px;">${gainer.days_in_accumulation_state}</span>
+                                ` : '<span style="color: #999; font-size: 11px;">-</span>'}
+                            </td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += row;
+                } catch (err) {
+                    console.error('Error rendering gainer row:', err, gainer);
+                }
+            });
+            
+            // Load sparklines for gainers after a short delay to ensure DOM is ready
+            setTimeout(() => {
+                symbols.forEach(symbol => {
+                    if (symbol && symbol !== '-') {
+                        loadSparkline(`gainer-${symbol}`);
+                    }
+                });
+            }, 100);
+        }
+        
         // Load gainers and losers data
         function loadGainersLosers() {
             // Load gainers without caching
@@ -3829,9 +4040,6 @@
                     
                     // Note: We'll update timestamp from the polling endpoint
                     
-                    const tbody = document.getElementById('gainersTableBody');
-                    tbody.innerHTML = '';
-                    
                     console.log('Gainers data check:', {
                         hasGainers: !!data.gainers,
                         gainersType: typeof data.gainers,
@@ -3841,116 +4049,16 @@
                     
                     if (!data.gainers || data.gainers.length === 0) {
                         console.warn('No gainers data in response:', data);
-                        tbody.innerHTML = '<tr><td colspan="11" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">No gainers data available</td></tr>';
+                        allGainersData = [];
+                        renderGainersTable();
                         return;
                     }
                     
-                    const symbols = [];
-                    data.gainers.forEach((gainer, index) => {
-                        try {
-                            const symbol = gainer.scrip_id || '-';
-                            symbols.push(symbol);
-                            const previousPrice = gainer.previous_price || 0;
-                            const currentPrice = gainer.current_price || 0;
-                            const gain = gainer.gain || 0;
-                            
-                            // Prophet prediction data
-                            const prophetPredictionPct = gainer.prophet_prediction_pct;
-                            const prophetConfidence = gainer.prophet_confidence;
-                            const predictionDays = gainer.prediction_days;
-                            
-                            // Debug logging for first gainer
-                            if (index === 0) {
-                                console.log('First gainer Prophet data:', {
-                                    prophet_prediction_pct: prophetPredictionPct,
-                                    prophet_confidence: prophetConfidence,
-                                    prediction_days: predictionDays,
-                                    full_gainer: gainer
-                                });
-                            }
-                            
-                            // Format Prophet prediction display
-                            let prophetPredictionDisplay = '<span style="color: #999; font-size: 12px;">N/A</span>';
-                            if (prophetPredictionPct !== null && prophetPredictionPct !== undefined && !isNaN(prophetPredictionPct)) {
-                                try {
-                                    const pctValue = parseFloat(prophetPredictionPct);
-                                    if (pctValue >= 0) {
-                                        prophetPredictionDisplay = `<div style="color: #28a745; font-weight: bold;">+${pctValue.toFixed(2)}%</div>`;
-                                    } else {
-                                        prophetPredictionDisplay = `<div style="color: #dc3545; font-weight: bold;">${pctValue.toFixed(2)}%</div>`;
-                                    }
-                                } catch (e) {
-                                    console.error('Error formatting prophet prediction:', e, prophetPredictionPct);
-                                }
-                            }
-                            
-                            let prophetConfidenceDisplay = '<span style="color: #999; font-size: 12px;">N/A</span>';
-                            if (prophetConfidence !== null && prophetConfidence !== undefined && !isNaN(prophetConfidence)) {
-                                try {
-                                    const confValue = parseFloat(prophetConfidence);
-                                    if (confValue >= 80) {
-                                        prophetConfidenceDisplay = `<span style="color: #28a745; font-weight: bold;">${confValue.toFixed(0)}%</span>`;
-                                    } else if (confValue >= 70) {
-                                        prophetConfidenceDisplay = `<span style="color: #ffc107; font-weight: bold;">${confValue.toFixed(0)}%</span>`;
-                                    } else {
-                                        prophetConfidenceDisplay = `<span style="color: #dc3545; font-weight: bold;">${confValue.toFixed(0)}%</span>`;
-                                    }
-                                } catch (e) {
-                                    console.error('Error formatting prophet confidence:', e, prophetConfidence);
-                                }
-                            }
-                            
-                            const predictionDaysDisplay = (predictionDays !== null && predictionDays !== undefined && !isNaN(predictionDays))
-                                ? `${predictionDays} days`
-                                : '<span style="color: #999; font-size: 12px;">N/A</span>';
-                            
-                            const row = `
-                                <tr style="border-bottom: 1px solid #eee;">
-                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666; font-size: 12px;">${index + 1}</td>
-                                    <td style="padding: 5px 8px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
-                                    <td style="padding: 4px; border: 1px solid #ddd; text-align: center;">
-                                        <canvas id="sparkline-gainer-${symbol}" width="100" height="35" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
-                                    </td>
-                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">₹${Number(previousPrice).toFixed(2)}</td>
-                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; font-size: 12px;">₹${Number(currentPrice).toFixed(2)}</td>
-                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: #28a745; font-size: 12px;">
-                                        ${gain >= 0 ? '+' : ''}${Number(gain).toFixed(2)}%
-                                    </td>
-                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">${prophetPredictionDisplay}</td>
-                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">${prophetConfidenceDisplay}</td>
-                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">${predictionDaysDisplay}</td>
-                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
-                                        ${gainer.accumulation_state ? `
-                                            ${gainer.accumulation_state === 'ACCUMULATION' ? `
-                                                <span style="color: #28a745; font-weight: bold; font-size: 11px;">✓ Accumulation</span>
-                                            ` : gainer.accumulation_state === 'DISTRIBUTION' ? `
-                                                <span style="color: #dc3545; font-weight: bold; font-size: 11px;">⚠ Distribution</span>
-                                            ` : `
-                                                <span style="color: #999; font-size: 11px;">Neutral</span>
-                                            `}
-                                        ` : '<span style="color: #999; font-size: 11px;">N/A</span>'}
-                                    </td>
-                                    <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
-                                        ${gainer.days_in_accumulation_state !== null && gainer.days_in_accumulation_state !== undefined && gainer.days_in_accumulation_state > 0 ? `
-                                            <span style="color: #666; font-weight: bold; font-size: 12px;">${gainer.days_in_accumulation_state}</span>
-                                        ` : '<span style="color: #999; font-size: 11px;">-</span>'}
-                                    </td>
-                                </tr>
-                            `;
-                            tbody.innerHTML += row;
-                        } catch (err) {
-                            console.error('Error rendering gainer row:', err, gainer);
-                        }
-                    });
+                    // Store gainers data globally for sorting
+                    allGainersData = data.gainers;
                     
-                    // Load sparklines for gainers after a short delay to ensure DOM is ready
-                    setTimeout(() => {
-                        symbols.forEach(symbol => {
-                            if (symbol && symbol !== '-') {
-                                loadSparkline(`gainer-${symbol}`);
-                            }
-                        });
-                    }, 100);
+                    // Render the table with current sort settings
+                    renderGainersTable();
                 })
                 .catch(error => {
                     console.error('Error fetching gainers:', error);
@@ -6712,17 +6820,22 @@
         function loadCronJobsStatus() {
             const container = document.getElementById('cronJobsStatusContainer');
             if (!container) {
-                console.error('Cron jobs status container not found');
-                return;
+                return; // Silently return if container not found
             }
             
-            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">⏳ Loading cron jobs status...</div>';
+            // Only show loading message on manual refresh, not auto-refresh
+            if (!isAutoRefresh) {
+                container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">⏳ Loading cron jobs status...</div>';
+            }
             
             fetch('/api/cron_jobs_status')
                 .then(response => response.json())
                 .then(data => {
                     if (!data.success || !data.status) {
-                        container.innerHTML = `<div style="padding: 20px; color: #dc3545; text-align: center;">❌ Error: ${data.error || 'Failed to load cron jobs status'}</div>`;
+                        // Only show error on manual refresh, silently fail on auto-refresh
+                        if (!isAutoRefresh) {
+                            container.innerHTML = `<div style="padding: 20px; color: #dc3545; text-align: center;">❌ Error: ${data.error || 'Failed to load cron jobs status'}</div>`;
+                        }
                         return;
                     }
                     
@@ -6808,22 +6921,30 @@
                     container.innerHTML = html;
                 })
                 .catch(error => {
-                    console.error('Error loading cron jobs status:', error);
-                    container.innerHTML = `<div style="padding: 20px; color: #dc3545; text-align: center;">❌ Error: ${error.message || 'Failed to load cron jobs status'}</div>`;
+                    // Only show error on manual refresh, silently fail on auto-refresh
+                    if (!isAutoRefresh) {
+                        container.innerHTML = `<div style="padding: 20px; color: #dc3545; text-align: center;">❌ Error: ${error.message || 'Failed to load cron jobs status'}</div>`;
+                    }
+                    // Silently handle errors during auto-refresh
                 });
         }
         
-        // Auto-refresh cron jobs status every 30 seconds when on utilities tab
+        // Auto-refresh cron jobs status silently every 5 minutes when on utilities tab
         let cronStatusInterval = null;
+        let isAutoRefresh = false; // Flag to track if this is an auto-refresh
         function startCronStatusAutoRefresh() {
-            // Load immediately
+            // Load immediately (manual refresh)
+            isAutoRefresh = false;
             loadCronJobsStatus();
             
-            // Then refresh every 30 seconds
+            // Then refresh silently every 5 minutes (300000ms = 5 minutes)
             if (cronStatusInterval) {
                 clearInterval(cronStatusInterval);
             }
-            cronStatusInterval = setInterval(loadCronJobsStatus, 30000);
+            cronStatusInterval = setInterval(() => {
+                isAutoRefresh = true; // Mark as auto-refresh
+                loadCronJobsStatus();
+            }, 300000); // 5 minutes instead of 30 seconds
         }
         
         function stopCronStatusAutoRefresh() {
@@ -7922,6 +8043,7 @@
                         // Stop any existing polling first
                         stopTopGainersPolling();
                         loadTopGainers();
+                        loadTopLosers();
                         // Check if predictions exist, show warning if not
                         checkProphetPredictionsExist();
                         TabLoadTracker.markLoaded(tabName);
@@ -8836,6 +8958,7 @@
                                     if (checkData.success && checkData.top_gainers && checkData.top_gainers.length > 0) {
                                         console.log('Predictions already exist, loading without polling');
                                         loadTopGainers();
+                        loadTopLosers();
                                         return;
                                     }
                                     
@@ -8851,7 +8974,8 @@
                                     
                                     topGainersPollInterval = setInterval(() => {
                                         pollCount++;
-                                        loadTopGainers(); // Refresh the top gainers table
+                                        loadTopGainers();
+                        loadTopLosers(); // Refresh the top gainers table
                                         
                                         if (pollCount >= maxPolls) {
                                             clearInterval(topGainersPollInterval);
@@ -8864,11 +8988,13 @@
                                     
                                     // Also try loading immediately
                                     loadTopGainers();
+                        loadTopLosers();
                                 })
                                 .catch(error => {
                                     console.error('Error checking for existing predictions:', error);
                                     // If check fails, just load without polling
                                     loadTopGainers();
+                        loadTopLosers();
                                 });
                         }, 2000);
                     } else {
@@ -9080,7 +9206,20 @@
         let selectedSectorFilter = null;
         let sectorSortMode = 'none'; // 'none', 'alphabetical', 'avg_gain'
         let sectorSortDirection = 'asc'; // 'asc', 'desc'
+        let topGainersSortColumn = null; // For accumulation_state sorting
+        let topGainersSortDirection = 'asc'; // 'asc', 'desc'
         let topGainersPollInterval = null; // Store polling interval to prevent multiple intervals
+        
+        // Pagination variables for Top 20 Potential Losers
+        let allTopLosers = [];
+        let topLosersCurrentPage = 1;
+        let topLosersItemsPerPage = 10;
+        let selectedSectorFilterLosers = null;
+        let sectorSortModeLosers = 'none'; // 'none', 'alphabetical', 'avg_loss'
+        let sectorSortDirectionLosers = 'asc'; // 'asc', 'desc'
+        let topLosersSortColumn = null; // For accumulation_state sorting
+        let topLosersSortDirection = 'asc'; // 'asc', 'desc'
+        let topLosersPollInterval = null; // Store polling interval to prevent multiple intervals
         
         // Function to stop top gainers polling
         function stopTopGainersPolling() {
@@ -9312,6 +9451,31 @@
                 });
             }
             
+            // Apply accumulation_state sorting if active
+            if (topGainersSortColumn === 'accumulation_state') {
+                filtered.sort((a, b) => {
+                    const stateA = (a.accumulation_state || '').toUpperCase();
+                    const stateB = (b.accumulation_state || '').toUpperCase();
+                    
+                    // Define sort order: ACCUMULATION < DISTRIBUTION < NEUTRAL < N/A
+                    const stateOrder = {
+                        'ACCUMULATION': 1,
+                        'DISTRIBUTION': 2,
+                        'NEUTRAL': 3,
+                        '': 4
+                    };
+                    
+                    const orderA = stateOrder[stateA] || 4;
+                    const orderB = stateOrder[stateB] || 4;
+                    
+                    if (topGainersSortDirection === 'asc') {
+                        return orderA - orderB;
+                    } else {
+                        return orderB - orderA;
+                    }
+                });
+            }
+            
             return filtered;
         }
         
@@ -9427,6 +9591,46 @@
             statusDiv.innerHTML = `<span style="color: #28a745;">✓ Showing ${totalItems} potential gainers${filterText}${searchText}${defaultText} (showing ${startIndex + 1}-${endIndex} of ${totalItems})</span>`;
         }
         
+        // Sort top potential gainers by accumulation_state
+        function sortTopGainersByAccumulation() {
+            if (topGainersSortColumn === 'accumulation_state') {
+                // Toggle direction
+                topGainersSortDirection = topGainersSortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                topGainersSortColumn = 'accumulation_state';
+                topGainersSortDirection = 'asc';
+            }
+            
+            // Clear sector sorting when accumulation sorting is activated
+            sectorSortMode = 'none';
+            sectorSortDirection = 'asc';
+            const sectorIndicator = document.getElementById('sectorSortIndicator');
+            if (sectorIndicator) {
+                sectorIndicator.innerHTML = '';
+            }
+            
+            // Reset to first page when sorting
+            topGainersCurrentPage = 1;
+            
+            // Update header indicator
+            updateTopGainersAccumulationSortIndicator();
+            
+            // Re-render the table
+            renderTopGainersTable();
+        }
+        
+        // Update sort indicator in top gainers accumulation header
+        function updateTopGainersAccumulationSortIndicator() {
+            const header = document.getElementById('header_top_gainers_accumulation_state');
+            if (header) {
+                if (topGainersSortColumn === 'accumulation_state') {
+                    header.innerHTML = `Accumulation/<br/>Distribution ${topGainersSortDirection === 'asc' ? '↑' : '↓'}`;
+                } else {
+                    header.innerHTML = `Accumulation/<br/>Distribution ↕`;
+                }
+            }
+        }
+        
         // Sort by sector column
         function sortBySectorColumn() {
             if (sectorSortMode === 'none') {
@@ -9447,6 +9651,11 @@
                     sectorSortDirection = 'asc';
                 }
             }
+            
+            // Clear accumulation_state sorting when sector sorting is activated
+            topGainersSortColumn = null;
+            topGainersSortDirection = 'asc';
+            updateTopGainersAccumulationSortIndicator();
             
             // Update sort indicator
             const indicator = document.getElementById('sectorSortIndicator');
@@ -9595,6 +9804,420 @@
             if (page >= 1 && page <= totalPages) {
                 topGainersCurrentPage = page;
                 renderTopGainersTable();
+            }
+        }
+        
+        // ========== TOP LOSERS FUNCTIONS ==========
+        
+        // Sort top potential losers by accumulation_state
+        function sortTopLosersByAccumulation() {
+            if (topLosersSortColumn === 'accumulation_state') {
+                // Toggle direction
+                topLosersSortDirection = topLosersSortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                topLosersSortColumn = 'accumulation_state';
+                topLosersSortDirection = 'asc';
+            }
+            
+            // Clear sector sorting when accumulation sorting is activated
+            sectorSortModeLosers = 'none';
+            sectorSortDirectionLosers = 'asc';
+            const sectorIndicator = document.getElementById('sectorSortIndicatorLosers');
+            if (sectorIndicator) {
+                sectorIndicator.innerHTML = '';
+            }
+            
+            // Reset to first page when sorting
+            topLosersCurrentPage = 1;
+            
+            // Update header indicator
+            updateTopLosersAccumulationSortIndicator();
+            
+            // Re-render the table
+            renderTopLosersTable();
+        }
+        
+        // Update sort indicator in top losers accumulation header
+        function updateTopLosersAccumulationSortIndicator() {
+            const header = document.getElementById('header_top_losers_accumulation_state');
+            if (header) {
+                if (topLosersSortColumn === 'accumulation_state') {
+                    header.innerHTML = `Accumulation/<br/>Distribution ${topLosersSortDirection === 'asc' ? '↑' : '↓'}`;
+                } else {
+                    header.innerHTML = `Accumulation/<br/>Distribution ↕`;
+                }
+            }
+        }
+        
+        // Sort by sector column for losers
+        function sortBySectorColumnLosers() {
+            if (sectorSortModeLosers === 'none') {
+                sectorSortModeLosers = 'alphabetical';
+                sectorSortDirectionLosers = 'asc';
+            } else if (sectorSortModeLosers === 'alphabetical') {
+                if (sectorSortDirectionLosers === 'asc') {
+                    sectorSortDirectionLosers = 'desc';
+                } else {
+                    sectorSortModeLosers = 'avg_loss';
+                    sectorSortDirectionLosers = 'desc';
+                }
+            } else if (sectorSortModeLosers === 'avg_loss') {
+                if (sectorSortDirectionLosers === 'desc') {
+                    sectorSortDirectionLosers = 'asc';
+                } else {
+                    sectorSortModeLosers = 'none';
+                    sectorSortDirectionLosers = 'asc';
+                }
+            }
+            
+            // Clear accumulation_state sorting when sector sorting is activated
+            topLosersSortColumn = null;
+            topLosersSortDirection = 'asc';
+            updateTopLosersAccumulationSortIndicator();
+            
+            // Update sort indicator
+            const indicator = document.getElementById('sectorSortIndicatorLosers');
+            if (indicator) {
+                if (sectorSortModeLosers === 'none') {
+                    indicator.innerHTML = '';
+                } else if (sectorSortModeLosers === 'alphabetical') {
+                    indicator.innerHTML = sectorSortDirectionLosers === 'asc' ? '↑ A-Z' : '↓ Z-A';
+                } else if (sectorSortModeLosers === 'avg_loss') {
+                    indicator.innerHTML = sectorSortDirectionLosers === 'desc' ? '↓ High-Low' : '↑ Low-High';
+                }
+            }
+            
+            topLosersCurrentPage = 1;
+            renderTopLosersTable();
+        }
+        
+        // Get filtered and sorted losers
+        function getFilteredAndSortedLosers() {
+            let filtered = [...allTopLosers];
+            
+            // Check if we have any active filters
+            const hasSectorFilter = selectedSectorFilterLosers !== null;
+            const searchTerm = document.getElementById('sectorSearchInputLosers') ? document.getElementById('sectorSearchInputLosers').value.trim().toLowerCase() : '';
+            const hasSearch = searchTerm.length > 0;
+            
+            // Apply sector filter - if filtering by sector, show ALL stocks for that sector
+            if (hasSectorFilter) {
+                filtered = filtered.filter(loser => {
+                    const sectorCode = loser.sector_code || 'N/A';
+                    return sectorCode === selectedSectorFilterLosers;
+                });
+            } else if (!hasSearch) {
+                // No filter and no search - show only top 20 by default
+                filtered = filtered.slice(0, 20);
+            }
+            
+            // Apply search filter
+            if (hasSearch) {
+                filtered = filtered.filter(loser => {
+                    const sectorCode = (loser.sector_code || 'N/A').toLowerCase();
+                    return sectorCode.includes(searchTerm);
+                });
+            }
+            
+            // Apply sorting
+            if (sectorSortModeLosers === 'alphabetical') {
+                filtered.sort((a, b) => {
+                    const sectorA = (a.sector_code || 'N/A').toLowerCase();
+                    const sectorB = (b.sector_code || 'N/A').toLowerCase();
+                    if (sectorSortDirectionLosers === 'asc') {
+                        return sectorA.localeCompare(sectorB);
+                    } else {
+                        return sectorB.localeCompare(sectorA);
+                    }
+                });
+            } else if (sectorSortModeLosers === 'avg_loss') {
+                // Create a map of sector to avg loss (negative values)
+                const sectorAvgLossMap = {};
+                sectoralAveragesData.forEach(sector => {
+                    sectorAvgLossMap[sector.sector_code] = sector.avg_gain_pct || 0; // This will be negative for losers
+                });
+                
+                filtered.sort((a, b) => {
+                    const sectorA = a.sector_code || 'N/A';
+                    const sectorB = b.sector_code || 'N/A';
+                    const avgLossA = sectorAvgLossMap[sectorA] || 0;
+                    const avgLossB = sectorAvgLossMap[sectorB] || 0;
+                    
+                    if (sectorSortDirectionLosers === 'desc') {
+                        return avgLossB - avgLossA; // More negative (worse) first
+                    } else {
+                        return avgLossA - avgLossB;
+                    }
+                });
+            }
+            
+            // Apply accumulation_state sorting if active
+            if (topLosersSortColumn === 'accumulation_state') {
+                filtered.sort((a, b) => {
+                    const stateA = (a.accumulation_state || '').toUpperCase();
+                    const stateB = (b.accumulation_state || '').toUpperCase();
+                    
+                    // Define sort order: ACCUMULATION < DISTRIBUTION < NEUTRAL < N/A
+                    const stateOrder = {
+                        'ACCUMULATION': 1,
+                        'DISTRIBUTION': 2,
+                        'NEUTRAL': 3,
+                        '': 4
+                    };
+                    
+                    const orderA = stateOrder[stateA] || 4;
+                    const orderB = stateOrder[stateB] || 4;
+                    
+                    if (topLosersSortDirection === 'asc') {
+                        return orderA - orderB;
+                    } else {
+                        return orderB - orderA;
+                    }
+                });
+            }
+            
+            return filtered;
+        }
+        
+        // Render top losers table
+        function renderTopLosersTable() {
+            const tbody = document.getElementById('topLosersTableBody');
+            const statusDiv = document.getElementById('topLosersStatus');
+            if (!tbody || !statusDiv) return;
+            
+            const filteredLosers = getFilteredAndSortedLosers();
+            const totalItems = filteredLosers.length;
+            const totalPages = Math.ceil(totalItems / topLosersItemsPerPage);
+            const startIndex = (topLosersCurrentPage - 1) * topLosersItemsPerPage;
+            const endIndex = Math.min(startIndex + topLosersItemsPerPage, totalItems);
+            const currentPageLosers = filteredLosers.slice(startIndex, endIndex);
+            
+            tbody.innerHTML = '';
+            const symbols = [];
+            
+            currentPageLosers.forEach((loser, index) => {
+                const displayIndex = startIndex + index;
+                const symbol = loser.scrip_id || '-';
+                const currentPrice = loser.current_price || 0;
+                const predictedPrice = loser.predicted_price_30d || loser.predicted_price_60d || loser.predicted_price_90d || loser.predicted_price_180d || 0;
+                const predictedChangePct = loser.predicted_price_change_pct || 0;
+                const confidence = loser.prediction_confidence || 0;
+                const predictionDays = loser.prediction_days || 30;
+                const daysInLeaderboard = loser.days_in_leaderboard || 0;
+                const cvMape = loser.cv_mape;
+                const cvRmse = loser.cv_rmse;
+                const sectorCode = loser.sector_code || 'N/A';
+                
+                symbols.push(symbol);
+                
+                const lossColor = predictedChangePct <= -15 ? '#dc3545' : predictedChangePct <= -10 ? '#ffc107' : '#17a2b8';
+                const confidenceColor = confidence >= 70 ? '#28a745' : confidence >= 50 ? '#ffc107' : '#dc3545';
+                
+                const mapeDisplay = (cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity) 
+                    ? cvMape.toFixed(2) + '%' : 'N/A';
+                const rmseDisplay = (cvRmse !== null && cvRmse !== undefined && !isNaN(cvRmse) && cvRmse !== Infinity) 
+                    ? cvRmse.toFixed(2) : 'N/A';
+                
+                const row = `
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666; font-size: 12px;">${displayIndex + 1}</td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; font-size: 12px;">${sectorCode}</td>
+                        <td style="padding: 4px; border: 1px solid #ddd; text-align: center;">
+                            <canvas id="sparkline-loser-${symbol}" width="100" height="35" onclick="showCandlestick('${symbol}')" style="cursor: pointer;"></canvas>
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px;">₹${currentPrice.toFixed(2)}</td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; font-weight: bold;">₹${predictedPrice.toFixed(2)}</td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-weight: bold; color: ${lossColor}; font-size: 12px;">
+                            ${predictedChangePct.toFixed(2)}%
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: ${confidenceColor}; font-size: 12px;">
+                            ${confidence.toFixed(0)}%
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                            <span onclick="showPredictionHistory('${symbol}', ${predictionDays})" style="cursor: pointer; color: #17a2b8; font-weight: bold; text-decoration: underline;" title="Click to view prediction history chart">${daysInLeaderboard}</span>
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                            ${predictionDays} days
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; color: ${cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity && cvMape < 50 ? '#28a745' : cvMape !== null && cvMape !== undefined && !isNaN(cvMape) && cvMape !== Infinity && cvMape < 100 ? '#ffc107' : '#999'};">
+                            ${mapeDisplay}
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: right; font-size: 12px; color: ${cvRmse !== null && cvRmse !== undefined && !isNaN(cvRmse) && cvRmse !== Infinity ? '#666' : '#999'};">
+                            ${rmseDisplay}
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                            ${loser.accumulation_state ? `
+                                ${loser.accumulation_state === 'ACCUMULATION' ? `
+                                    <span style="color: #28a745; font-weight: bold; font-size: 11px;">✓ Accumulation</span>
+                                ` : loser.accumulation_state === 'DISTRIBUTION' ? `
+                                    <span style="color: #dc3545; font-weight: bold; font-size: 11px;">⚠ Distribution</span>
+                                ` : `
+                                    <span style="color: #999; font-size: 11px;">Neutral</span>
+                                `}
+                            ` : '<span style="color: #999; font-size: 11px;">N/A</span>'}
+                        </td>
+                        <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-size: 12px;">
+                            ${loser.days_in_accumulation_state !== null && loser.days_in_accumulation_state !== undefined && loser.days_in_accumulation_state > 0 ? `
+                                <span style="color: #666; font-weight: bold; font-size: 12px;">${loser.days_in_accumulation_state}</span>
+                            ` : '<span style="color: #999; font-size: 11px;">-</span>'}
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+            
+            // Load sparklines after a delay
+            setTimeout(() => {
+                symbols.forEach(symbol => {
+                    if (symbol && symbol !== '-') {
+                        loadSparkline(`sparkline-loser-${symbol}`);
+                    }
+                });
+            }, 100);
+            
+            updateTopLosersPagination(totalItems);
+            updateClearButtonVisibilityLosers();
+            
+            const filterText = selectedSectorFilterLosers ? ` (filtered by ${selectedSectorFilterLosers})` : '';
+            const searchText = document.getElementById('sectorSearchInputLosers') && document.getElementById('sectorSearchInputLosers').value ? ` (search: "${document.getElementById('sectorSearchInputLosers').value}")` : '';
+            const defaultText = (!selectedSectorFilterLosers && (!document.getElementById('sectorSearchInputLosers') || !document.getElementById('sectorSearchInputLosers').value)) ? ' (Top 20 by default)' : '';
+            statusDiv.innerHTML = `<span style="color: #dc3545;">⚠ Showing ${totalItems} potential losers${filterText}${searchText}${defaultText} (showing ${startIndex + 1}-${endIndex} of ${totalItems})</span>`;
+        }
+        
+        function loadTopLosers() {
+            const tbody = document.getElementById('topLosersTableBody');
+            const statusDiv = document.getElementById('topLosersStatus');
+            const daysSelect = document.getElementById('predictionDaysSelect');
+            const predictionDays = daysSelect ? parseInt(daysSelect.value) : 30;
+            
+            if (!tbody || !statusDiv) {
+                console.error('Required elements not found for top losers');
+                return;
+            }
+            
+            statusDiv.innerHTML = '<span style="color: #666;">Loading top losers...</span>';
+            tbody.innerHTML = '<tr><td colspan="14" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Loading...</td></tr>';
+            
+            fetch(`/api/prophet_predictions/top_losers?limit=500&prediction_days=${predictionDays}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${data.error || 'Failed to load top losers'}</span>`;
+                        tbody.innerHTML = '<tr><td colspan="14" style="padding: 10px; text-align: center; color: #dc3545; font-size: 12px;">Error loading top losers</td></tr>';
+                        return;
+                    }
+                    
+                    let topLosers = data.top_losers || [];
+                    
+                    // Filter out stocks with confidence < 50%
+                    topLosers = topLosers.filter(loser => {
+                        const confidence = loser.prediction_confidence || 0;
+                        return confidence >= 50.0;
+                    });
+                    
+                    if (topLosers.length === 0) {
+                        statusDiv.innerHTML = '<span style="color: #ffc107;">No top losers found (may need to generate predictions with confidence >= 50%)</span>';
+                        tbody.innerHTML = '<tr><td colspan="14" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">No top losers available</td></tr>';
+                        allTopLosers = [];
+                        renderTopLosersTable();
+                        return;
+                    }
+                    
+                    // Store losers data globally for sorting
+                    allTopLosers = topLosers;
+                    
+                    // Reset to first page
+                    topLosersCurrentPage = 1;
+                    
+                    // Stop polling if active
+                    if (topLosersPollInterval) {
+                        clearInterval(topLosersPollInterval);
+                        topLosersPollInterval = null;
+                        console.log('Top losers polling stopped - predictions loaded successfully');
+                    }
+                    
+                    // Render table with filtering and sorting
+                    renderTopLosersTable();
+                })
+                .catch(error => {
+                    console.error('Error loading top losers:', error);
+                    statusDiv.innerHTML = `<span style="color: #dc3545;">Error: ${error.message || 'Failed to load top losers'}</span>`;
+                    tbody.innerHTML = '<tr><td colspan="14" style="padding: 15px; text-align: center; color: #dc3545; font-size: 14px;">Error loading top losers</td></tr>';
+                });
+        }
+        
+        // Update Top Losers pagination
+        function updateTopLosersPagination(totalItems) {
+            const paginationDiv = document.getElementById('topLosersPagination');
+            if (!paginationDiv) return;
+            
+            if (totalItems === 0) {
+                paginationDiv.innerHTML = '';
+                return;
+            }
+            
+            const totalPages = Math.ceil(totalItems / topLosersItemsPerPage);
+            
+            let html = '<div style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 4px;">';
+            
+            // Previous button
+            html += `<button onclick="topLosersGoToPage(${topLosersCurrentPage - 1})" ${topLosersCurrentPage === 1 ? 'disabled' : ''} style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; background-color: ${topLosersCurrentPage === 1 ? '#e9ecef' : 'white'}; color: ${topLosersCurrentPage === 1 ? '#6c757d' : '#007bff'}; cursor: ${topLosersCurrentPage === 1 ? 'not-allowed' : 'pointer'}; font-size: 13px;">Previous</button>`;
+            
+            // Page numbers
+            let startPage = Math.max(1, topLosersCurrentPage - 2);
+            let endPage = Math.min(totalPages, topLosersCurrentPage + 2);
+            
+            if (startPage > 1) {
+                html += `<button onclick="topLosersGoToPage(1)" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; background-color: white; color: #007bff; cursor: pointer; font-size: 13px;">1</button>`;
+                if (startPage > 2) {
+                    html += `<span style="padding: 6px; color: #666; font-size: 13px;">...</span>`;
+                }
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                html += `<button onclick="topLosersGoToPage(${i})" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; background-color: ${i === topLosersCurrentPage ? '#007bff' : 'white'}; color: ${i === topLosersCurrentPage ? 'white' : '#007bff'}; cursor: pointer; font-size: 13px; font-weight: ${i === topLosersCurrentPage ? 'bold' : 'normal'};">${i}</button>`;
+            }
+            
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) {
+                    html += `<span style="padding: 6px; color: #666; font-size: 13px;">...</span>`;
+                }
+                html += `<button onclick="topLosersGoToPage(${totalPages})" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; background-color: white; color: #007bff; cursor: pointer; font-size: 13px;">${totalPages}</button>`;
+            }
+            
+            // Next button
+            html += `<button onclick="topLosersGoToPage(${topLosersCurrentPage + 1})" ${topLosersCurrentPage === totalPages ? 'disabled' : ''} style="padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; background-color: ${topLosersCurrentPage === totalPages ? '#e9ecef' : 'white'}; color: ${topLosersCurrentPage === totalPages ? '#6c757d' : '#007bff'}; cursor: ${topLosersCurrentPage === totalPages ? 'not-allowed' : 'pointer'}; font-size: 13px;">Next</button>`;
+            
+            // Page info
+            html += `<span style="margin-left: 15px; font-size: 13px; color: #666;">Showing ${((topLosersCurrentPage - 1) * topLosersItemsPerPage) + 1}-${Math.min(topLosersCurrentPage * topLosersItemsPerPage, totalItems)} of ${totalItems} results</span>`;
+            
+            html += '</div>';
+            paginationDiv.innerHTML = html;
+        }
+        
+        function topLosersGoToPage(page) {
+            const filteredLosers = getFilteredAndSortedLosers();
+            const totalPages = Math.ceil(filteredLosers.length / topLosersItemsPerPage);
+            
+            if (page >= 1 && page <= totalPages) {
+                topLosersCurrentPage = page;
+                renderTopLosersTable();
+            }
+        }
+        
+        function clearSectorFilterLosers() {
+            selectedSectorFilterLosers = null;
+            const btn = document.getElementById('clearSectorFilterLosersBtn');
+            if (btn) btn.style.display = 'none';
+            topLosersCurrentPage = 1;
+            renderTopLosersTable();
+        }
+        
+        function updateClearButtonVisibilityLosers() {
+            const btn = document.getElementById('clearSectorFilterLosersBtn');
+            if (btn) {
+                btn.style.display = selectedSectorFilterLosers ? 'block' : 'none';
             }
         }
         

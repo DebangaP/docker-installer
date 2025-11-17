@@ -1578,3 +1578,178 @@ class ProphetPricePredictor:
             import traceback
             logger.error(traceback.format_exc())
             return []
+    
+    def get_top_losers(self, limit: int = 10, run_date: Optional[date] = None, prediction_days: Optional[int] = None) -> List[Dict]:
+        """
+        Get top N potential losers based on predictions (negative price changes)
+        Always includes Nifty50 if available, regardless of ranking
+        
+        Args:
+            limit: Number of top losers to return
+            run_date: Date to get predictions from (default: latest)
+            prediction_days: Number of days to filter by (default: 30)
+            
+        Returns:
+            List of prediction dictionaries sorted by predicted loss (most negative first)
+        """
+        if prediction_days is None:
+            prediction_days = 30  # Default to 30-day predictions
+        
+        # Common scrip_ids for Nifty50
+        nifty_scrip_ids = ['NIFTY', 'NIFTY50', 'NIFTY 50', 'NIFTY-50']
+        
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            
+            # Get the run_date to use
+            if run_date is None:
+                cursor.execute("""
+                    SELECT MAX(run_date) as max_run_date
+                    FROM my_schema.prophet_predictions 
+                    WHERE status = 'ACTIVE' AND prediction_days = %s
+                """, (prediction_days,))
+                result = cursor.fetchone()
+                if result and result.get('max_run_date'):
+                    run_date = result['max_run_date']
+                else:
+                    cursor.close()
+                    conn.close()
+                    return []
+            
+            # Get top N losers (filter out predictions with confidence < 50%)
+            # Join with master_scrips to get sector_code
+            cursor.execute("""
+                SELECT pp.*, ms.sector_code
+                FROM my_schema.prophet_predictions pp
+                LEFT JOIN my_schema.master_scrips ms ON pp.scrip_id = ms.scrip_id
+                WHERE pp.run_date = %s
+                AND pp.prediction_days = %s
+                AND pp.status = 'ACTIVE'
+                AND pp.predicted_price_change_pct < 0
+                AND pp.prediction_confidence >= 50.0
+                ORDER BY pp.predicted_price_change_pct ASC
+                LIMIT %s
+            """, (run_date, prediction_days, limit))
+            
+            rows = cursor.fetchall()
+            top_losers = [dict(row) for row in rows]
+            
+            # Fetch accumulation data separately for all losers
+            if top_losers:
+                scrip_ids = [loser.get('scrip_id') for loser in top_losers if loser.get('scrip_id')]
+                if scrip_ids:
+                    try:
+                        cursor.execute("""
+                            SELECT DISTINCT ON (scrip_id)
+                                scrip_id,
+                                state,
+                                days_in_state,
+                                confidence_score
+                            FROM my_schema.accumulation_distribution
+                            WHERE scrip_id = ANY(%s)
+                            ORDER BY scrip_id, analysis_date DESC
+                        """, (scrip_ids,))
+                        accumulation_rows = cursor.fetchall()
+                        accumulation_map = {row['scrip_id']: dict(row) for row in accumulation_rows}
+                        
+                        # Add accumulation data to each loser
+                        for loser in top_losers:
+                            scrip_id = loser.get('scrip_id')
+                            if scrip_id and scrip_id in accumulation_map:
+                                acc_data = accumulation_map[scrip_id]
+                                loser['accumulation_state'] = acc_data.get('state')
+                                loser['days_in_accumulation_state'] = acc_data.get('days_in_state')
+                                loser['accumulation_confidence'] = acc_data.get('confidence_score')
+                            else:
+                                loser['accumulation_state'] = None
+                                loser['days_in_accumulation_state'] = None
+                                loser['accumulation_confidence'] = None
+                        
+                        logger.debug(f"Added accumulation data for {len(accumulation_map)} stocks out of {len(scrip_ids)} total")
+                    except Exception as e:
+                        logger.warning(f"Error fetching accumulation data: {e}")
+                        # Set None for all if query fails
+                        for loser in top_losers:
+                            loser['accumulation_state'] = None
+                            loser['days_in_accumulation_state'] = None
+                            loser['accumulation_confidence'] = None
+            
+            # Log accumulation data for debugging
+            if top_losers:
+                sample_loser = top_losers[0]
+                logger.debug(f"Sample loser accumulation data: scrip_id={sample_loser.get('scrip_id')}, accumulation_state={sample_loser.get('accumulation_state')}, days_in_accumulation_state={sample_loser.get('days_in_accumulation_state')}")
+            
+            # Try to include Nifty50 if available and not already included
+            nifty_included = any(loser.get('scrip_id') in nifty_scrip_ids for loser in top_losers)
+            
+            if not nifty_included:
+                # Try to get Nifty50 prediction
+                for nifty_id in nifty_scrip_ids:
+                    cursor.execute("""
+                        SELECT pp.*, ms.sector_code
+                        FROM my_schema.prophet_predictions pp
+                        LEFT JOIN my_schema.master_scrips ms ON pp.scrip_id = ms.scrip_id
+                        WHERE pp.scrip_id = %s
+                        AND pp.run_date = %s
+                        AND pp.prediction_days = %s
+                        AND pp.status = 'ACTIVE'
+                        AND pp.predicted_price_change_pct < 0
+                        AND pp.prediction_confidence >= 50.0
+                        ORDER BY pp.predicted_price_change_pct ASC
+                        LIMIT 1
+                    """, (nifty_id, run_date, prediction_days))
+                    
+                    nifty_result = cursor.fetchone()
+                    if nifty_result:
+                        nifty_prediction = dict(nifty_result)
+                        # Fetch accumulation data for Nifty
+                        try:
+                            cursor.execute("""
+                                SELECT DISTINCT ON (scrip_id)
+                                    scrip_id,
+                                    state,
+                                    days_in_state,
+                                    confidence_score
+                                FROM my_schema.accumulation_distribution
+                                WHERE scrip_id = %s
+                                ORDER BY scrip_id, analysis_date DESC
+                            """, (nifty_id,))
+                            acc_row = cursor.fetchone()
+                            if acc_row:
+                                acc_data = dict(acc_row)
+                                nifty_prediction['accumulation_state'] = acc_data.get('state')
+                                nifty_prediction['days_in_accumulation_state'] = acc_data.get('days_in_state')
+                                nifty_prediction['accumulation_confidence'] = acc_data.get('confidence_score')
+                            else:
+                                nifty_prediction['accumulation_state'] = None
+                                nifty_prediction['days_in_accumulation_state'] = None
+                                nifty_prediction['accumulation_confidence'] = None
+                        except Exception as e:
+                            logger.warning(f"Error fetching accumulation data for Nifty: {e}")
+                            nifty_prediction['accumulation_state'] = None
+                            nifty_prediction['days_in_accumulation_state'] = None
+                            nifty_prediction['accumulation_confidence'] = None
+                        
+                        # Insert Nifty50 into the list (maintain sorted order)
+                        if len(top_losers) >= limit:
+                            top_losers.sort(key=lambda x: x.get('predicted_price_change_pct', 0))
+                            top_losers = top_losers[:limit-1]  # Keep top (limit-1) items
+                        
+                        top_losers.append(nifty_prediction)
+                        top_losers.sort(key=lambda x: x.get('predicted_price_change_pct', 0))
+                        logger.info(f"Included Nifty50 ({nifty_prediction.get('scrip_id')}) in top losers")
+                        break
+            elif nifty_included:
+                logger.debug("Nifty50 already included in top losers")
+            
+            cursor.close()
+            conn.close()
+            
+            return top_losers
+            
+        except Exception as e:
+            logger.error(f"Error getting top losers: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return []

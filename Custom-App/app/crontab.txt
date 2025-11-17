@@ -28,7 +28,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 0 16 * * 1-5 root cd /app && python /app/holdings/RefreshMFNAV.py >> /app/logs/mf_nav_refresh.log 2>&1 &
 
 # Run daily Accumulation/ distribution Analysis at 4:30 pm
-30 16 * * 1-5 root cd /app && python /app/market/AccumDistAnalysis.py >> /app/logs/accum_dist.log 2>&1 &
+30 16 * * 1-5 root cd /app && python /app/market/AccumulationDistributionScheduler.py >> /app/logs/accum_dist.log 2>&1 &
 
 # Run daily Prophet predictions at 7:00 PM (after market close, OHLC update, and accumulation analysis)
 0 16 * * 1-5 root cd /app && python /app/scheduled_jobs/PredictionScheduler.py >> /app/logs/prediction_scheduler.log 2>&1 &

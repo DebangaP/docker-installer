@@ -3560,6 +3560,101 @@ async def api_prophet_top_gainers(
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e), "top_gainers": []}
 
+@app.get("/api/prophet_predictions/top_losers")
+async def api_prophet_top_losers(
+    limit: int = Query(10, description="Number of top losers to return"),
+    prediction_days: int = Query(30, description="Number of prediction days to filter by (default: 30)"),
+    force_refresh: bool = Query(False, description="Force refresh (ignore cache)")
+):
+    """API endpoint to get top N potential losers based on Prophet predictions"""
+    try:
+        from stocks.ProphetPricePredictor import ProphetPricePredictor
+        
+        predictor = ProphetPricePredictor()
+        top_losers = predictor.get_top_losers(limit=limit, prediction_days=prediction_days)
+        
+        # Validate that we have actual data
+        if not top_losers or len(top_losers) == 0:
+            # Check if predictions exist for this prediction_days
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT COUNT(*) as count
+                FROM my_schema.prophet_predictions
+                WHERE prediction_days = %s
+                AND status = 'ACTIVE'
+                AND predicted_price_change_pct < 0
+            """, (prediction_days,))
+            
+            result = cursor.fetchone()
+            total_predictions = result[0] if result else 0
+            cursor.close()
+            conn.close()
+            
+            if total_predictions == 0:
+                return {
+                    "success": False,
+                    "error": f"No active predictions found for {prediction_days} days with negative price changes",
+                    "top_losers": [],
+                    "count": 0
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": f"No top losers found (may need to generate predictions with confidence >= 50%)",
+                    "top_losers": [],
+                    "count": 0
+                }
+        
+        # Get days_in_leaderboard for each loser
+        if top_losers and len(top_losers) > 0:
+            conn = get_db_connection()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            
+            # Get scrip_ids from top_losers
+            scrip_ids = [loser.get('scrip_id') for loser in top_losers if loser.get('scrip_id')]
+            
+            if scrip_ids:
+                # Get days_in_leaderboard for each scrip_id
+                cursor.execute("""
+                    SELECT 
+                        scrip_id,
+                        COUNT(DISTINCT run_date) as days_count
+                    FROM my_schema.prophet_predictions
+                    WHERE scrip_id = ANY(%s)
+                    AND prediction_days = %s
+                    AND status = 'ACTIVE'
+                    AND predicted_price_change_pct < 0
+                    AND prediction_confidence >= 50.0
+                    GROUP BY scrip_id
+                """, (scrip_ids, prediction_days))
+                
+                days_counts = {row['scrip_id']: row['days_count'] for row in cursor.fetchall()}
+                
+                # Add days_in_leaderboard to each loser
+                # Note: accumulation/distribution data is already fetched in get_top_losers() method
+                # so we don't need to fetch it again here - it would overwrite the existing data
+                for loser in top_losers:
+                    scrip_id = loser.get('scrip_id')
+                    loser['days_in_leaderboard'] = days_counts.get(scrip_id, 0)
+                    # accumulation_state, days_in_accumulation_state, and accumulation_confidence
+                    # are already set by get_top_losers() method, so we don't overwrite them here
+            
+            conn.close()
+        
+        return {
+            "success": True,
+            "top_losers": top_losers,
+            "count": len(top_losers)
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting top losers: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "top_losers": []}
+
 @app.get("/api/prophet_predictions/index_projections")
 async def api_prophet_index_projections(
     prediction_days: int = Query(60, description="Number of prediction days to filter by (default: 60)"),
