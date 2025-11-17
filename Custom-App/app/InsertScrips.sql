@@ -1,6 +1,6 @@
 
 
-INSERT INTO my_schema.master_scrips  (scrip_id,scrip_screener_code,sector_code,created_at,yahoo_code,scrip_group,scrip_mcap,scrip_country,ownership,fno,hist_roce,debt_to_equity,ps_ratio,updated_at) VALUES
+INSERT INTO my_schema.master_scrips (scrip_id,scrip_screener_code,sector_code,created_at,yahoo_code,scrip_group,scrip_mcap,scrip_country,ownership,fno,hist_roce,debt_to_equity,ps_ratio,updated_at) VALUES
 	 ('E2E',NULL,NULL,'2023-08-30 19:45:11.761776','E2E.NS',NULL,3953,'IN',NULL,NULL,25.0,0.37,NULL,'2025-06-08 11:08:26.642493');
 INSERT INTO my_schema.master_scrips (scrip_id,scrip_screener_code,sector_code,created_at,yahoo_code,scrip_group,scrip_mcap,scrip_country,ownership,fno,hist_roce,debt_to_equity,ps_ratio,updated_at) VALUES
 	 ('RMCSWITCH',1273659,NULL,'2023-08-30 19:45:11.761776','RMC.BO',NULL,860,'IN',NULL,NULL,NULL,NULL,NULL,'2025-06-08 11:08:26.642493'),

@@ -1996,7 +1996,7 @@ async def api_add_new_stock(request: Request):
                             'volume': volume_value
                         }
                     )
-                    records_inserted += 1
+                    records_inserted += 1 #no of records inserted
                     
                 except Exception as e:
                     logging.warning(f"Error inserting price data for {symbol} on {date}: {str(e)}")
