@@ -1549,6 +1549,25 @@ async def api_orderflow_analysis(
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
 
+@app.get("/api/orderflow_history")
+async def api_orderflow_history(
+    days: int = Query(5, description="Number of trading days to fetch (default: 5)"),
+    instrument_token: int = Query(12683010, description="Instrument token (default: 12683010 for Nifty 50 Futures)")
+):
+    """API endpoint for historical order flow data"""
+    try:
+        from market.OrderFlowAnalyzer import OrderFlowAnalyzer
+        
+        orderflow_analyzer = OrderFlowAnalyzer(instrument_token=instrument_token)
+        historical_data = orderflow_analyzer.get_historical_order_flow(days=days)
+        
+        return historical_data
+    except Exception as e:
+        logging.error(f"Error fetching historical order flow: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "data": []}
+
 @app.get("/api/micro_levels")
 async def api_micro_levels(
     start_time: str = Query("09:15:00", description="Start time in HH:MM:SS format"),
@@ -5605,13 +5624,27 @@ async def api_derivatives_suggestions(
         # Generate suggestions
         suggestions = suggestion_engine.generate_suggestions(analysis_date, current_price)
         
+        # Get filtering statistics
+        filtering_stats = getattr(suggestion_engine, '_last_filtering_stats', {
+            'initial_count': len(suggestions),
+            'filtered_exhaustion': 0,
+            'filtered_sentiment_conflict': 0,
+            'filtered_pressure_conflict': 0,
+            'filtered_weak_confidence': 0,
+            'final_count': len(suggestions),
+            'futures_generated': 0,
+            'options_generated': 0,
+            'generation_issue': len(suggestions) == 0
+        })
+        
         return {
             "success": True,
             "analysis_date": analysis_date or datetime.now().strftime('%Y-%m-%d'),
             "instrument_token": instrument_token,
             "current_price": current_price,
             "suggestions": suggestions,
-            "total_suggestions": len(suggestions)
+            "total_suggestions": len(suggestions),
+            "filtering_stats": filtering_stats
         }
     except Exception as e:
         logging.error(f"Error generating derivatives suggestions: {e}")
@@ -5620,7 +5653,18 @@ async def api_derivatives_suggestions(
         return {
             "success": False,
             "error": str(e),
-            "suggestions": []
+            "suggestions": [],
+            "filtering_stats": {
+                'initial_count': 0,
+                'filtered_exhaustion': 0,
+                'filtered_sentiment_conflict': 0,
+                'filtered_pressure_conflict': 0,
+                'filtered_weak_confidence': 0,
+                'final_count': 0,
+                'futures_generated': 0,
+                'options_generated': 0,
+                'generation_issue': True
+            }
         }
 
 @app.get("/api/intraday_options_suggestions")

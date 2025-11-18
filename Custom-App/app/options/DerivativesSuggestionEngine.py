@@ -277,8 +277,35 @@ class DerivativesSuggestionEngine:
         options_suggestions = self._generate_options_suggestions_enhanced(market_context)
         suggestions.extend(options_suggestions)
         
-        logging.info(f"Suggestions generated: futures={len(futures_suggestions)}, options={len(options_suggestions)}, total={len(suggestions)}")
-        return suggestions
+        # Apply order flow filtering
+        filtered_suggestions, filtering_stats = self._filter_conflicting_order_flow_signals(suggestions, order_flow_data)
+        
+        # Add generation diagnostics to filtering stats
+        filtering_stats['futures_generated'] = len(futures_suggestions)
+        filtering_stats['options_generated'] = len(options_suggestions)
+        filtering_stats['generation_issue'] = len(suggestions) == 0
+        
+        # Add decision logic and context to each suggestion
+        for suggestion in filtered_suggestions:
+            direction = 'Bullish' if suggestion.get('action') == 'BUY' else 'Bearish' if suggestion.get('action') == 'SELL' else 'Neutral'
+            
+            # Build decision logic
+            decision_logic = self._build_decision_logic(market_context, suggestion, direction)
+            suggestion['decision_logic'] = decision_logic
+            
+            # Add context information
+            decision_context = self._build_decision_context(market_context, suggestion, direction)
+            suggestion['decision_context'] = decision_context
+        
+        logging.info(f"Suggestions generated: futures={len(futures_suggestions)}, options={len(options_suggestions)}, initial={len(suggestions)}, filtered={len(filtered_suggestions)}")
+        
+        if len(suggestions) == 0:
+            logging.warning("No suggestions generated. Possible reasons: missing TPO data, invalid price, or market conditions don't meet criteria.")
+        
+        # Store filtering stats in a class variable for API access
+        self._last_filtering_stats = filtering_stats
+        
+        return filtered_suggestions
     
     def _generate_futures_suggestions(self, tpo_data: Dict, current_price: float, pre_market_tpo: Optional[Dict] = None) -> List[Dict]:
         """
@@ -665,7 +692,17 @@ class DerivativesSuggestionEngine:
         return suggestions
     
     def _fetch_order_flow_data(self, analysis_date: str) -> Dict:
-        """Fetch order flow analysis data"""
+        """
+        Fetch order flow analysis data and extract detailed signals
+        
+        Returns:
+            Dictionary with detailed order flow signals:
+            - exhaustion_signals: List of exhaustion events with prices and volume multiples
+            - trapped_traders: Buyers/sellers with specific price levels and severity
+            - volume_divergences: Bullish/bearish divergences with price levels
+            - pressure_analysis: Granular pressure scores (Strong_buy, Buy, Neutral, Sell, Strong_sell)
+            - absorption_zones: Price ranges where large orders are absorbed
+        """
         try:
             from datetime import date as date_type
             analysis_date_obj = datetime.strptime(analysis_date, '%Y-%m-%d').date() if isinstance(analysis_date, str) else analysis_date
@@ -677,10 +714,156 @@ class DerivativesSuggestionEngine:
                 analysis_date=analysis_date_obj,
                 lookback_periods=20
             )
-            return order_flow if order_flow.get('success') else {}
+            
+            if not order_flow.get('success'):
+                return {}
+            
+            # Extract detailed signals
+            exhaustion_signals = order_flow.get('exhaustion_signals', {})
+            trapped_traders = order_flow.get('trapped_traders', {})
+            volume_divergences = order_flow.get('volume_divergences', {})
+            pressure_analysis = order_flow.get('pressure_analysis', {})
+            absorption_zones = order_flow.get('absorption_zones', [])
+            
+            # Return enhanced order flow data with detailed signals
+            return {
+                'success': True,
+                'exhaustion_signals': {
+                    'buying_exhaustion': exhaustion_signals.get('buying_exhaustion', exhaustion_signals.get('bullish_exhaustion', 0)),
+                    'selling_exhaustion': exhaustion_signals.get('selling_exhaustion', exhaustion_signals.get('bearish_exhaustion', 0)),
+                    'events': exhaustion_signals.get('exhaustion_events', []),
+                    'count': exhaustion_signals.get('count', 0)
+                },
+                'trapped_traders': {
+                    'trapped_buyers': trapped_traders.get('trapped_buyers', []),
+                    'trapped_sellers': trapped_traders.get('trapped_sellers', []),
+                    'trapped_buyers_count': trapped_traders.get('trapped_buyers_count', 0),
+                    'trapped_sellers_count': trapped_traders.get('trapped_sellers_count', 0),
+                    'count': trapped_traders.get('count', 0)
+                },
+                'volume_divergences': {
+                    'bullish_divergences': volume_divergences.get('bullish_divergences', 0),
+                    'bearish_divergences': volume_divergences.get('bearish_divergences', 0),
+                    'divergences': volume_divergences.get('divergences', []),
+                    'count': volume_divergences.get('count', 0)
+                },
+                'pressure_analysis': {
+                    'pressure_direction': pressure_analysis.get('pressure_direction', 'Neutral'),
+                    'pressure_score': pressure_analysis.get('pressure_score', 0),
+                    'buy_pressure_pct': pressure_analysis.get('buy_pressure_pct', 50.0),
+                    'sell_pressure_pct': pressure_analysis.get('sell_pressure_pct', 50.0),
+                    'total_buy_volume': pressure_analysis.get('total_buy_volume', 0),
+                    'total_sell_volume': pressure_analysis.get('total_sell_volume', 0)
+                },
+                'absorption_zones': absorption_zones,
+                'overall_sentiment': order_flow.get('overall_sentiment', {}),
+                # Keep original structure for backward compatibility
+                'original': order_flow
+            }
         except Exception as e:
             logging.warning(f"Error fetching order flow data: {e}")
             return {}
+    
+    def _filter_conflicting_order_flow_signals(self, suggestions: List[Dict], order_flow: Dict) -> Tuple[List[Dict], Dict]:
+        """
+        Filter out suggestions that conflict with order flow signals
+        
+        Args:
+            suggestions: List of suggestion dictionaries
+            order_flow: Order flow analysis data
+            
+        Returns:
+            Tuple of (filtered_suggestions, filtering_stats)
+        """
+        if not order_flow.get('success'):
+            return suggestions, {
+                'initial_count': len(suggestions),
+                'filtered_exhaustion': 0,
+                'filtered_sentiment_conflict': 0,
+                'filtered_pressure_conflict': 0,
+                'filtered_weak_confidence': 0,
+                'final_count': len(suggestions)
+            }
+        
+        filtering_stats = {
+            'initial_count': len(suggestions),
+            'filtered_exhaustion': 0,
+            'filtered_sentiment_conflict': 0,
+            'filtered_pressure_conflict': 0,
+            'filtered_weak_confidence': 0,
+            'final_count': 0
+        }
+        
+        filtered_suggestions = []
+        exhaustion_signals = order_flow.get('exhaustion_signals', {})
+        pressure_analysis = order_flow.get('pressure_analysis', {})
+        overall_sentiment = order_flow.get('overall_sentiment', {})
+        
+        for suggestion in suggestions:
+            action = suggestion.get('action', '')
+            direction = 'Bullish' if action == 'BUY' else 'Bearish' if action == 'SELL' else 'Neutral'
+            confidence = suggestion.get('confidence_score', 0)
+            
+            should_filter = False
+            filter_reason = None
+            
+            # Filter 1: Exhaustion signals conflict
+            if action == 'BUY':
+                buying_exhaustion_count = exhaustion_signals.get('buying_exhaustion', 0)
+                if buying_exhaustion_count > 0:
+                    should_filter = True
+                    filter_reason = 'buying_exhaustion'
+                    filtering_stats['filtered_exhaustion'] += 1
+            elif action == 'SELL':
+                selling_exhaustion_count = exhaustion_signals.get('selling_exhaustion', 0)
+                if selling_exhaustion_count > 0:
+                    should_filter = True
+                    filter_reason = 'selling_exhaustion'
+                    filtering_stats['filtered_exhaustion'] += 1
+            
+            # Filter 2: Order flow sentiment strongly conflicts
+            if not should_filter:
+                sentiment = overall_sentiment.get('sentiment', 'Neutral')
+                if direction == 'Bullish' and sentiment in ['Bearish', 'Strongly_Bearish']:
+                    if confidence < 50:  # Only filter weak signals
+                        should_filter = True
+                        filter_reason = 'sentiment_conflict'
+                        filtering_stats['filtered_sentiment_conflict'] += 1
+                elif direction == 'Bearish' and sentiment in ['Bullish', 'Strongly_Bullish']:
+                    if confidence < 50:  # Only filter weak signals
+                        should_filter = True
+                        filter_reason = 'sentiment_conflict'
+                        filtering_stats['filtered_sentiment_conflict'] += 1
+            
+            # Filter 3: Pressure analysis strongly conflicts
+            if not should_filter:
+                pressure_direction = pressure_analysis.get('pressure_direction', 'Neutral')
+                if direction == 'Bullish' and pressure_direction in ['Strong_sell', 'Sell']:
+                    if confidence < 30:  # Filter weak signals when pressure strongly conflicts
+                        should_filter = True
+                        filter_reason = 'pressure_conflict'
+                        filtering_stats['filtered_pressure_conflict'] += 1
+                elif direction == 'Bearish' and pressure_direction in ['Strong_buy', 'Buy']:
+                    if confidence < 30:  # Filter weak signals when pressure strongly conflicts
+                        should_filter = True
+                        filter_reason = 'pressure_conflict'
+                        filtering_stats['filtered_pressure_conflict'] += 1
+            
+            # Filter 4: Very weak confidence (below threshold)
+            if not should_filter and confidence < 20:
+                should_filter = True
+                filter_reason = 'weak_confidence'
+                filtering_stats['filtered_weak_confidence'] += 1
+            
+            if not should_filter:
+                filtered_suggestions.append(suggestion)
+            else:
+                # Add filter reason to suggestion for debugging (optional)
+                suggestion['_filtered'] = True
+                suggestion['_filter_reason'] = filter_reason
+        
+        filtering_stats['final_count'] = len(filtered_suggestions)
+        return filtered_suggestions, filtering_stats
     
     def _fetch_market_bias_data(self, analysis_date: str) -> Dict:
         """Fetch market bias analysis data"""
@@ -865,10 +1048,42 @@ class DerivativesSuggestionEngine:
             
             # Trapped traders signal
             trapped = order_flow.get('trapped_traders', {})
-            if direction == 'Bullish' and trapped.get('trapped_sellers', 0) > 0:
+            if direction == 'Bullish' and trapped.get('trapped_sellers_count', 0) > 0:
                 confidence += 5
-            elif direction == 'Bearish' and trapped.get('trapped_buyers', 0) > 0:
+            elif direction == 'Bearish' and trapped.get('trapped_buyers_count', 0) > 0:
                 confidence += 5
+            
+            # Granular pressure analysis adjustments
+            pressure_analysis = order_flow.get('pressure_analysis', {})
+            pressure_direction = pressure_analysis.get('pressure_direction', 'Neutral')
+            
+            if pressure_direction == 'Strong_buy':
+                if direction == 'Bullish':
+                    confidence += 10
+                elif direction == 'Bearish':
+                    confidence -= 10
+            elif pressure_direction == 'Buy':
+                if direction == 'Bullish':
+                    confidence += 5
+                elif direction == 'Bearish':
+                    confidence -= 5
+            elif pressure_direction == 'Strong_sell':
+                if direction == 'Bearish':
+                    confidence += 10
+                elif direction == 'Bullish':
+                    confidence -= 10
+            elif pressure_direction == 'Sell':
+                if direction == 'Bearish':
+                    confidence += 5
+                elif direction == 'Bullish':
+                    confidence -= 5
+            
+            # Exhaustion signal impact: -15 points when exhaustion conflicts with direction
+            exhaustion_signals = order_flow.get('exhaustion_signals', {})
+            if direction == 'Bullish' and exhaustion_signals.get('buying_exhaustion', 0) > 0:
+                confidence -= 15
+            elif direction == 'Bearish' and exhaustion_signals.get('selling_exhaustion', 0) > 0:
+                confidence -= 15
         
         # Market bias signals (max +20 points)
         market_bias = market_context.get('market_bias', {})
@@ -946,9 +1161,71 @@ class DerivativesSuggestionEngine:
         # Use existing logic but with enhanced confidence and rationale
         suggestions = self._generate_futures_suggestions(tpo_data, current_price, pre_market_tpo)
         
+        # Get order flow data for stop loss enhancement
+        order_flow = market_context.get('order_flow', {})
+        absorption_zones = order_flow.get('absorption_zones', []) if order_flow.get('success') else []
+        trapped_traders = order_flow.get('trapped_traders', {}) if order_flow.get('success') else {}
+        
         # Enhance each suggestion with additional signals
         for suggestion in suggestions:
             direction = 'Bullish' if suggestion.get('action') == 'BUY' else 'Bearish' if suggestion.get('action') == 'SELL' else 'Neutral'
+            entry_level = suggestion.get('entry_level', current_price)
+            original_stop_loss = suggestion.get('stop_loss')
+            
+            # Improve stop loss placement using absorption zones and trapped trader levels
+            if direction == 'Bullish' and original_stop_loss:
+                # For BUY: Set stop loss below nearest absorption zone or trapped buyer level
+                best_stop_loss = original_stop_loss
+                stop_loss_reason = "TPO-based (IB/VAL)"
+                
+                # Check absorption zones below entry
+                for zone in absorption_zones:
+                    zone_low = zone.get('price_low') or zone.get('price')
+                    if zone_low and zone_low < entry_level and zone_low < original_stop_loss:
+                        # Use absorption zone as stop loss if it's closer to entry (tighter stop)
+                        if zone_low > best_stop_loss or best_stop_loss == original_stop_loss:
+                            best_stop_loss = zone_low - 5  # 5 points below zone for safety
+                            stop_loss_reason = f"Absorption zone at {zone_low:.2f}"
+                
+                # Check trapped buyer levels
+                trapped_buyers = trapped_traders.get('trapped_buyers', [])
+                for trapped in trapped_buyers:
+                    trapped_price = trapped.get('futures_price') or trapped.get('price')
+                    if trapped_price and trapped_price < entry_level and trapped_price < original_stop_loss:
+                        if trapped_price > best_stop_loss or best_stop_loss == original_stop_loss:
+                            best_stop_loss = trapped_price - 5  # 5 points below trapped level
+                            stop_loss_reason = f"Trapped buyer level at {trapped_price:.2f}"
+                
+                suggestion['stop_loss'] = best_stop_loss
+                if best_stop_loss != original_stop_loss:
+                    suggestion['rationale'] += f" Stop loss adjusted to {stop_loss_reason}."
+            
+            elif direction == 'Bearish' and original_stop_loss:
+                # For SELL: Set stop loss above nearest absorption zone or trapped seller level
+                best_stop_loss = original_stop_loss
+                stop_loss_reason = "TPO-based (IB/VAH)"
+                
+                # Check absorption zones above entry
+                for zone in absorption_zones:
+                    zone_high = zone.get('price_high') or zone.get('price')
+                    if zone_high and zone_high > entry_level and zone_high > original_stop_loss:
+                        # Use absorption zone as stop loss if it's closer to entry (tighter stop)
+                        if zone_high < best_stop_loss or best_stop_loss == original_stop_loss:
+                            best_stop_loss = zone_high + 5  # 5 points above zone for safety
+                            stop_loss_reason = f"Absorption zone at {zone_high:.2f}"
+                
+                # Check trapped seller levels
+                trapped_sellers = trapped_traders.get('trapped_sellers', [])
+                for trapped in trapped_sellers:
+                    trapped_price = trapped.get('futures_price') or trapped.get('price')
+                    if trapped_price and trapped_price > entry_level and trapped_price > original_stop_loss:
+                        if trapped_price < best_stop_loss or best_stop_loss == original_stop_loss:
+                            best_stop_loss = trapped_price + 5  # 5 points above trapped level
+                            stop_loss_reason = f"Trapped seller level at {trapped_price:.2f}"
+                
+                suggestion['stop_loss'] = best_stop_loss
+                if best_stop_loss != original_stop_loss:
+                    suggestion['rationale'] += f" Stop loss adjusted to {stop_loss_reason}."
             
             # Update confidence with enhanced calculation
             base_confidence = suggestion.get('confidence_score', 0)
@@ -960,14 +1237,33 @@ class DerivativesSuggestionEngine:
             enhanced_rationale = self._build_enhanced_rationale(market_context, rationale, direction)
             suggestion['rationale'] = enhanced_rationale
             
-            # Add additional context
+            # Add additional context with comprehensive order flow details
+            order_flow = market_context.get('order_flow', {})
             suggestion['market_signals'] = {
-                'order_flow_sentiment': market_context.get('order_flow', {}).get('overall_sentiment', {}).get('sentiment', 'Neutral'),
+                'order_flow_sentiment': order_flow.get('overall_sentiment', {}).get('sentiment', 'Neutral'),
                 'market_bias': market_context.get('market_bias', {}).get('combined_bias', {}).get('bias_direction', 'Neutral'),
                 'put_call_ratio': market_context.get('options_data', {}).get('put_call_ratio', 1.0),
                 'futures_trend': market_context.get('futures_data', {}).get('trend', 'Neutral'),
                 'tick_momentum': market_context.get('tick_momentum', {}).get('trend_direction', 'Neutral')
             }
+            
+            # Add comprehensive order flow details
+            if order_flow.get('success'):
+                suggestion['order_flow_details'] = {
+                    'exhaustion_signals': order_flow.get('exhaustion_signals', {}).get('events', []),
+                    'trapped_traders': {
+                        'buyers': order_flow.get('trapped_traders', {}).get('trapped_buyers', []),
+                        'sellers': order_flow.get('trapped_traders', {}).get('trapped_sellers', [])
+                    },
+                    'volume_divergences': order_flow.get('volume_divergences', {}).get('divergences', []),
+                    'pressure_details': {
+                        'direction': order_flow.get('pressure_analysis', {}).get('pressure_direction', 'Neutral'),
+                        'score': order_flow.get('pressure_analysis', {}).get('pressure_score', 0),
+                        'buy_pct': order_flow.get('pressure_analysis', {}).get('buy_pressure_pct', 50.0),
+                        'sell_pct': order_flow.get('pressure_analysis', {}).get('sell_pressure_pct', 50.0)
+                    },
+                    'absorption_zones': order_flow.get('absorption_zones', [])
+                }
         
         return suggestions
     
@@ -986,20 +1282,114 @@ class DerivativesSuggestionEngine:
         # Use existing logic but with enhanced strike selection and confidence
         suggestions = self._generate_options_suggestions(tpo_data, current_price, pre_market_tpo)
         
-        # Enhance strike selection using options data
+        # Enhance strike selection using order flow and options data
+        order_flow = market_context.get('order_flow', {})
+        trapped_traders = order_flow.get('trapped_traders', {}) if order_flow.get('success') else {}
+        exhaustion_signals = order_flow.get('exhaustion_signals', {}) if order_flow.get('success') else {}
+        absorption_zones = order_flow.get('absorption_zones', []) if order_flow.get('success') else []
+        
         if options_data.get('options_chain') is not None and not options_data['options_chain'].empty:
             for suggestion in suggestions:
-                # Use max OI strikes if available
+                original_strike = suggestion.get('strike_price', 0)
+                strike_adjusted = False
+                
                 if suggestion.get('derivative_type') == 'CALL':
-                    max_oi_strike = options_data.get('max_oi_call_strike')
-                    if max_oi_strike and abs(max_oi_strike - suggestion.get('strike_price', 0)) < 100:
-                        suggestion['strike_price'] = max_oi_strike
-                        suggestion['rationale'] += f" Strike adjusted to max OI level ({max_oi_strike})."
+                    # Adjust CALL strike based on trapped seller levels
+                    trapped_sellers = trapped_traders.get('trapped_sellers', [])
+                    if trapped_sellers:
+                        # Use the most recent trapped seller price as reference
+                        latest_trapped_seller = trapped_sellers[-1] if trapped_sellers else None
+                        if latest_trapped_seller:
+                            trapped_price = latest_trapped_seller.get('futures_price') or latest_trapped_seller.get('price')
+                            if trapped_price and abs(trapped_price - original_strike) < 200:
+                                # Round to nearest 50 (Nifty strike interval)
+                                adjusted_strike = round(trapped_price / 50) * 50
+                                if abs(adjusted_strike - original_strike) < 100:
+                                    suggestion['strike_price'] = adjusted_strike
+                                    suggestion['rationale'] += f" Strike adjusted to trapped seller level ({adjusted_strike})."
+                                    strike_adjusted = True
+                    
+                    # Consider exhaustion signal prices
+                    if not strike_adjusted:
+                        exhaustion_events = exhaustion_signals.get('events', [])
+                        buying_exhaustion_events = [e for e in exhaustion_events if e.get('type') == 'buying_exhaustion']
+                        if buying_exhaustion_events:
+                            exhaustion_price = buying_exhaustion_events[-1].get('futures_price') or buying_exhaustion_events[-1].get('price')
+                            if exhaustion_price and abs(exhaustion_price - original_strike) < 200:
+                                adjusted_strike = round(exhaustion_price / 50) * 50
+                                if abs(adjusted_strike - original_strike) < 100:
+                                    suggestion['strike_price'] = adjusted_strike
+                                    suggestion['rationale'] += f" Strike adjusted to buying exhaustion level ({adjusted_strike})."
+                                    strike_adjusted = True
+                    
+                    # Use absorption zone boundaries as strike reference
+                    if not strike_adjusted and absorption_zones:
+                        # Use upper boundary of absorption zone
+                        latest_zone = absorption_zones[-1] if absorption_zones else None
+                        if latest_zone:
+                            zone_high = latest_zone.get('price_high') or latest_zone.get('price')
+                            if zone_high and abs(zone_high - original_strike) < 200:
+                                adjusted_strike = round(zone_high / 50) * 50
+                                if abs(adjusted_strike - original_strike) < 100:
+                                    suggestion['strike_price'] = adjusted_strike
+                                    suggestion['rationale'] += f" Strike adjusted to absorption zone upper boundary ({adjusted_strike})."
+                                    strike_adjusted = True
+                    
+                    # Fallback to max OI strikes if available
+                    if not strike_adjusted:
+                        max_oi_strike = options_data.get('max_oi_call_strike')
+                        if max_oi_strike and abs(max_oi_strike - original_strike) < 100:
+                            suggestion['strike_price'] = max_oi_strike
+                            suggestion['rationale'] += f" Strike adjusted to max OI level ({max_oi_strike})."
+                
                 elif suggestion.get('derivative_type') == 'PUT':
-                    max_oi_strike = options_data.get('max_oi_put_strike')
-                    if max_oi_strike and abs(max_oi_strike - suggestion.get('strike_price', 0)) < 100:
-                        suggestion['strike_price'] = max_oi_strike
-                        suggestion['rationale'] += f" Strike adjusted to max OI level ({max_oi_strike})."
+                    # Adjust PUT strike based on trapped buyer levels
+                    trapped_buyers = trapped_traders.get('trapped_buyers', [])
+                    if trapped_buyers:
+                        # Use the most recent trapped buyer price as reference
+                        latest_trapped_buyer = trapped_buyers[-1] if trapped_buyers else None
+                        if latest_trapped_buyer:
+                            trapped_price = latest_trapped_buyer.get('futures_price') or latest_trapped_buyer.get('price')
+                            if trapped_price and abs(trapped_price - original_strike) < 200:
+                                # Round to nearest 50 (Nifty strike interval)
+                                adjusted_strike = round(trapped_price / 50) * 50
+                                if abs(adjusted_strike - original_strike) < 100:
+                                    suggestion['strike_price'] = adjusted_strike
+                                    suggestion['rationale'] += f" Strike adjusted to trapped buyer level ({adjusted_strike})."
+                                    strike_adjusted = True
+                    
+                    # Consider exhaustion signal prices
+                    if not strike_adjusted:
+                        exhaustion_events = exhaustion_signals.get('events', [])
+                        selling_exhaustion_events = [e for e in exhaustion_events if e.get('type') == 'selling_exhaustion']
+                        if selling_exhaustion_events:
+                            exhaustion_price = selling_exhaustion_events[-1].get('futures_price') or selling_exhaustion_events[-1].get('price')
+                            if exhaustion_price and abs(exhaustion_price - original_strike) < 200:
+                                adjusted_strike = round(exhaustion_price / 50) * 50
+                                if abs(adjusted_strike - original_strike) < 100:
+                                    suggestion['strike_price'] = adjusted_strike
+                                    suggestion['rationale'] += f" Strike adjusted to selling exhaustion level ({adjusted_strike})."
+                                    strike_adjusted = True
+                    
+                    # Use absorption zone boundaries as strike reference
+                    if not strike_adjusted and absorption_zones:
+                        # Use lower boundary of absorption zone
+                        latest_zone = absorption_zones[-1] if absorption_zones else None
+                        if latest_zone:
+                            zone_low = latest_zone.get('price_low') or latest_zone.get('price')
+                            if zone_low and abs(zone_low - original_strike) < 200:
+                                adjusted_strike = round(zone_low / 50) * 50
+                                if abs(adjusted_strike - original_strike) < 100:
+                                    suggestion['strike_price'] = adjusted_strike
+                                    suggestion['rationale'] += f" Strike adjusted to absorption zone lower boundary ({adjusted_strike})."
+                                    strike_adjusted = True
+                    
+                    # Fallback to max OI strikes if available
+                    if not strike_adjusted:
+                        max_oi_strike = options_data.get('max_oi_put_strike')
+                        if max_oi_strike and abs(max_oi_strike - original_strike) < 100:
+                            suggestion['strike_price'] = max_oi_strike
+                            suggestion['rationale'] += f" Strike adjusted to max OI level ({max_oi_strike})."
         
         # Enhance each suggestion with additional signals
         for suggestion in suggestions:
@@ -1016,14 +1406,33 @@ class DerivativesSuggestionEngine:
             enhanced_rationale = self._build_enhanced_rationale(market_context, rationale, direction)
             suggestion['rationale'] = enhanced_rationale
             
-            # Add additional context
+            # Add additional context with comprehensive order flow details
+            order_flow = market_context.get('order_flow', {})
             suggestion['market_signals'] = {
-                'order_flow_sentiment': market_context.get('order_flow', {}).get('overall_sentiment', {}).get('sentiment', 'Neutral'),
+                'order_flow_sentiment': order_flow.get('overall_sentiment', {}).get('sentiment', 'Neutral'),
                 'market_bias': market_context.get('market_bias', {}).get('combined_bias', {}).get('bias_direction', 'Neutral'),
                 'put_call_ratio': market_context.get('options_data', {}).get('put_call_ratio', 1.0),
                 'futures_trend': market_context.get('futures_data', {}).get('trend', 'Neutral'),
                 'tick_momentum': market_context.get('tick_momentum', {}).get('trend_direction', 'Neutral')
             }
+            
+            # Add comprehensive order flow details
+            if order_flow.get('success'):
+                suggestion['order_flow_details'] = {
+                    'exhaustion_signals': order_flow.get('exhaustion_signals', {}).get('events', []),
+                    'trapped_traders': {
+                        'buyers': order_flow.get('trapped_traders', {}).get('trapped_buyers', []),
+                        'sellers': order_flow.get('trapped_traders', {}).get('trapped_sellers', [])
+                    },
+                    'volume_divergences': order_flow.get('volume_divergences', {}).get('divergences', []),
+                    'pressure_details': {
+                        'direction': order_flow.get('pressure_analysis', {}).get('pressure_direction', 'Neutral'),
+                        'score': order_flow.get('pressure_analysis', {}).get('pressure_score', 0),
+                        'buy_pct': order_flow.get('pressure_analysis', {}).get('buy_pressure_pct', 50.0),
+                        'sell_pct': order_flow.get('pressure_analysis', {}).get('sell_pressure_pct', 50.0)
+                    },
+                    'absorption_zones': order_flow.get('absorption_zones', [])
+                }
         
         return suggestions
     
@@ -1033,7 +1442,7 @@ class DerivativesSuggestionEngine:
         """
         rationale_parts = [base_rationale]
         
-        # Order flow insights
+        # Order flow insights with detailed information
         order_flow = market_context.get('order_flow', {})
         if order_flow.get('success'):
             sentiment = order_flow.get('overall_sentiment', {})
@@ -1042,11 +1451,72 @@ class DerivativesSuggestionEngine:
             if sentiment_type == direction:
                 rationale_parts.append(f"Order flow confirms {direction.lower()} sentiment.")
             
+            # Exhaustion signal details
+            exhaustion_signals = order_flow.get('exhaustion_signals', {})
+            exhaustion_events = exhaustion_signals.get('events', [])
+            if exhaustion_events:
+                relevant_exhaustion = [e for e in exhaustion_events if 
+                                     (direction == 'Bullish' and e.get('type') == 'selling_exhaustion') or
+                                     (direction == 'Bearish' and e.get('type') == 'buying_exhaustion')]
+                if relevant_exhaustion:
+                    latest_exhaustion = relevant_exhaustion[-1]
+                    exhaustion_price = latest_exhaustion.get('futures_price') or latest_exhaustion.get('price')
+                    volume_multiple = latest_exhaustion.get('volume_multiple', 0)
+                    if exhaustion_price:
+                        rationale_parts.append(f"{latest_exhaustion.get('type', 'exhaustion').replace('_', ' ').title()} detected at {exhaustion_price:.2f} (volume {volume_multiple}x avg) - potential reversal.")
+            
+            # Trapped trader details
             trapped = order_flow.get('trapped_traders', {})
-            if direction == 'Bullish' and trapped.get('trapped_sellers', 0) > 0:
-                rationale_parts.append(f"Trapped sellers detected ({trapped.get('trapped_sellers', 0)} instances) - potential bullish reversal.")
-            elif direction == 'Bearish' and trapped.get('trapped_buyers', 0) > 0:
-                rationale_parts.append(f"Trapped buyers detected ({trapped.get('trapped_buyers', 0)} instances) - potential bearish reversal.")
+            if direction == 'Bullish' and trapped.get('trapped_sellers_count', 0) > 0:
+                trapped_sellers = trapped.get('trapped_sellers', [])
+                if trapped_sellers:
+                    latest_trapped = trapped_sellers[-1]
+                    trapped_price = latest_trapped.get('futures_price') or latest_trapped.get('price')
+                    severity = latest_trapped.get('severity', 'medium')
+                    rationale_parts.append(f"Trapped sellers detected ({trapped.get('trapped_sellers_count', 0)} instances, latest at {trapped_price:.2f}, {severity} severity) - potential bullish reversal.")
+            elif direction == 'Bearish' and trapped.get('trapped_buyers_count', 0) > 0:
+                trapped_buyers = trapped.get('trapped_buyers', [])
+                if trapped_buyers:
+                    latest_trapped = trapped_buyers[-1]
+                    trapped_price = latest_trapped.get('futures_price') or latest_trapped.get('price')
+                    severity = latest_trapped.get('severity', 'medium')
+                    rationale_parts.append(f"Trapped buyers detected ({trapped.get('trapped_buyers_count', 0)} instances, latest at {trapped_price:.2f}, {severity} severity) - potential bearish reversal.")
+            
+            # Volume divergence information
+            volume_divergences = order_flow.get('volume_divergences', {})
+            divergences = volume_divergences.get('divergences', [])
+            if divergences:
+                relevant_divergences = [d for d in divergences if 
+                                      (direction == 'Bullish' and d.get('type') == 'bullish_divergence') or
+                                      (direction == 'Bearish' and d.get('type') == 'bearish_divergence')]
+                if relevant_divergences:
+                    latest_div = relevant_divergences[-1]
+                    div_price = latest_div.get('futures_price') or latest_div.get('price')
+                    if div_price:
+                        rationale_parts.append(f"{latest_div.get('type', 'divergence').replace('_', ' ').title()} detected at {div_price:.2f} - potential reversal signal.")
+            
+            # Pressure analysis details
+            pressure_analysis = order_flow.get('pressure_analysis', {})
+            pressure_direction = pressure_analysis.get('pressure_direction', 'Neutral')
+            pressure_score = pressure_analysis.get('pressure_score', 0)
+            buy_pct = pressure_analysis.get('buy_pressure_pct', 50.0)
+            sell_pct = pressure_analysis.get('sell_pressure_pct', 50.0)
+            if pressure_direction != 'Neutral':
+                rationale_parts.append(f"Pressure analysis: {pressure_direction} (score: {pressure_score:.1f}, Buy: {buy_pct:.1f}%, Sell: {sell_pct:.1f}%).")
+            
+            # Absorption zone information when relevant
+            absorption_zones = order_flow.get('absorption_zones', [])
+            if absorption_zones:
+                latest_zone = absorption_zones[-1]
+                zone_price = latest_zone.get('price')
+                zone_high = latest_zone.get('price_high')
+                zone_low = latest_zone.get('price_low')
+                strength = latest_zone.get('strength', 'moderate')
+                if zone_price:
+                    if zone_high and zone_low:
+                        rationale_parts.append(f"Absorption zone detected: {zone_low:.2f}-{zone_high:.2f} ({strength} strength) - large orders being absorbed.")
+                    else:
+                        rationale_parts.append(f"Absorption zone detected at {zone_price:.2f} ({strength} strength) - large orders being absorbed.")
         
         # Market bias insights
         market_bias = market_context.get('market_bias', {})
@@ -1082,3 +1552,241 @@ class DerivativesSuggestionEngine:
             rationale_parts.append(f"Tick momentum confirms {tick_direction.lower()} trend ({momentum_pct:+.2f}%).")
         
         return " ".join(rationale_parts)
+    
+    def _build_decision_logic(self, market_context: Dict, suggestion: Dict, direction: str) -> Dict:
+        """
+        Build decision logic explaining how the suggestion was generated
+        
+        Returns:
+            Dictionary with decision logic breakdown
+        """
+        tpo_data = market_context.get('tpo_data', {})
+        current_price = market_context.get('current_price')
+        order_flow = market_context.get('order_flow', {})
+        
+        poc = tpo_data.get('poc')
+        vah = tpo_data.get('value_area_high')
+        val = tpo_data.get('value_area_low')
+        
+        # TPO Logic
+        price_vs_poc = current_price - poc if poc else 0
+        price_vs_vah = current_price - vah if vah else 0
+        price_vs_val = current_price - val if val else 0
+        
+        tpo_logic = f"Price ({current_price:.2f}) vs POC ({poc:.2f}): {price_vs_poc:+.2f}. "
+        if direction == 'Bullish':
+            tpo_logic += f"Price above POC and near/above VAH ({vah:.2f}) suggests bullish continuation."
+        elif direction == 'Bearish':
+            tpo_logic += f"Price below POC and near/below VAL ({val:.2f}) suggests bearish continuation."
+        else:
+            tpo_logic += f"Price near POC within Value Area suggests neutral/consolidation."
+        
+        # Entry Level Logic
+        entry_level = suggestion.get('entry_level', current_price)
+        entry_logic = f"Entry level set at {entry_level:.2f} based on "
+        if entry_level == current_price:
+            entry_logic += "current market price."
+        elif entry_level == poc:
+            entry_logic += f"POC level ({poc:.2f})."
+        else:
+            entry_logic += f"TPO analysis (current: {current_price:.2f}, POC: {poc:.2f})."
+        
+        # Stop Loss Logic
+        stop_loss = suggestion.get('stop_loss')
+        stop_loss_logic = "Stop loss not applicable (options are limited risk)."
+        if stop_loss:
+            stop_loss_logic = f"Stop loss set at {stop_loss:.2f} based on "
+            if 'absorption zone' in suggestion.get('rationale', '').lower():
+                stop_loss_logic += "absorption zone from order flow analysis."
+            elif 'trapped' in suggestion.get('rationale', '').lower():
+                stop_loss_logic += "trapped trader level from order flow analysis."
+            else:
+                ib_high = tpo_data.get('initial_balance_high')
+                ib_low = tpo_data.get('initial_balance_low')
+                if direction == 'Bullish' and ib_low:
+                    stop_loss_logic += f"IB low ({ib_low:.2f}) or VAL ({val:.2f})."
+                elif direction == 'Bearish' and ib_high:
+                    stop_loss_logic += f"IB high ({ib_high:.2f}) or VAH ({vah:.2f})."
+                else:
+                    stop_loss_logic += "TPO-based levels (IB/VAL/VAH)."
+        
+        # Target Selection Logic
+        target_levels = suggestion.get('target_levels', [])
+        target_logic = "Targets selected based on "
+        if target_levels:
+            target_types = [t.get('type') for t in target_levels]
+            if 'VAH' in target_types:
+                target_logic += f"VAH ({vah:.2f}) for high probability target. "
+            if 'VAL' in target_types:
+                target_logic += f"VAL ({val:.2f}) for high probability target. "
+            if 'Extension' in target_types:
+                va_width = vah - val if vah and val else 0
+                if direction == 'Bullish':
+                    target_logic += f"Extension above VAH ({vah + va_width * 0.3:.2f}) for medium probability target."
+                else:
+                    target_logic += f"Extension below VAL ({val - va_width * 0.3:.2f}) for medium probability target."
+        else:
+            target_logic += "TPO value area levels."
+        
+        # Strike Selection Logic (for options)
+        strike_logic = None
+        if suggestion.get('derivative_type') in ['CALL', 'PUT']:
+            strike_price = suggestion.get('strike_price')
+            strike_logic = f"Strike selected at {strike_price} based on "
+            if 'trapped' in suggestion.get('rationale', '').lower():
+                strike_logic += "trapped trader level from order flow."
+            elif 'exhaustion' in suggestion.get('rationale', '').lower():
+                strike_logic += "exhaustion signal price from order flow."
+            elif 'absorption' in suggestion.get('rationale', '').lower():
+                strike_logic += "absorption zone boundary from order flow."
+            elif 'max OI' in suggestion.get('rationale', ''):
+                strike_logic += "maximum open interest level."
+            else:
+                if direction == 'Bullish':
+                    strike_logic += f"VAH level ({vah:.2f}) rounded to nearest strike."
+                else:
+                    strike_logic += f"VAL level ({val:.2f}) rounded to nearest strike."
+        
+        # Confidence Calculation Breakdown
+        base_confidence = suggestion.get('confidence_score', 0)  # This is already enhanced
+        confidence_breakdown = {
+            'base_tpo_confidence': tpo_data.get('confidence_score', 0),
+            'order_flow_adjustment': 0,
+            'market_bias_adjustment': 0,
+            'options_data_adjustment': 0,
+            'futures_momentum_adjustment': 0,
+            'tick_momentum_adjustment': 0,
+            'final_confidence': base_confidence
+        }
+        
+        # Calculate adjustments (simplified - actual calculation is in _calculate_enhanced_confidence)
+        if order_flow.get('success'):
+            sentiment = order_flow.get('overall_sentiment', {}).get('sentiment', 'Neutral')
+            if (direction == 'Bullish' and sentiment == 'Bullish') or (direction == 'Bearish' and sentiment == 'Bearish'):
+                confidence_breakdown['order_flow_adjustment'] = 10
+            elif (direction == 'Bullish' and sentiment in ['Bearish', 'Strongly_Bearish']) or (direction == 'Bearish' and sentiment in ['Bullish', 'Strongly_Bullish']):
+                confidence_breakdown['order_flow_adjustment'] = -5
+        
+        # Filters Applied
+        filters_applied = []
+        if suggestion.get('_filtered'):
+            filters_applied.append(f"Filtered out: {suggestion.get('_filter_reason', 'unknown')}")
+        
+        return {
+            'tpo_logic': tpo_logic,
+            'entry_level_logic': entry_logic,
+            'stop_loss_logic': stop_loss_logic,
+            'target_selection_logic': target_logic,
+            'strike_selection_logic': strike_logic,
+            'confidence_breakdown': confidence_breakdown,
+            'filters_applied': filters_applied
+        }
+    
+    def _build_decision_context(self, market_context: Dict, suggestion: Dict, direction: str) -> Dict:
+        """
+        Build decision context with market condition, price position, signal alignment, etc.
+        
+        Returns:
+            Dictionary with decision context
+        """
+        tpo_data = market_context.get('tpo_data', {})
+        current_price = market_context.get('current_price')
+        order_flow = market_context.get('order_flow', {})
+        
+        poc = tpo_data.get('poc')
+        vah = tpo_data.get('value_area_high')
+        val = tpo_data.get('value_area_low')
+        
+        # Market Condition
+        price_vs_poc = current_price - poc if poc else 0
+        if price_vs_poc > 0:
+            market_condition = 'Bullish'
+        elif price_vs_poc < 0:
+            market_condition = 'Bearish'
+        else:
+            market_condition = 'Neutral'
+        
+        # Price Position
+        price_position = f"Current price ({current_price:.2f}) is "
+        if poc:
+            if current_price > vah:
+                price_position += f"above VAH ({vah:.2f}) - strong bullish position."
+            elif current_price > poc:
+                price_position += f"above POC ({poc:.2f}) but below VAH ({vah:.2f}) - moderate bullish position."
+            elif current_price > val:
+                price_position += f"between VAL ({val:.2f}) and POC ({poc:.2f}) - neutral position."
+            else:
+                price_position += f"below VAL ({val:.2f}) - bearish position."
+        
+        # Signal Alignment
+        signal_alignment = {
+            'supporting_signals': [],
+            'conflicting_signals': [],
+            'neutral_signals': []
+        }
+        
+        # Order flow sentiment
+        if order_flow.get('success'):
+            sentiment = order_flow.get('overall_sentiment', {}).get('sentiment', 'Neutral')
+            if sentiment == direction or (sentiment == 'Strongly_Bullish' and direction == 'Bullish') or (sentiment == 'Strongly_Bearish' and direction == 'Bearish'):
+                signal_alignment['supporting_signals'].append(f"Order flow sentiment: {sentiment}")
+            elif (sentiment in ['Bearish', 'Strongly_Bearish'] and direction == 'Bullish') or (sentiment in ['Bullish', 'Strongly_Bullish'] and direction == 'Bearish'):
+                signal_alignment['conflicting_signals'].append(f"Order flow sentiment: {sentiment}")
+            else:
+                signal_alignment['neutral_signals'].append(f"Order flow sentiment: {sentiment}")
+        
+        # Market bias
+        market_bias = market_context.get('market_bias', {})
+        combined_bias = market_bias.get('combined_bias', {})
+        bias_direction = combined_bias.get('bias_direction', 'Neutral')
+        if bias_direction == direction:
+            signal_alignment['supporting_signals'].append(f"Market bias: {bias_direction}")
+        elif bias_direction != 'Neutral':
+            signal_alignment['conflicting_signals'].append(f"Market bias: {bias_direction}")
+        
+        # Risk Factors
+        risk_factors = []
+        if order_flow.get('success'):
+            exhaustion_signals = order_flow.get('exhaustion_signals', {})
+            if direction == 'Bullish' and exhaustion_signals.get('buying_exhaustion', 0) > 0:
+                risk_factors.append("Buying exhaustion detected - potential top/reversal risk")
+            elif direction == 'Bearish' and exhaustion_signals.get('selling_exhaustion', 0) > 0:
+                risk_factors.append("Selling exhaustion detected - potential bottom/reversal risk")
+        
+        # Key Levels
+        key_levels = {
+            'poc': poc,
+            'vah': vah,
+            'val': val,
+            'current_price': current_price,
+            'entry_level': suggestion.get('entry_level'),
+            'stop_loss': suggestion.get('stop_loss'),
+            'targets': [t.get('level') for t in suggestion.get('target_levels', [])]
+        }
+        
+        # Add trapped trader levels
+        if order_flow.get('success'):
+            trapped_traders = order_flow.get('trapped_traders', {})
+            trapped_buyer_prices = [t.get('futures_price') or t.get('price') for t in trapped_traders.get('trapped_buyers', [])]
+            trapped_seller_prices = [t.get('futures_price') or t.get('price') for t in trapped_traders.get('trapped_sellers', [])]
+            if trapped_buyer_prices:
+                key_levels['trapped_buyer_levels'] = trapped_buyer_prices
+            if trapped_seller_prices:
+                key_levels['trapped_seller_levels'] = trapped_seller_prices
+        
+        # Add absorption zones
+        if order_flow.get('success'):
+            absorption_zones = order_flow.get('absorption_zones', [])
+            if absorption_zones:
+                key_levels['absorption_zones'] = [
+                    {'low': z.get('price_low') or z.get('price'), 'high': z.get('price_high') or z.get('price')}
+                    for z in absorption_zones
+                ]
+        
+        return {
+            'market_condition': market_condition,
+            'price_position': price_position,
+            'signal_alignment': signal_alignment,
+            'risk_factors': risk_factors,
+            'key_levels': key_levels
+        }

@@ -554,7 +554,7 @@
 <body>
     <div class="header">
         <div class="header-content">
-            <div class="logo">📊 Trading Dashboard</div>
+            <div class="logo">📊 Dashboard</div>
             <div class="status-bar">
                 <div class="status-item">
                     <span class="status-indicator status-online"></span>
@@ -794,6 +794,21 @@
             <div id="orderFlowAnalysisContainer" style="padding: 15px;">
                 <div style="text-align: center; padding: 20px; color: #666;">
                     Click "Refresh Analysis" to load order flow analysis
+                </div>
+            </div>
+        </div>
+
+        <!-- Order Flow History Chart Section -->
+        <div class="card" id="section-orderflow-history" style="margin-bottom: 20px;">
+            <div class="card-header" style="background-color: #17a2b8; color: white;">
+                <h3 class="card-title" style="color: white;">📈 Order Flow History (Last 5 Trading Days)</h3>
+                <button onclick="loadOrderFlowHistory()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: white; color: #17a2b8; border: none; margin-left: 10px;">
+                    🔄 Refresh Chart
+                </button>
+            </div>
+            <div id="orderFlowHistoryContainer" style="padding: 15px;">
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    Click "Refresh Chart" to load order flow history
                 </div>
             </div>
         </div>
@@ -5273,16 +5288,100 @@
                         return;
                     }
                     
-                    if (!data.suggestions || data.suggestions.length === 0) {
-                        container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">No suggestions available at this time</div>';
-                        return;
-                    }
-                    
                     let html = `<div style="margin-bottom: 15px; font-size: 12px; color: #666;">
-                        Analysis Date: ${data.analysis_date} | Current Price: ₹${data.current_price ? data.current_price.toFixed(2) : 'N/A'} | Total Suggestions: ${data.total_suggestions}
+                        Analysis Date: ${data.analysis_date} | Current Price: ₹${data.current_price ? data.current_price.toFixed(2) : 'N/A'} | Total Suggestions: ${data.total_suggestions || 0}
                     </div>`;
                     
-                    data.suggestions.forEach((suggestion, index) => {
+                    // Display Filtering Statistics Table (always show, even if no suggestions)
+                    if (data.filtering_stats) {
+                        const stats = data.filtering_stats;
+                        const initialCount = stats.initial_count || 0;
+                        const totalFiltered = (stats.filtered_exhaustion || 0) + (stats.filtered_sentiment_conflict || 0) + 
+                                           (stats.filtered_pressure_conflict || 0) + (stats.filtered_weak_confidence || 0);
+                        const retentionPct = initialCount > 0 ? ((stats.final_count || 0) / initialCount * 100).toFixed(1) : 0;
+                        
+                        html += `
+                            <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                                <h4 style="margin: 0 0 15px 0; font-size: 14px; font-weight: 600; color: #333;">📊 Filtering Statistics</h4>
+                                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                                    <thead>
+                                        <tr style="background: #e9ecef;">
+                                            <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">Stage</th>
+                                            <th style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">Filtered Out</th>
+                                            <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6;">Reason</th>
+                                            <th style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">Efficacy</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="background: ${initialCount === 0 ? '#f8d7da' : '#f8f9fa'};">
+                                            <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>Initial Suggestions Generated</strong>${initialCount === 0 ? ' ⚠️' : ''}</td>
+                                            <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6; ${initialCount === 0 ? 'color: #721c24; font-weight: bold;' : ''}">${initialCount}</td>
+                                            <td style="padding: 8px; border: 1px solid #dee2e6;">${initialCount === 0 ? '<span style="color: #721c24; font-weight: 600;">⚠️ ISSUE: No suggestions generated. Check TPO data, market conditions, or price levels.</span>' : 'All suggestions before filtering'}</td>
+                                            <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">${initialCount > 0 ? '100.0%' : 'N/A'}</td>
+                                        </tr>
+                                        <tr style="background: ${(stats.filtered_exhaustion || 0) > 0 ? '#fff3cd' : '#f8f9fa'};">
+                                            <td style="padding: 8px; border: 1px solid #dee2e6;">Filtered: Exhaustion Signal Conflict</td>
+                                            <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">${stats.filtered_exhaustion || 0}</td>
+                                            <td style="padding: 8px; border: 1px solid #dee2e6;">BUY filtered when buying_exhaustion detected, SELL filtered when selling_exhaustion detected</td>
+                                            <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">${initialCount > 0 ? ((stats.filtered_exhaustion || 0) / initialCount * 100).toFixed(1) : 0}%</td>
+                                        </tr>
+                                        <tr style="background: ${(stats.filtered_sentiment_conflict || 0) > 0 ? '#fff3cd' : '#f8f9fa'};">
+                                            <td style="padding: 8px; border: 1px solid #dee2e6;">Filtered: Order Flow Sentiment Conflict</td>
+                                            <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">${stats.filtered_sentiment_conflict || 0}</td>
+                                            <td style="padding: 8px; border: 1px solid #dee2e6;">Weak signals filtered when order flow sentiment strongly conflicts with TPO direction</td>
+                                            <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">${initialCount > 0 ? ((stats.filtered_sentiment_conflict || 0) / initialCount * 100).toFixed(1) : 0}%</td>
+                                        </tr>
+                                        <tr style="background: ${(stats.filtered_pressure_conflict || 0) > 0 ? '#fff3cd' : '#f8f9fa'};">
+                                            <td style="padding: 8px; border: 1px solid #dee2e6;">Filtered: Pressure Analysis Conflict</td>
+                                            <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">${stats.filtered_pressure_conflict || 0}</td>
+                                            <td style="padding: 8px; border: 1px solid #dee2e6;">Weak signals filtered when pressure direction strongly conflicts (confidence < 30)</td>
+                                            <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">${initialCount > 0 ? ((stats.filtered_pressure_conflict || 0) / initialCount * 100).toFixed(1) : 0}%</td>
+                                        </tr>
+                                        <tr style="background: ${(stats.filtered_weak_confidence || 0) > 0 ? '#fff3cd' : '#f8f9fa'};">
+                                            <td style="padding: 8px; border: 1px solid #dee2e6;">Filtered: Low Confidence</td>
+                                            <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">${stats.filtered_weak_confidence || 0}</td>
+                                            <td style="padding: 8px; border: 1px solid #dee2e6;">Suggestions with confidence < 20 filtered out</td>
+                                            <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">${initialCount > 0 ? ((stats.filtered_weak_confidence || 0) / initialCount * 100).toFixed(1) : 0}%</td>
+                                        </tr>
+                                        <tr style="background: #d4edda; font-weight: bold;">
+                                            <td style="padding: 8px; border: 1px solid #dee2e6;">Final Suggestions (after all filters)</td>
+                                            <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">${stats.final_count || 0}</td>
+                                            <td style="padding: 8px; border: 1px solid #dee2e6;">Total filtered: ${totalFiltered} | Retention: ${retentionPct}%</td>
+                                            <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">${retentionPct}%</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                    }
+                    
+                    // Show message if no suggestions
+                    if (!data.suggestions || data.suggestions.length === 0) {
+                        const hasGenerationIssue = data.filtering_stats && data.filtering_stats.initial_count === 0;
+                        html += `
+                            <div style="text-align: center; padding: 20px; color: #666; background: ${hasGenerationIssue ? '#f8d7da' : '#f8f9fa'}; border-radius: 8px; margin-top: 20px; border-left: 4px solid ${hasGenerationIssue ? '#dc3545' : '#6c757d'};">
+                                <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: ${hasGenerationIssue ? '#721c24' : '#666'};">
+                                    ${hasGenerationIssue ? '⚠️ Generation Issue: No suggestions were generated' : 'No suggestions available at this time'}
+                                </div>
+                                <div style="font-size: 12px; color: ${hasGenerationIssue ? '#856404' : '#999'}; margin-bottom: 10px;">
+                                    ${hasGenerationIssue 
+                                        ? 'The suggestion engine did not generate any suggestions. Possible reasons:<ul style="text-align: left; margin: 10px 0; padding-left: 20px;"><li>Missing or insufficient TPO data (POC, VAH, VAL)</li><li>Current price not available or invalid</li><li>Market conditions do not meet criteria for any suggestions</li><li>TPO structure does not indicate clear bullish/bearish bias</li><li>No profitable targets found for any potential trades</li></ul>Check the TPO analysis section and ensure market data is available.' 
+                                        : 'All suggestions were filtered out based on order flow analysis. Check the filtering statistics above for details.'}
+                                </div>
+                                ${hasGenerationIssue ? `
+                                    <div style="font-size: 11px; color: #856404; background: #fff3cd; padding: 10px; border-radius: 4px; margin-top: 10px; text-align: left;">
+                                        <strong>Diagnostics:</strong><br>
+                                        Analysis Date: ${data.analysis_date || 'N/A'}<br>
+                                        Current Price: ${data.current_price ? data.current_price.toFixed(2) : 'N/A'}<br>
+                                        Futures Generated: ${data.filtering_stats?.futures_generated || 0}<br>
+                                        Options Generated: ${data.filtering_stats?.options_generated || 0}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    } else {
+                        // Display suggestions
+                        data.suggestions.forEach((suggestion, index) => {
                         const actionColor = suggestion.action === 'BUY' ? '#28a745' : suggestion.action === 'SELL' ? '#dc3545' : '#ffc107';
                         const confidenceWidth = suggestion.confidence_score || 0;
                         
@@ -5365,9 +5464,162 @@
                                         VAL: ${suggestion.tpo_levels_used.val ? '₹' + suggestion.tpo_levels_used.val.toFixed(2) : 'N/A'}
                                     </div>
                                 ` : ''}
+                                
+                                ${suggestion.order_flow_details ? `
+                                    <div style="margin-top: 15px; border-top: 1px solid #ddd; padding-top: 10px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; cursor: pointer;" 
+                                             onclick="toggleOrderFlowDetails(${index})">
+                                            <h5 style="margin: 0; font-size: 13px; font-weight: 600; color: #333;">📊 Order Flow Summary</h5>
+                                            <span id="orderFlowToggle${index}" style="font-size: 12px; color: #666;">▼ Expand</span>
+                                        </div>
+                                        <div id="orderFlowSummary${index}" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 10px;">
+                                            <div style="background: ${suggestion.order_flow_details.pressure_details.direction === 'Strong_buy' || suggestion.order_flow_details.pressure_details.direction === 'Buy' ? '#d4edda' : suggestion.order_flow_details.pressure_details.direction === 'Strong_sell' || suggestion.order_flow_details.pressure_details.direction === 'Sell' ? '#f8d7da' : '#e9ecef'}; padding: 8px; border-radius: 5px; text-align: center;">
+                                                <div style="font-size: 10px; color: #666; margin-bottom: 3px;">Pressure</div>
+                                                <div style="font-size: 12px; font-weight: bold; color: #333;">${suggestion.order_flow_details.pressure_details.direction || 'Neutral'}</div>
+                                                <div style="font-size: 10px; color: #666;">${suggestion.order_flow_details.pressure_details.score || 0}</div>
+                                            </div>
+                                            <div style="background: #e7f3ff; padding: 8px; border-radius: 5px; text-align: center;">
+                                                <div style="font-size: 10px; color: #666; margin-bottom: 3px;">Trapped Traders</div>
+                                                <div style="font-size: 12px; font-weight: bold; color: #333;">${(suggestion.order_flow_details.trapped_traders.buyers || []).length + (suggestion.order_flow_details.trapped_traders.sellers || []).length}</div>
+                                                <div style="font-size: 10px; color: #666;">Buyers: ${(suggestion.order_flow_details.trapped_traders.buyers || []).length} | Sellers: ${(suggestion.order_flow_details.trapped_traders.sellers || []).length}</div>
+                                            </div>
+                                            <div style="background: #fff3cd; padding: 8px; border-radius: 5px; text-align: center;">
+                                                <div style="font-size: 10px; color: #666; margin-bottom: 3px;">Exhaustion</div>
+                                                <div style="font-size: 12px; font-weight: bold; color: #333;">${(suggestion.order_flow_details.exhaustion_signals || []).length}</div>
+                                                <div style="font-size: 10px; color: #666;">Buy: ${(suggestion.order_flow_details.exhaustion_signals || []).filter(e => e.type === 'buying_exhaustion').length} | Sell: ${(suggestion.order_flow_details.exhaustion_signals || []).filter(e => e.type === 'selling_exhaustion').length}</div>
+                                            </div>
+                                        </div>
+                                        <div id="orderFlowDetails${index}" style="display: none; margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px; font-size: 11px;">
+                                            ${(suggestion.order_flow_details.exhaustion_signals || []).length > 0 ? `
+                                                <div style="margin-bottom: 10px;">
+                                                    <strong style="color: #856404;">Exhaustion Signals:</strong>
+                                                    <ul style="margin: 5px 0; padding-left: 20px;">
+                                                        ${suggestion.order_flow_details.exhaustion_signals.map(e => `
+                                                            <li>${e.type.replace('_', ' ').toUpperCase()} at ${(e.futures_price || e.price || 0).toFixed(2)} (volume ${e.volume_multiple || 0}x avg)</li>
+                                                        `).join('')}
+                                                    </ul>
+                                                </div>
+                                            ` : ''}
+                                            ${(suggestion.order_flow_details.trapped_traders.buyers || []).length > 0 ? `
+                                                <div style="margin-bottom: 10px;">
+                                                    <strong style="color: #721c24;">Trapped Buyers:</strong>
+                                                    <ul style="margin: 5px 0; padding-left: 20px;">
+                                                        ${suggestion.order_flow_details.trapped_traders.buyers.map(t => `
+                                                            <li>Price: ${(t.futures_price || t.price || 0).toFixed(2)}, Severity: ${t.severity || 'medium'}</li>
+                                                        `).join('')}
+                                                    </ul>
+                                                </div>
+                                            ` : ''}
+                                            ${(suggestion.order_flow_details.trapped_traders.sellers || []).length > 0 ? `
+                                                <div style="margin-bottom: 10px;">
+                                                    <strong style="color: #155724;">Trapped Sellers:</strong>
+                                                    <ul style="margin: 5px 0; padding-left: 20px;">
+                                                        ${suggestion.order_flow_details.trapped_traders.sellers.map(t => `
+                                                            <li>Price: ${(t.futures_price || t.price || 0).toFixed(2)}, Severity: ${t.severity || 'medium'}</li>
+                                                        `).join('')}
+                                                    </ul>
+                                                </div>
+                                            ` : ''}
+                                            ${(suggestion.order_flow_details.volume_divergences || []).length > 0 ? `
+                                                <div style="margin-bottom: 10px;">
+                                                    <strong style="color: #004085;">Volume Divergences:</strong>
+                                                    <ul style="margin: 5px 0; padding-left: 20px;">
+                                                        ${suggestion.order_flow_details.volume_divergences.map(d => `
+                                                            <li>${d.type.replace('_', ' ').toUpperCase()} at ${(d.futures_price || d.price || 0).toFixed(2)}</li>
+                                                        `).join('')}
+                                                    </ul>
+                                                </div>
+                                            ` : ''}
+                                            ${suggestion.order_flow_details.pressure_details ? `
+                                                <div style="margin-bottom: 10px;">
+                                                    <strong style="color: #004085;">Pressure Breakdown:</strong>
+                                                    <div style="margin-top: 5px;">
+                                                        Buy: ${(suggestion.order_flow_details.pressure_details.buy_pct || 0).toFixed(1)}% | 
+                                                        Sell: ${(suggestion.order_flow_details.pressure_details.sell_pct || 0).toFixed(1)}%
+                                                    </div>
+                                                </div>
+                                            ` : ''}
+                                            ${(suggestion.order_flow_details.absorption_zones || []).length > 0 ? `
+                                                <div style="margin-bottom: 10px;">
+                                                    <strong style="color: #004085;">Absorption Zones:</strong>
+                                                    <ul style="margin: 5px 0; padding-left: 20px;">
+                                                        ${suggestion.order_flow_details.absorption_zones.map(z => `
+                                                            <li>${(z.price_low || z.price || 0).toFixed(2)} - ${(z.price_high || z.price || 0).toFixed(2)} (${z.strength || 'moderate'})</li>
+                                                        `).join('')}
+                                                    </ul>
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    </div>
+                                ` : ''}
+                                
+                                ${suggestion.decision_logic || suggestion.decision_context ? `
+                                    <div style="margin-top: 15px; border-top: 1px solid #ddd; padding-top: 10px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; cursor: pointer;" 
+                                             onclick="toggleLogicContext(${index})">
+                                            <h5 style="margin: 0; font-size: 13px; font-weight: 600; color: #333;">📋 Logic & Context</h5>
+                                            <span id="logicContextToggle${index}" style="font-size: 12px; color: #666;">▼ Expand</span>
+                                        </div>
+                                        <div id="logicContextDetails${index}" style="display: none; margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px; font-size: 11px;">
+                                            ${suggestion.decision_logic ? `
+                                                <div style="margin-bottom: 15px;">
+                                                    <strong style="color: #004085; font-size: 12px;">Decision Logic:</strong>
+                                                    <div style="margin-top: 8px; padding: 8px; background: white; border-radius: 4px; border-left: 3px solid #007bff;">
+                                                        <div style="margin-bottom: 5px;"><strong>TPO Logic:</strong> ${suggestion.decision_logic.tpo_logic || 'N/A'}</div>
+                                                        <div style="margin-bottom: 5px;"><strong>Entry Level:</strong> ${suggestion.decision_logic.entry_level_logic || 'N/A'}</div>
+                                                        <div style="margin-bottom: 5px;"><strong>Stop Loss:</strong> ${suggestion.decision_logic.stop_loss_logic || 'N/A'}</div>
+                                                        <div style="margin-bottom: 5px;"><strong>Target Selection:</strong> ${suggestion.decision_logic.target_selection_logic || 'N/A'}</div>
+                                                        ${suggestion.decision_logic.strike_selection_logic ? `<div style="margin-bottom: 5px;"><strong>Strike Selection:</strong> ${suggestion.decision_logic.strike_selection_logic}</div>` : ''}
+                                                        <div style="margin-top: 10px;">
+                                                            <strong>Confidence Breakdown:</strong>
+                                                            <ul style="margin: 5px 0; padding-left: 20px;">
+                                                                <li>Base TPO: ${(suggestion.decision_logic.confidence_breakdown?.base_tpo_confidence || 0).toFixed(1)}</li>
+                                                                <li>Order Flow: ${(suggestion.decision_logic.confidence_breakdown?.order_flow_adjustment || 0) > 0 ? '+' : ''}${(suggestion.decision_logic.confidence_breakdown?.order_flow_adjustment || 0).toFixed(1)}</li>
+                                                                <li>Final: ${(suggestion.decision_logic.confidence_breakdown?.final_confidence || 0).toFixed(1)}</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ` : ''}
+                                            ${suggestion.decision_context ? `
+                                                <div style="margin-bottom: 15px;">
+                                                    <strong style="color: #004085; font-size: 12px;">Market Context:</strong>
+                                                    <div style="margin-top: 8px; padding: 8px; background: white; border-radius: 4px; border-left: 3px solid #28a745;">
+                                                        <div style="margin-bottom: 5px;"><strong>Market Condition:</strong> ${suggestion.decision_context.market_condition || 'N/A'}</div>
+                                                        <div style="margin-bottom: 5px;"><strong>Price Position:</strong> ${suggestion.decision_context.price_position || 'N/A'}</div>
+                                                        ${suggestion.decision_context.signal_alignment ? `
+                                                            <div style="margin-top: 10px;">
+                                                                <strong>Signal Alignment:</strong>
+                                                                ${suggestion.decision_context.signal_alignment.supporting_signals?.length > 0 ? `
+                                                                    <div style="margin-top: 5px; color: #155724;">
+                                                                        ✅ Supporting: ${suggestion.decision_context.signal_alignment.supporting_signals.join(', ')}
+                                                                    </div>
+                                                                ` : ''}
+                                                                ${suggestion.decision_context.signal_alignment.conflicting_signals?.length > 0 ? `
+                                                                    <div style="margin-top: 5px; color: #721c24;">
+                                                                        ⚠️ Conflicting: ${suggestion.decision_context.signal_alignment.conflicting_signals.join(', ')}
+                                                                    </div>
+                                                                ` : ''}
+                                                            </div>
+                                                        ` : ''}
+                                                        ${suggestion.decision_context.risk_factors?.length > 0 ? `
+                                                            <div style="margin-top: 10px; color: #856404;">
+                                                                <strong>⚠️ Risk Factors:</strong>
+                                                                <ul style="margin: 5px 0; padding-left: 20px;">
+                                                                    ${suggestion.decision_context.risk_factors.map(r => `<li>${r}</li>`).join('')}
+                                                                </ul>
+                                                            </div>
+                                                        ` : ''}
+                                                    </div>
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    </div>
+                                ` : ''}
                             </div>
                         `;
-                    });
+                        });
+                    }
                     
                     container.innerHTML = html;
                 })
@@ -5375,6 +5627,36 @@
                     console.error('Error fetching derivatives suggestions:', error);
                     container.innerHTML = '<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading suggestions</div>';
                 });
+        }
+        
+        // Toggle Order Flow Details
+        function toggleOrderFlowDetails(index) {
+            const detailsDiv = document.getElementById(`orderFlowDetails${index}`);
+            const toggleSpan = document.getElementById(`orderFlowToggle${index}`);
+            if (detailsDiv && toggleSpan) {
+                if (detailsDiv.style.display === 'none') {
+                    detailsDiv.style.display = 'block';
+                    toggleSpan.textContent = '▲ Collapse';
+                } else {
+                    detailsDiv.style.display = 'none';
+                    toggleSpan.textContent = '▼ Expand';
+                }
+            }
+        }
+        
+        // Toggle Logic & Context Details
+        function toggleLogicContext(index) {
+            const detailsDiv = document.getElementById(`logicContextDetails${index}`);
+            const toggleSpan = document.getElementById(`logicContextToggle${index}`);
+            if (detailsDiv && toggleSpan) {
+                if (detailsDiv.style.display === 'none') {
+                    detailsDiv.style.display = 'block';
+                    toggleSpan.textContent = '▲ Collapse';
+                } else {
+                    detailsDiv.style.display = 'none';
+                    toggleSpan.textContent = '▼ Expand';
+                }
+            }
         }
         
         // Load P&L Summary sdfsdf
@@ -6372,6 +6654,8 @@
                         timestamp: event.timestamp,
                         type: 'trapped_buyer',
                         price: event.price,
+                        futures_price: event.futures_price || event.price,
+                        spot_price: event.spot_price,
                         severity: event.severity,
                         recent_high: event.recent_high,
                         sell_volume: event.sell_volume,
@@ -6388,6 +6672,8 @@
                         timestamp: event.timestamp,
                         type: 'trapped_seller',
                         price: event.price,
+                        futures_price: event.futures_price || event.price,
+                        spot_price: event.spot_price,
                         severity: event.severity,
                         recent_low: event.recent_low,
                         buy_volume: event.buy_volume,
@@ -6402,12 +6688,14 @@
                 exhaustion.exhaustion_events.forEach(event => {
                     const isBuyingExhaustion = event.type === 'buying_exhaustion' || event.type === 'bullish_exhaustion';
                     const isSellingExhaustion = event.type === 'selling_exhaustion' || event.type === 'bearish_exhaustion';
-                    const direction = event.direction || (isBuyingExhaustion ? 'bearish' : 'bullish');
+                    const direction = event.direction || (isBuyingExhaustion ? 'Bearish' : 'Bullish');
                     
                     timelineEvents.push({
                         timestamp: event.timestamp,
                         type: isBuyingExhaustion ? 'buying_exhaustion' : 'selling_exhaustion',
                         price: event.price,
+                        futures_price: event.futures_price || event.price,
+                        spot_price: event.spot_price,
                         volume_multiple: event.volume_multiple,
                         direction: direction,
                         takeaway: isBuyingExhaustion 
@@ -6425,6 +6713,8 @@
                         timestamp: event.timestamp,
                         type: event.type,
                         price: event.price,
+                        futures_price: event.futures_price || event.price,
+                        spot_price: event.spot_price,
                         price_change: event.price_change,
                         volume_change: event.volume_change,
                         takeaway: isBullish
@@ -6488,7 +6778,7 @@
                         bgColor = '#d4edda';
                         borderColor = '#28a745';
                         title = 'Bullish Divergence';
-                    } else if (event.type === 'bearish_divergence') {
+                    } else if (event.type === '_divergence') {
                         icon = '📉';
                         bgColor = '#f8d7da';
                         borderColor = '#dc3545';
@@ -6512,9 +6802,10 @@
                                         </div>
                                     </div>
                                     <div style="text-align: right;">
-                                        <div style="font-size: 14px; font-weight: bold; color: #333;">
-                                            ${event.price.toFixed(2)}
+                                        <div style="font-size: 12px; font-weight: bold; color: #333;">
+                                            ${event.futures_price ? `Futures: ${event.futures_price.toFixed(2)}` : event.price ? `${event.price.toFixed(2)}` : 'N/A'}
                                         </div>
+                                        ${event.spot_price ? `<div style="font-size: 11px; color: #666; margin-top: 2px;">Spot: ${event.spot_price.toFixed(2)}</div>` : ''}
                                     </div>
                                 </div>
                                 
@@ -6525,23 +6816,27 @@
                     // Add specific details based on event type
                     if (event.type === 'trapped_buyer') {
                         html += `
+                            <div><strong>Futures Price:</strong> ${event.futures_price ? event.futures_price.toFixed(2) : event.price ? event.price.toFixed(2) : 'N/A'}${event.spot_price ? ` | <strong>Spot Price:</strong> ${event.spot_price.toFixed(2)}` : ''}</div>
                             <div><strong>Recent High:</strong> ${event.recent_high.toFixed(2)}</div>
                             <div><strong>Sell Volume:</strong> ${event.sell_volume.toLocaleString()} | <strong>Buy Volume:</strong> ${event.buy_volume.toLocaleString()}</div>
                             <div><strong>Severity:</strong> ${event.severity}</div>
                         `;
                     } else if (event.type === 'trapped_seller') {
                         html += `
+                            <div><strong>Futures Price:</strong> ${event.futures_price ? event.futures_price.toFixed(2) : event.price ? event.price.toFixed(2) : 'N/A'}${event.spot_price ? ` | <strong>Spot Price:</strong> ${event.spot_price.toFixed(2)}` : ''}</div>
                             <div><strong>Recent Low:</strong> ${event.recent_low.toFixed(2)}</div>
                             <div><strong>Buy Volume:</strong> ${event.buy_volume.toLocaleString()} | <strong>Sell Volume:</strong> ${event.sell_volume.toLocaleString()}</div>
                             <div><strong>Severity:</strong> ${event.severity}</div>
                         `;
                     } else if (event.type === 'buying_exhaustion' || event.type === 'selling_exhaustion') {
                         html += `
+                            <div><strong>Futures Price:</strong> ${event.futures_price ? event.futures_price.toFixed(2) : event.price ? event.price.toFixed(2) : 'N/A'}${event.spot_price ? ` | <strong>Spot Price:</strong> ${event.spot_price.toFixed(2)}` : ''}</div>
                             <div><strong>Volume:</strong> ${event.volume_multiple}x average</div>
                             <div><strong>Expected Direction:</strong> ${event.direction === 'bullish' ? '↑ Reversal Up' : '↓ Reversal Down'}</div>
                         `;
                     } else if (event.type === 'bullish_divergence' || event.type === 'bearish_divergence') {
                         html += `
+                            <div><strong>Futures Price:</strong> ${event.futures_price ? event.futures_price.toFixed(2) : event.price ? event.price.toFixed(2) : 'N/A'}${event.spot_price ? ` | <strong>Spot Price:</strong> ${event.spot_price.toFixed(2)}` : ''}</div>
                             <div><strong>Price Change:</strong> ${event.price_change > 0 ? '+' : ''}${event.price_change.toFixed(2)}</div>
                             <div><strong>Volume Change:</strong> ${event.volume_change.toFixed(0)}</div>
                         `;
@@ -6706,6 +7001,182 @@
             }
             
             container.innerHTML = html;
+        }
+        
+        // Load Order Flow History Chart
+        let orderFlowHistoryChart = null;
+        function loadOrderFlowHistory() {
+            const container = document.getElementById('orderFlowHistoryContainer');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading order flow history chart...</div>';
+            
+            fetch('/api/orderflow_history?days=5')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error || !data.success) {
+                        container.innerHTML = `<div style="text-align: center; padding: 20px; color: #dc3545;">Error: ${data.error || 'No data available'}</div>`;
+                        return;
+                    }
+                    displayOrderFlowHistoryChart(data);
+                })
+                .catch(error => {
+                    console.error('Error fetching order flow history:', error);
+                    container.innerHTML = '<div style="text-align: center; padding: 20px; color: #dc3545;">Error loading order flow history</div>';
+                });
+        }
+        
+        // Display Order Flow History Chart
+        function displayOrderFlowHistoryChart(data) {
+            const container = document.getElementById('orderFlowHistoryContainer');
+            
+            if (!data.data || data.data.length === 0) {
+                container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">No historical data available</div>';
+                return;
+            }
+            
+            // Create canvas element
+            let html = `
+                <div style="margin-bottom: 15px;">
+                    <canvas id="orderFlowHistoryChart" style="max-height: 400px;"></canvas>
+                </div>
+            `;
+            container.innerHTML = html;
+            
+            // Prepare chart data
+            const allLabels = [];
+            const buyData = [];
+            const sellData = [];
+            const netFlowData = [];
+            
+            data.data.forEach((dayData, dayIndex) => {
+                dayData.time_series.forEach(point => {
+                    const timestamp = new Date(point.timestamp);
+                    const timeLabel = timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+                    const dateLabel = timestamp.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                    
+                    allLabels.push(`${dateLabel} ${timeLabel}`);
+                    buyData.push(point.buy_quantity || 0);
+                    sellData.push(point.sell_quantity || 0);
+                    netFlowData.push(point.net_flow || 0);
+                });
+            });
+            
+            // Get chart context
+            const ctx = document.getElementById('orderFlowHistoryChart').getContext('2d');
+            
+            // Destroy previous chart if exists
+            if (orderFlowHistoryChart) {
+                orderFlowHistoryChart.destroy();
+            }
+            
+            // Create chart
+            orderFlowHistoryChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: allLabels,
+                    datasets: [
+                        {
+                            label: 'Buy Quantity',
+                            data: buyData,
+                            borderColor: 'rgba(40, 167, 69, 1)',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Sell Quantity',
+                            data: sellData,
+                            borderColor: 'rgba(220, 53, 69, 1)',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Net Flow (Buy - Sell)',
+                            data: netFlowData,
+                            borderColor: 'rgba(23, 162, 184, 1)',
+                            backgroundColor: 'rgba(23, 162, 184, 0.1)',
+                            fill: false,
+                            tension: 0.4,
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Order Flow History - Last 5 Trading Days',
+                            font: {
+                                size: 14,
+                                weight: 'bold'
+                            }
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += context.parsed.y.toLocaleString('en-IN');
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            },
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Buy/Sell Quantity'
+                            },
+                            beginAtZero: true
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Net Flow'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        }
+                    }
+                }
+            });
         }
         
         // Load Micro Levels
@@ -8332,6 +8803,7 @@
             
             // Load Order Flow Analysis, Footprint Analysis, and Critical Micro Levels on page load
             loadOrderFlowAnalysis();
+            loadOrderFlowHistory();
             loadFootprintAnalysis();
             loadMicroLevels();
             
@@ -8469,6 +8941,10 @@
                     initOrderFlowAnalysisAutoRefresh();
                     initFootprintAnalysisAutoRefresh();
                     initMicroLevelsAutoRefresh();
+                    // Load Order Flow History chart if not already loaded
+                    if (!TabLoadTracker.isLoaded('live-market')) {
+                        loadOrderFlowHistory();
+                    }
                     if (!TabLoadTracker.isLoaded(tabName)) {
                         TabLoadTracker.markLoaded(tabName);
                     }

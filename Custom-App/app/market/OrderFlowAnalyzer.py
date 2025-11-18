@@ -190,23 +190,32 @@ class OrderFlowAnalyzer:
         
         query = """
             SELECT 
-                timestamp,
-                last_price,
-                buy_quantity,
-                sell_quantity,
-                volume,
-                oi,
-                last_quantity
-            FROM my_schema.futures_ticks
-            WHERE instrument_token = %s
-            AND run_date = %s
-            AND timestamp >= %s
-            AND timestamp <= %s
-            ORDER BY timestamp ASC
+                ft.timestamp,
+                ft.last_price as futures_price,
+                ft.buy_quantity,
+                ft.sell_quantity,
+                ft.volume,
+                ft.oi,
+                ft.last_quantity,
+                (
+                    SELECT last_price
+                    FROM my_schema.ticks
+                    WHERE instrument_token = 256265
+                    AND DATE(timestamp) = %s
+                    AND timestamp <= ft.timestamp
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                ) as spot_price
+            FROM my_schema.futures_ticks ft
+            WHERE ft.instrument_token = %s
+            AND ft.run_date = %s
+            AND ft.timestamp >= %s
+            AND ft.timestamp <= %s
+            ORDER BY ft.timestamp ASC
         """
         
         logging.info(f"Executing query with instrument_token={actual_instrument_token}, run_date={analysis_date}, start={start_datetime}, end={end_datetime}")
-        cursor.execute(query, (actual_instrument_token, analysis_date, start_datetime, end_datetime))
+        cursor.execute(query, (analysis_date, actual_instrument_token, analysis_date, start_datetime, end_datetime))
         rows = cursor.fetchall()
         conn.close()
         
@@ -217,13 +226,18 @@ class OrderFlowAnalyzer:
         logging.info(f"Query returned {len(rows)} rows for order flow analysis")
         
         df = pd.DataFrame(rows, columns=[
-            'timestamp', 'last_price', 'buy_quantity', 'sell_quantity',
-            'volume', 'oi', 'last_quantity'
+            'timestamp', 'futures_price', 'buy_quantity', 'sell_quantity',
+            'volume', 'oi', 'last_quantity', 'spot_price'
         ])
+        
+        # Rename futures_price to last_price for backward compatibility
+        df['last_price'] = df['futures_price']
         
         df['buy_quantity'] = df['buy_quantity'].fillna(0)
         df['sell_quantity'] = df['sell_quantity'].fillna(0)
         df['volume'] = df['volume'].fillna(0)
+        # Forward fill and backward fill spot prices to handle missing values
+        df['spot_price'] = df['spot_price'].ffill().bfill()
         
         # Calculate price change
         df['price_change'] = df['last_price'].diff()
@@ -255,9 +269,12 @@ class OrderFlowAnalyzer:
             
             # Trapped buyers: price drops below recent high with high sell volume
             if current_price < recent_high * 0.998 and sell_vol > buy_vol * 1.5:
+                spot_price = ticks_data['spot_price'].iloc[i] if 'spot_price' in ticks_data.columns else None
                 trapped_buyers.append({
                     'timestamp': ticks_data['timestamp'].iloc[i],
-                    'price': float(current_price),
+                    'price': float(current_price),  # Futures price
+                    'futures_price': float(current_price),
+                    'spot_price': float(spot_price) if spot_price is not None and not pd.isna(spot_price) else None,
                     'recent_high': float(recent_high),
                     'sell_volume': int(sell_vol),
                     'buy_volume': int(buy_vol),
@@ -266,9 +283,12 @@ class OrderFlowAnalyzer:
             
             # Trapped sellers: price rises above recent low with high buy volume
             if current_price > recent_low * 1.002 and buy_vol > sell_vol * 1.5:
+                spot_price = ticks_data['spot_price'].iloc[i] if 'spot_price' in ticks_data.columns else None
                 trapped_sellers.append({
                     'timestamp': ticks_data['timestamp'].iloc[i],
-                    'price': float(current_price),
+                    'price': float(current_price),  # Futures price
+                    'futures_price': float(current_price),
+                    'spot_price': float(spot_price) if spot_price is not None and not pd.isna(spot_price) else None,
                     'recent_low': float(recent_low),
                     'buy_volume': int(buy_vol),
                     'sell_volume': int(sell_vol),
@@ -308,20 +328,26 @@ class OrderFlowAnalyzer:
             # Divergence detection
             if price_trend < 0 and volume_trend < 0 and abs(volume_trend) > recent_volumes.mean() * 0.3:
                 # Bullish divergence: price falling, volume decreasing
+                spot_price = ticks_data['spot_price'].iloc[i] if 'spot_price' in ticks_data.columns else None
                 divergences.append({
                     'timestamp': ticks_data['timestamp'].iloc[i],
                     'type': 'bullish_divergence',
-                    'price': float(ticks_data['last_price'].iloc[i]),
+                    'price': float(ticks_data['last_price'].iloc[i]),  # Futures price
+                    'futures_price': float(ticks_data['last_price'].iloc[i]),
+                    'spot_price': float(spot_price) if spot_price is not None and not pd.isna(spot_price) else None,
                     'price_change': float(price_trend),
                     'volume_change': float(volume_trend),
                     'signal': 'potential_reversal_up'
                 })
             elif price_trend > 0 and volume_trend < 0 and abs(volume_trend) > recent_volumes.mean() * 0.3:
                 # Bearish divergence: price rising, volume decreasing
+                spot_price = ticks_data['spot_price'].iloc[i] if 'spot_price' in ticks_data.columns else None
                 divergences.append({
                     'timestamp': ticks_data['timestamp'].iloc[i],
                     'type': 'bearish_divergence',
-                    'price': float(ticks_data['last_price'].iloc[i]),
+                    'price': float(ticks_data['last_price'].iloc[i]),  # Futures price
+                    'futures_price': float(ticks_data['last_price'].iloc[i]),
+                    'spot_price': float(spot_price) if spot_price is not None and not pd.isna(spot_price) else None,
                     'price_change': float(price_trend),
                     'volume_change': float(volume_trend),
                     'signal': 'potential_reversal_down'
@@ -361,10 +387,13 @@ class OrderFlowAnalyzer:
                 if price_change > 0 and buy_vol > sell_vol:
                     # Buying exhaustion: High volume buying at rising prices suggests buying is exhausted
                     # This indicates a potential top/reversal downward
+                    spot_price = ticks_data['spot_price'].iloc[i] if 'spot_price' in ticks_data.columns else None
                     exhaustion_events.append({
                         'timestamp': ticks_data['timestamp'].iloc[i],
                         'type': 'buying_exhaustion',  # Changed from 'bullish_exhaustion' for clarity
-                        'price': float(ticks_data['last_price'].iloc[i]),
+                        'price': float(ticks_data['last_price'].iloc[i]),  # Futures price
+                        'futures_price': float(ticks_data['last_price'].iloc[i]),
+                        'spot_price': float(spot_price) if spot_price is not None and not pd.isna(spot_price) else None,
                         'volume': int(current_volume),
                         'volume_multiple': round(current_volume / avg_volume, 2) if avg_volume > 0 else 0,
                         'signal': 'potential_top',
@@ -373,10 +402,13 @@ class OrderFlowAnalyzer:
                 elif price_change < 0 and sell_vol > buy_vol:
                     # Selling exhaustion: High volume selling at falling prices suggests selling is exhausted
                     # This indicates a potential bottom/reversal upward
+                    spot_price = ticks_data['spot_price'].iloc[i] if 'spot_price' in ticks_data.columns else None
                     exhaustion_events.append({
                         'timestamp': ticks_data['timestamp'].iloc[i],
                         'type': 'selling_exhaustion',  # Changed from 'bearish_exhaustion' for clarity
-                        'price': float(ticks_data['last_price'].iloc[i]),
+                        'price': float(ticks_data['last_price'].iloc[i]),  # Futures price
+                        'futures_price': float(ticks_data['last_price'].iloc[i]),
+                        'spot_price': float(spot_price) if spot_price is not None and not pd.isna(spot_price) else None,
                         'volume': int(current_volume),
                         'volume_multiple': round(current_volume / avg_volume, 2) if avg_volume > 0 else 0,
                         'signal': 'potential_bottom',
@@ -481,7 +513,7 @@ class OrderFlowAnalyzer:
         # Trapped traders contribution
         if trapped_traders.get('trapped_buyers_count', 0) > trapped_traders.get('trapped_sellers_count', 0):
             sentiment_score -= 10
-            signals.append('More trapped buyers (bearish)')
+            signals.append('More trapped buyers (Bearish)')
         elif trapped_traders.get('trapped_sellers_count', 0) > trapped_traders.get('trapped_buyers_count', 0):
             sentiment_score += 10
             signals.append('More trapped sellers (bullish)')
@@ -491,10 +523,10 @@ class OrderFlowAnalyzer:
         bearish_divs = volume_divergences.get('bearish_divergences', 0)
         if bullish_divs > bearish_divs:
             sentiment_score += 15
-            signals.append(f'{bullish_divs} bullish volume divergences')
+            signals.append(f'{bullish_divs} Bullish volume divergences')
         elif bearish_divs > bullish_divs:
             sentiment_score -= 15
-            signals.append(f'{bearish_divs} bearish volume divergences')
+            signals.append(f'{bearish_divs} Bearish volume divergences')
         
         # Exhaustion contribution
         buying_exh = exhaustion_signals.get('buying_exhaustion', exhaustion_signals.get('bullish_exhaustion', 0))
@@ -503,10 +535,10 @@ class OrderFlowAnalyzer:
         bearish_exh = selling_exh  # For backward compatibility
         if bullish_exh > bearish_exh:
             sentiment_score -= 5
-            signals.append(f'{bullish_exh} bullish exhaustion signals')
+            signals.append(f'{bullish_exh} Bullish exhaustion signals')
         elif bearish_exh > bullish_exh:
             sentiment_score += 5
-            signals.append(f'{bearish_exh} bearish exhaustion signals')
+            signals.append(f'{bearish_exh} Bearish exhaustion signals')
         
         # Pressure contribution
         pressure_score = pressure_analysis.get('pressure_score', 0)
@@ -514,15 +546,15 @@ class OrderFlowAnalyzer:
         
         # Determine sentiment
         if sentiment_score > 15:
-            sentiment = 'strongly_bullish'
+            sentiment = 'Strongly_Bullish'
         elif sentiment_score > 5:
-            sentiment = 'bullish'
+            sentiment = 'Bullish'
         elif sentiment_score < -15:
-            sentiment = 'strongly_bearish'
+            sentiment = 'Strongly_Bearish'
         elif sentiment_score < -5:
-            sentiment = 'bearish'
+            sentiment = 'Bearish'
         else:
-            sentiment = 'neutral'
+            sentiment = 'Neutral'
         
         return {
             'sentiment': sentiment,
@@ -530,3 +562,115 @@ class OrderFlowAnalyzer:
             'signals': signals,
             'confidence': 'high' if abs(sentiment_score) > 15 else 'medium' if abs(sentiment_score) > 5 else 'low'
         }
+    
+    def get_historical_order_flow(self, days: int = 5) -> Dict:
+        """
+        Get historical order flow data for the last N trading days
+        
+        Args:
+            days: Number of trading days to fetch (default: 5)
+            
+        Returns:
+            Dictionary with historical order flow data by date
+        """
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Get the last N distinct trading dates
+            cursor.execute("""
+                SELECT DISTINCT run_date
+                FROM my_schema.futures_ticks
+                WHERE run_date <= CURRENT_DATE
+                ORDER BY run_date DESC
+                LIMIT %s
+            """, (days,))
+            
+            dates = [row[0] for row in cursor.fetchall()]
+            
+            if not dates:
+                conn.close()
+                return {
+                    'success': False,
+                    'message': 'No trading data available',
+                    'data': []
+                }
+            
+            # Fetch order flow data for each date
+            historical_data = []
+            
+            for trade_date in dates:
+                # Try to find the active futures contract token for this date
+                cursor.execute("""
+                    SELECT instrument_token
+                    FROM (
+                        SELECT instrument_token, COUNT(*) as tick_count
+                        FROM my_schema.futures_ticks
+                        WHERE run_date = %s
+                        GROUP BY instrument_token
+                        ORDER BY tick_count DESC
+                        LIMIT 1
+                    ) AS subquery
+                """, (trade_date,))
+                
+                token_result = cursor.fetchone()
+                actual_token = token_result[0] if token_result else self.instrument_token
+                
+                # Get aggregated order flow data for the day (5-minute buckets)
+                cursor.execute("""
+                    SELECT 
+                        DATE(timestamp) as date,
+                        DATE_TRUNC('hour', timestamp) + INTERVAL '1 minute' * FLOOR(EXTRACT(MINUTE FROM timestamp) / 5) * 5 as time_bucket,
+                        SUM(buy_quantity) as total_buy_quantity,
+                        SUM(sell_quantity) as total_sell_quantity,
+                        SUM(volume) as total_volume,
+                        AVG(last_price) as avg_price,
+                        COUNT(*) as tick_count
+                    FROM my_schema.futures_ticks
+                    WHERE instrument_token = %s
+                    AND run_date = %s
+                    AND timestamp >= %s
+                    AND timestamp <= %s
+                    GROUP BY DATE(timestamp), DATE_TRUNC('hour', timestamp) + INTERVAL '1 minute' * FLOOR(EXTRACT(MINUTE FROM timestamp) / 5) * 5
+                    ORDER BY time_bucket ASC
+                """, (actual_token, trade_date, f"{trade_date} 09:15:00", f"{trade_date} 15:30:00"))
+                
+                rows = cursor.fetchall()
+                
+                if rows:
+                    day_data = {
+                        'date': trade_date.strftime('%Y-%m-%d'),
+                        'date_display': trade_date.strftime('%d %b %Y'),
+                        'time_series': []
+                    }
+                    
+                    for row in rows:
+                        time_bucket, buy_qty, sell_qty, volume, avg_price, tick_count = row[1], row[2], row[3], row[4], row[5], row[6]
+                        day_data['time_series'].append({
+                            'timestamp': time_bucket.isoformat() if hasattr(time_bucket, 'isoformat') else str(time_bucket),
+                            'buy_quantity': float(buy_qty) if buy_qty else 0,
+                            'sell_quantity': float(sell_qty) if sell_qty else 0,
+                            'total_volume': float(volume) if volume else 0,
+                            'avg_price': float(avg_price) if avg_price else 0,
+                            'net_flow': float(buy_qty - sell_qty) if buy_qty and sell_qty else 0
+                        })
+                    
+                    historical_data.append(day_data)
+            
+            conn.close()
+            
+            return {
+                'success': True,
+                'data': historical_data,
+                'days': len(historical_data)
+            }
+            
+        except Exception as e:
+            logging.error(f"Error fetching historical order flow: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+            return {
+                'success': False,
+                'error': str(e),
+                'data': []
+            }
