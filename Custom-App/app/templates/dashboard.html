@@ -6308,7 +6308,7 @@
                 });
         }
         
-        // Display Order Flow Analysis
+        // Display Order Flow Analysis with Timeline View
         function displayOrderFlowAnalysis(data) {
             const container = document.getElementById('orderFlowAnalysisContainer');
             
@@ -6336,6 +6336,7 @@
             const pressure = data.pressure_analysis || {};
             const sentiment = data.overall_sentiment || {};
             
+            // Summary cards at top
             let html = `
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
                     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px; border-radius: 8px;">
@@ -6361,77 +6362,223 @@
                 </div>
             `;
             
-            // Trapped Traders Details
-            if (trapped.trapped_buyers && trapped.trapped_buyers.length > 0 || trapped.trapped_sellers && trapped.trapped_sellers.length > 0) {
-                html += `
-                    <div style="margin-bottom: 15px;">
-                        <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">⚠️ Trapped Traders</h4>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                            <div>
-                                <div style="font-size: 12px; font-weight: 600; color: #dc3545; margin-bottom: 8px;">Trapped Buyers (${trapped.trapped_buyers_count || 0})</div>
-                                ${trapped.trapped_buyers && trapped.trapped_buyers.length > 0 ? 
-                                    trapped.trapped_buyers.slice(0, 3).map(t => `
-                                        <div style="background: #f8d7da; padding: 8px; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid #dc3545;">
-                                            <div style="font-size: 11px; font-weight: bold;">₹${t.price.toFixed(2)}</div>
-                                            <div style="font-size: 10px; color: #666;">Sell Vol: ${t.sell_volume} | ${t.severity}</div>
-                                        </div>
-                                    `).join('') : 
-                                    '<div style="color: #999; font-size: 11px;">None detected</div>'
-                                }
-                            </div>
-                            <div>
-                                <div style="font-size: 12px; font-weight: 600; color: #28a745; margin-bottom: 8px;">Trapped Sellers (${trapped.trapped_sellers_count || 0})</div>
-                                ${trapped.trapped_sellers && trapped.trapped_sellers.length > 0 ? 
-                                    trapped.trapped_sellers.slice(0, 3).map(t => `
-                                        <div style="background: #d4edda; padding: 8px; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid #28a745;">
-                                            <div style="font-size: 11px; font-weight: bold;">₹${t.price.toFixed(2)}</div>
-                                            <div style="font-size: 10px; color: #666;">Buy Vol: ${t.buy_volume} | ${t.severity}</div>
-                                        </div>
-                                    `).join('') : 
-                                    '<div style="color: #999; font-size: 11px;">None detected</div>'
-                                }
-                            </div>
-                        </div>
-                    </div>
-                `;
+            // Collect all events with timestamps for timeline
+            const timelineEvents = [];
+            
+            // Add trapped buyers
+            if (trapped.trapped_buyers && trapped.trapped_buyers.length > 0) {
+                trapped.trapped_buyers.forEach(event => {
+                    timelineEvents.push({
+                        timestamp: event.timestamp,
+                        type: 'trapped_buyer',
+                        price: event.price,
+                        severity: event.severity,
+                        recent_high: event.recent_high,
+                        sell_volume: event.sell_volume,
+                        buy_volume: event.buy_volume,
+                        takeaway: `Price dropped below recent high (${event.recent_high.toFixed(2)}) with heavy selling. Buyers trapped - expect further downside as they exit.`
+                    });
+                });
             }
             
-            // Exhaustion Signals
+            // Add trapped sellers
+            if (trapped.trapped_sellers && trapped.trapped_sellers.length > 0) {
+                trapped.trapped_sellers.forEach(event => {
+                    timelineEvents.push({
+                        timestamp: event.timestamp,
+                        type: 'trapped_seller',
+                        price: event.price,
+                        severity: event.severity,
+                        recent_low: event.recent_low,
+                        buy_volume: event.buy_volume,
+                        sell_volume: event.sell_volume,
+                        takeaway: `Price rose above recent low (${event.recent_low.toFixed(2)}) with heavy buying. Sellers trapped - expect further upside as they cover.`
+                    });
+                });
+            }
+            
+            // Add exhaustion signals
             if (exhaustion.exhaustion_events && exhaustion.exhaustion_events.length > 0) {
+                exhaustion.exhaustion_events.forEach(event => {
+                    const isBuyingExhaustion = event.type === 'buying_exhaustion' || event.type === 'bullish_exhaustion';
+                    const isSellingExhaustion = event.type === 'selling_exhaustion' || event.type === 'bearish_exhaustion';
+                    const direction = event.direction || (isBuyingExhaustion ? 'bearish' : 'bullish');
+                    
+                    timelineEvents.push({
+                        timestamp: event.timestamp,
+                        type: isBuyingExhaustion ? 'buying_exhaustion' : 'selling_exhaustion',
+                        price: event.price,
+                        volume_multiple: event.volume_multiple,
+                        direction: direction,
+                        takeaway: isBuyingExhaustion 
+                            ? `Climactic buying volume (${event.volume_multiple}x avg) at rising prices. Buying exhausted - potential top, expect reversal down.`
+                            : `Climactic selling volume (${event.volume_multiple}x avg) at falling prices. Selling exhausted - potential bottom, expect reversal up.`
+                    });
+                });
+            }
+            
+            // Add volume divergences
+            if (divergences.divergences && divergences.divergences.length > 0) {
+                divergences.divergences.forEach(event => {
+                    const isBullish = event.type === 'bullish_divergence';
+                    timelineEvents.push({
+                        timestamp: event.timestamp,
+                        type: event.type,
+                        price: event.price,
+                        price_change: event.price_change,
+                        volume_change: event.volume_change,
+                        takeaway: isBullish
+                            ? `Price falling but volume decreasing - selling exhaustion. Potential reversal upward.`
+                            : `Price rising but volume decreasing - buying exhaustion. Potential reversal downward.`
+                    });
+                });
+            }
+            
+            // Sort events by timestamp (chronologically)
+            timelineEvents.sort((a, b) => {
+                const timeA = new Date(a.timestamp).getTime();
+                const timeB = new Date(b.timestamp).getTime();
+                return timeA - timeB;
+            });
+            
+            // Display Timeline
+            if (timelineEvents.length > 0) {
                 html += `
-                    <div style="margin-bottom: 15px;">
-                        <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600;">⚡ Exhaustion Signals (${exhaustion.count || 0})</h4>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
-                            ${exhaustion.exhaustion_events.slice(0, 5).map(e => {
-                                // Handle both old and new type names
-                                const isBuyingExhaustion = e.type === 'buying_exhaustion' || e.type === 'bullish_exhaustion';
-                                const isSellingExhaustion = e.type === 'selling_exhaustion' || e.type === 'bearish_exhaustion';
-                                const direction = e.direction || (isBuyingExhaustion ? 'bearish' : 'bullish');
-                                const label = isBuyingExhaustion ? '🟡 Buying Exhaustion (Potential Top)' : '🟢 Selling Exhaustion (Potential Bottom)';
-                                const bgColor = isBuyingExhaustion ? '#fff3cd' : '#d1ecf1';
-                                const borderColor = isBuyingExhaustion ? '#ffc107' : '#17a2b8';
-                                
-                                return `
-                                <div style="background: ${bgColor}; padding: 10px; border-radius: 5px; border-left: 3px solid ${borderColor};">
-                                    <div style="font-size: 11px; font-weight: 600;">${label}</div>
-                                    <div style="font-size: 12px; font-weight: bold; margin-top: 5px;">₹${e.price.toFixed(2)}</div>
-                                    <div style="font-size: 10px; color: #666; margin-top: 3px;">Volume: ${e.volume_multiple}x avg</div>
-                                    <div style="font-size: 9px; color: #888; margin-top: 2px;">Expected: ${direction === 'bullish' ? '↑ Reversal Up' : '↓ Reversal Down'}</div>
+                    <div style="margin-top: 20px;">
+                        <h4 style="margin: 0 0 15px 0; font-size: 16px; font-weight: 600; color: #333;">📅 Order Flow Timeline</h4>
+                        <div style="position: relative; padding-left: 30px;">
+                            <!-- Timeline line -->
+                            <div style="position: absolute; left: 10px; top: 0; bottom: 0; width: 2px; background: linear-gradient(to bottom, #17a2b8, #28a745, #ffc107, #dc3545);"></div>
+                `;
+                
+                timelineEvents.forEach((event, index) => {
+                    // Format timestamp
+                    const eventTime = new Date(event.timestamp);
+                    const timeStr = eventTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    const dateStr = eventTime.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                    
+                    // Determine event styling
+                    let icon = '⚪';
+                    let bgColor = '#f8f9fa';
+                    let borderColor = '#dee2e6';
+                    let title = '';
+                    
+                    if (event.type === 'trapped_buyer') {
+                        icon = '🔴';
+                        bgColor = '#f8d7da';
+                        borderColor = '#dc3545';
+                        title = 'Trapped Buyers';
+                    } else if (event.type === 'trapped_seller') {
+                        icon = '🟢';
+                        bgColor = '#d4edda';
+                        borderColor = '#28a745';
+                        title = 'Trapped Sellers';
+                    } else if (event.type === 'buying_exhaustion') {
+                        icon = '🟡';
+                        bgColor = '#fff3cd';
+                        borderColor = '#ffc107';
+                        title = 'Buying Exhaustion';
+                    } else if (event.type === 'selling_exhaustion') {
+                        icon = '🟢';
+                        bgColor = '#d1ecf1';
+                        borderColor = '#17a2b8';
+                        title = 'Selling Exhaustion';
+                    } else if (event.type === 'bullish_divergence') {
+                        icon = '📈';
+                        bgColor = '#d4edda';
+                        borderColor = '#28a745';
+                        title = 'Bullish Divergence';
+                    } else if (event.type === 'bearish_divergence') {
+                        icon = '📉';
+                        bgColor = '#f8d7da';
+                        borderColor = '#dc3545';
+                        title = 'Bearish Divergence';
+                    }
+                    
+                    html += `
+                        <div style="position: relative; margin-bottom: 20px;">
+                            <!-- Timeline dot -->
+                            <div style="position: absolute; left: -25px; top: 8px; width: 16px; height: 16px; background: ${borderColor}; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 0 2px ${borderColor}; z-index: 2;"></div>
+                            
+                            <!-- Event card -->
+                            <div style="background: ${bgColor}; border-left: 4px solid ${borderColor}; padding: 12px; border-radius: 5px; margin-left: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                    <div>
+                                        <div style="font-size: 12px; font-weight: 600; color: #333; margin-bottom: 3px;">
+                                            ${icon} ${title}
+                                        </div>
+                                        <div style="font-size: 11px; color: #666;">
+                                            ${dateStr} ${timeStr}
+                                        </div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="font-size: 14px; font-weight: bold; color: #333;">
+                                            ${event.price.toFixed(2)}
+                                        </div>
+                                    </div>
                                 </div>
-                            `;
-                            }).join('')}
+                                
+                                <!-- Event details -->
+                                <div style="font-size: 11px; color: #555; margin-bottom: 8px; line-height: 1.4;">
+                    `;
+                    
+                    // Add specific details based on event type
+                    if (event.type === 'trapped_buyer') {
+                        html += `
+                            <div><strong>Recent High:</strong> ${event.recent_high.toFixed(2)}</div>
+                            <div><strong>Sell Volume:</strong> ${event.sell_volume.toLocaleString()} | <strong>Buy Volume:</strong> ${event.buy_volume.toLocaleString()}</div>
+                            <div><strong>Severity:</strong> ${event.severity}</div>
+                        `;
+                    } else if (event.type === 'trapped_seller') {
+                        html += `
+                            <div><strong>Recent Low:</strong> ${event.recent_low.toFixed(2)}</div>
+                            <div><strong>Buy Volume:</strong> ${event.buy_volume.toLocaleString()} | <strong>Sell Volume:</strong> ${event.sell_volume.toLocaleString()}</div>
+                            <div><strong>Severity:</strong> ${event.severity}</div>
+                        `;
+                    } else if (event.type === 'buying_exhaustion' || event.type === 'selling_exhaustion') {
+                        html += `
+                            <div><strong>Volume:</strong> ${event.volume_multiple}x average</div>
+                            <div><strong>Expected Direction:</strong> ${event.direction === 'bullish' ? '↑ Reversal Up' : '↓ Reversal Down'}</div>
+                        `;
+                    } else if (event.type === 'bullish_divergence' || event.type === 'bearish_divergence') {
+                        html += `
+                            <div><strong>Price Change:</strong> ${event.price_change > 0 ? '+' : ''}${event.price_change.toFixed(2)}</div>
+                            <div><strong>Volume Change:</strong> ${event.volume_change.toFixed(0)}</div>
+                        `;
+                    }
+                    
+                    html += `
+                                </div>
+                                
+                                <!-- Takeaway -->
+                                <div style="background: rgba(255,255,255,0.7); padding: 8px; border-radius: 4px; border-left: 3px solid ${borderColor};">
+                                    <div style="font-size: 10px; font-weight: 600; color: #333; margin-bottom: 3px;">💡 Takeaway:</div>
+                                    <div style="font-size: 10px; color: #555; line-height: 1.4;">${event.takeaway}</div>
+                                </div>
+                            </div>
                         </div>
+                    `;
+                });
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
+                        No timeline events detected in the selected time range.
                     </div>
                 `;
             }
             
-            // Sentiment Signals
+            // Add key signals summary at bottom
             if (sentiment.signals && sentiment.signals.length > 0) {
                 html += `
-                    <div style="background: #e7f3ff; padding: 10px; border-radius: 5px; margin-top: 15px;">
-                        <div style="font-size: 12px; font-weight: 600; margin-bottom: 5px;">Key Signals:</div>
-                        <ul style="margin: 0; padding-left: 20px; font-size: 11px;">
-                            ${sentiment.signals.map(signal => `<li style="margin-bottom: 3px;">${signal}</li>`).join('')}
+                    <div style="background: #e7f3ff; padding: 15px; border-radius: 5px; margin-top: 20px; border-left: 4px solid #007bff;">
+                        <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #004085;">📊 Key Signals Summary</div>
+                        <ul style="margin: 0; padding-left: 20px; font-size: 11px; color: #004085;">
+                            ${sentiment.signals.map(signal => `<li style="margin-bottom: 5px;">${signal}</li>`).join('')}
                         </ul>
                     </div>
                 `;
@@ -6529,7 +6676,7 @@
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
                             ${imbalances.imbalances.slice(0, 5).map(imb => `
                                 <div style="background: ${imb.type === 'buy_imbalance' ? '#d4edda' : '#f8d7da'}; padding: 10px; border-radius: 5px; border-left: 3px solid ${imb.type === 'buy_imbalance' ? '#28a745' : '#dc3545'};">
-                                    <div style="font-size: 11px; font-weight: 600;">₹${imb.price.toFixed(2)}</div>
+                                    <div style="font-size: 11px; font-weight: 600;">${imb.price.toFixed(2)}</div>
                                     <div style="font-size: 10px; color: #666; margin-top: 3px;">
                                         ${imb.type === 'buy_imbalance' ? 'Buy' : 'Sell'} Imbalance: ${imb.imbalance_ratio}%<br>
                                         Strength: ${imb.strength}
@@ -6549,7 +6696,7 @@
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
                             ${hvn_lvn.hvn.slice(0, 5).map(hvn => `
                                 <div style="background: #fff3cd; padding: 10px; border-radius: 5px; border-left: 3px solid #ffc107;">
-                                    <div style="font-size: 11px; font-weight: 600;">₹${hvn.price.toFixed(2)}</div>
+                                    <div style="font-size: 11px; font-weight: 600;">${hvn.price.toFixed(2)}</div>
                                     <div style="font-size: 10px; color: #666; margin-top: 3px;">Vol: ${hvn.volume.toLocaleString()}</div>
                                 </div>
                             `).join('')}
@@ -6733,7 +6880,7 @@
             
             let html = `
                 <div style="margin-bottom: 15px; padding: 10px; background-color: #e7f3ff; border-radius: 5px;">
-                    <strong>Current Price: ₹${currentPrice.toFixed(2)}</strong>
+                    <strong>Current Price: ${currentPrice.toFixed(2)}</strong>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
                     <div>
@@ -6741,7 +6888,7 @@
                         ${support.length > 0 ? 
                             support.map(level => `
                                 <div style="background: #f8d7da; padding: 8px; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid #dc3545;">
-                                    <div style="font-size: 13px; font-weight: bold;">₹${level.price.toFixed(2)}</div>
+                                    <div style="font-size: 13px; font-weight: bold;">${level.price.toFixed(2)}</div>
                                     <div style="font-size: 10px; color: #666;">
                                         Strength: ${level.strength} | Distance: ${level.distance_from_current}%<br>
                                         ${level.is_hvn ? '⭐ HVN' : ''}
@@ -6756,7 +6903,7 @@
                         ${resistance.length > 0 ? 
                             resistance.map(level => `
                                 <div style="background: #d4edda; padding: 8px; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid #28a745;">
-                                    <div style="font-size: 13px; font-weight: bold;">₹${level.price.toFixed(2)}</div>
+                                    <div style="font-size: 13px; font-weight: bold;">${level.price.toFixed(2)}</div>
                                     <div style="font-size: 10px; color: #666;">
                                         Strength: ${level.strength} | Distance: ${level.distance_from_current}%<br>
                                         ${level.is_hvn ? '⭐ HVN' : ''}
@@ -6771,7 +6918,7 @@
                         ${pivots.length > 0 ? 
                             pivots.map(level => `
                                 <div style="background: #d1ecf1; padding: 8px; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid #007bff;">
-                                    <div style="font-size: 13px; font-weight: bold;">₹${level.price.toFixed(2)}</div>
+                                    <div style="font-size: 13px; font-weight: bold;">${level.price.toFixed(2)}</div>
                                     <div style="font-size: 10px; color: #666;">
                                         Strength: ${level.strength} | Distance: ${level.distance_from_current}%
                                     </div>
@@ -6791,7 +6938,7 @@
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
                             ${allLevels.slice(0, 5).map(level => `
                                 <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; border-left: 3px solid ${level.type === 'support' ? '#dc3545' : level.type === 'resistance' ? '#28a745' : '#007bff'};">
-                                    <div style="font-size: 12px; font-weight: 600;">₹${level.price.toFixed(2)}</div>
+                                    <div style="font-size: 12px; font-weight: 600;">${level.price.toFixed(2)}</div>
                                     <div style="font-size: 10px; color: #666; margin-top: 3px;">
                                         Type: ${level.type} | Score: ${level.significance_score || 0}/100
                                     </div>

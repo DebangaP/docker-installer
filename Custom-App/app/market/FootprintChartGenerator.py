@@ -392,7 +392,7 @@ class FootprintChartGenerator:
         if 'buy_quantity' not in ticks_data.columns or 'sell_quantity' not in ticks_data.columns:
             return {
                 'cumulative_delta': 0,
-                'delta_trend': 'neutral',
+                'delta_trend': 'Neutral',
                 'final_delta': 0
             }
         
@@ -403,11 +403,11 @@ class FootprintChartGenerator:
         
         # Determine trend
         if final_delta > ticks_data['cumulative_delta'].iloc[0] + ticks_data['cumulative_delta'].std():
-            trend = 'bullish'
+            trend = 'Bullish'
         elif final_delta < ticks_data['cumulative_delta'].iloc[0] - ticks_data['cumulative_delta'].std():
-            trend = 'bearish'
+            trend = 'Bearish'
         else:
-            trend = 'neutral'
+            trend = 'Neutral'
         
         return {
             'cumulative_delta': int(final_delta),

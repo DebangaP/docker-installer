@@ -398,14 +398,14 @@ class OrderFlowAnalyzer:
         Analyze buy/sell pressure dynamics
         """
         if len(ticks_data) < 10:
-            return {'pressure_score': 0, 'pressure_direction': 'neutral'}
+            return {'pressure_score': 0, 'pressure_direction': 'Neutral'}
         
         total_buy = int(ticks_data['buy_quantity'].sum())
         total_sell = int(ticks_data['sell_quantity'].sum())
         total_volume = total_buy + total_sell
         
         if total_volume == 0:
-            return {'pressure_score': 0, 'pressure_direction': 'neutral'}
+            return {'pressure_score': 0, 'pressure_direction': 'Neutral'}
         
         buy_pressure = (total_buy / total_volume) * 100
         sell_pressure = (total_sell / total_volume) * 100
@@ -415,15 +415,15 @@ class OrderFlowAnalyzer:
         pressure_score = round(net_pressure, 2)
         
         if pressure_score > 10:
-            direction = 'strong_buy'
+            direction = 'Strong_buy'
         elif pressure_score > 5:
-            direction = 'buy'
+            direction = 'Buy'
         elif pressure_score < -10:
-            direction = 'strong_sell'
+            direction = 'Strong_sell'
         elif pressure_score < -5:
-            direction = 'sell'
+            direction = 'Sell'
         else:
-            direction = 'neutral'
+            direction = 'Neutral'
         
         return {
             'pressure_score': pressure_score,
