@@ -732,6 +732,136 @@ async def api_refresh_mf_nav():
         return {"success": False, "error": str(e)}
 
 
+@router.post("/mf_portfolio/fetch_all")
+async def api_fetch_all_mf_portfolios():
+    """API endpoint to fetch portfolio holdings for all held MFs"""
+    try:
+        from holdings.MFPortfolioFetcher import MFPortfolioFetcher
+        
+        fetcher = MFPortfolioFetcher()
+        results = fetcher.fetch_portfolios_for_all_held_mfs()
+        
+        return {
+            "success": True,
+            "total_mfs": results.get('total_mfs', 0),
+            "successful": results.get('successful', 0),
+            "failed": results.get('failed', 0),
+            "results": results.get('results', [])
+        }
+        
+    except Exception as e:
+        logging.error(f"Error fetching all MF portfolios: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "total_mfs": 0, "successful": 0, "failed": 0}
+
+
+@router.get("/mf_portfolio/symbol/{mf_symbol}")
+async def api_mf_portfolio(mf_symbol: str):
+    """API endpoint to get MF portfolio constituents"""
+    try:
+        from holdings.MFPortfolioFetcher import MFPortfolioFetcher
+        
+        fetcher = MFPortfolioFetcher()
+        portfolio = fetcher.get_latest_portfolio(mf_symbol)
+        
+        if not portfolio:
+            # Check if MF exists in holdings
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT tradingsymbol, fund, isin
+                FROM my_schema.mf_holdings
+                WHERE (tradingsymbol = %s OR isin = %s)
+                AND run_date = (SELECT MAX(run_date) FROM my_schema.mf_holdings)
+                LIMIT 1
+            """, (mf_symbol, mf_symbol))
+            mf_info = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            
+            if mf_info:
+                return {
+                    "success": False,
+                    "error": f"No portfolio data found for {mf_symbol}. Please use the 'Fetch Portfolios' button to fetch portfolio holdings first.",
+                    "mf_symbol": mf_symbol,
+                    "tradingsymbol": mf_info[0],
+                    "fund_name": mf_info[1],
+                    "isin": mf_info[2],
+                    "holdings": [],
+                    "suggestion": "Click 'Fetch Portfolios' button to fetch portfolio holdings from Yahoo Finance or AMFI"
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": f"MF {mf_symbol} not found in holdings",
+                    "mf_symbol": mf_symbol,
+                    "holdings": []
+                }
+        
+        return {
+            "success": True,
+            "mf_symbol": mf_symbol,
+            "holdings": portfolio,
+            "holdings_count": len(portfolio),
+            "portfolio_date": portfolio[0].get('portfolio_date') if portfolio else None
+        }
+        
+    except Exception as e:
+        logging.error(f"Error fetching MF portfolio for {mf_symbol}: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "mf_symbol": mf_symbol, "holdings": []}
+
+
+@router.get("/mf_predictions")
+async def api_mf_predictions(
+    prediction_days: int = Query(30, description="Number of days for prediction (default: 30)")
+):
+    """API endpoint to get predicted performance for all held MFs"""
+    try:
+        from holdings.MFPredictionAggregator import MFPredictionAggregator
+        
+        aggregator = MFPredictionAggregator()
+        results = aggregator.get_predictions_for_all_held_mfs(prediction_days)
+        
+        return {
+            "success": True,
+            "prediction_days": prediction_days,
+            "total_mfs": results.get('total_mfs', 0),
+            "successful": results.get('successful', 0),
+            "failed": results.get('failed', 0),
+            "predictions": results.get('results', [])
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting MF predictions: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "predictions": []}
+
+
+@router.get("/mf_predictions/{mf_symbol}")
+async def api_mf_prediction(
+    mf_symbol: str,
+    prediction_days: int = Query(30, description="Number of days for prediction (default: 30)")
+):
+    """API endpoint to get prediction for specific MF"""
+    try:
+        from holdings.MFPredictionAggregator import MFPredictionAggregator
+        
+        aggregator = MFPredictionAggregator()
+        result = aggregator.aggregate_predictions(mf_symbol, prediction_days)
+        
+        return result
+        
+    except Exception as e:
+        logging.error(f"Error getting MF prediction for {mf_symbol}: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "mf_symbol": mf_symbol}
+
+
 @router.get("/mf_nav/{mf_symbol}")
 async def api_mf_nav(
     mf_symbol: str,

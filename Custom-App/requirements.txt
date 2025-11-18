@@ -23,3 +23,5 @@ vaderSentiment==3.3.2
 lightningchart==2.0.1
 stocksent==0.4.5
 textblob==0.19.0
+requests>=2.31.0
+beautifulsoup4>=4.12.0

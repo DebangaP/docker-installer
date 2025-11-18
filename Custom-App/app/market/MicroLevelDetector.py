@@ -8,7 +8,7 @@ import numpy as np
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional, Tuple
 import logging
-from common.Boilerplate import get_db_connection
+from common.Boilerplate import get_db_connection, kite
 from market.FootprintChartGenerator import FootprintChartGenerator
 
 
@@ -65,6 +65,22 @@ class MicroLevelDetector:
                     'levels': []
                 }
             
+            # Get current live market price if analysis_date is today
+            current_price = footprint_data.get('price_range', {}).get('close', 0)
+            if analysis_date == date.today():
+                live_price = self._get_current_live_price()
+                if live_price and live_price > 0:
+                    current_price = live_price
+                    logging.info(f"Using live market price: {current_price} (instead of footprint close: {footprint_data.get('price_range', {}).get('close', 0)})")
+                else:
+                    logging.warning(f"Could not fetch live price, using footprint close: {current_price}")
+            
+            # Update footprint_data with current price for level calculations
+            if 'price_range' not in footprint_data:
+                footprint_data['price_range'] = {}
+            footprint_data['price_range']['close'] = current_price
+            footprint_data['price_range']['current'] = current_price
+            
             # Identify levels from footprint
             support_levels = self._identify_support_levels(footprint_data)
             resistance_levels = self._identify_resistance_levels(footprint_data)
@@ -84,7 +100,7 @@ class MicroLevelDetector:
                 'resistance_levels': resistance_levels,
                 'pivot_levels': pivot_levels,
                 'all_critical_levels': all_levels,
-                'current_price': footprint_data.get('price_range', {}).get('close', 0),
+                'current_price': current_price,
                 'price_range': footprint_data.get('price_range', {})
             }
             
@@ -401,3 +417,57 @@ class MicroLevelDetector:
             'aligned_candidates': aligned_candidates,
             'confirmation_rate': len([c for c in aligned_candidates if c['has_confirmation']]) / len(aligned_candidates) * 100 if aligned_candidates else 0
         }
+    
+    def _get_current_live_price(self) -> Optional[float]:
+        """
+        Get current live market price from Kite API
+        
+        Returns:
+            Current live price or None if unavailable
+        """
+        try:
+            # Get quote from Kite API
+            quote = kite.quote([self.instrument_token])
+            
+            if quote and str(self.instrument_token) in quote:
+                instrument_data = quote[str(self.instrument_token)]
+                
+                # Try different fields for current price
+                current_price = (
+                    instrument_data.get('last_price') or
+                    instrument_data.get('ohlc', {}).get('close') or
+                    instrument_data.get('net_price') or
+                    None
+                )
+                
+                if current_price and current_price > 0:
+                    return float(current_price)
+            
+            # Fallback: try to get from latest tick data
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Get latest tick for today
+            cursor.execute("""
+                SELECT last_price 
+                FROM my_schema.raw_ticks 
+                WHERE instrument_token = %s 
+                AND DATE(timestamp) = CURRENT_DATE
+                ORDER BY timestamp DESC 
+                LIMIT 1
+            """, (self.instrument_token,))
+            
+            result = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            
+            if result and result[0]:
+                return float(result[0])
+            
+            return None
+            
+        except Exception as e:
+            logging.error(f"Error fetching current live price: {e}")
+            import traceback
+            logging.debug(traceback.format_exc())
+            return None

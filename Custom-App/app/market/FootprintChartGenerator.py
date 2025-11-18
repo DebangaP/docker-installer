@@ -253,9 +253,40 @@ class FootprintChartGenerator:
         footprint_levels = []
         for _, row in grouped.iterrows():
             price = float(row['price_bucket'])
-            total_volume = int(row['volume'])
-            buy_volume = int(row['buy_quantity'])
-            sell_volume = int(row['sell_quantity'])
+            buy_quantity = int(row['buy_quantity']) if pd.notna(row['buy_quantity']) else 0
+            sell_quantity = int(row['sell_quantity']) if pd.notna(row['sell_quantity']) else 0
+            db_volume = int(row['volume']) if pd.notna(row['volume']) else 0
+            
+            # In footprint analysis, buy_quantity and sell_quantity represent order book volumes
+            # However, for proper footprint, we need to use the actual traded volume
+            # If buy_quantity + sell_quantity is close to volume, use them directly
+            # Otherwise, use volume as total and distribute proportionally
+            buy_sell_sum = buy_quantity + sell_quantity
+            
+            if buy_sell_sum > 0 and abs(buy_sell_sum - db_volume) / max(buy_sell_sum, db_volume, 1) < 0.2:
+                # buy_quantity + sell_quantity is close to volume, use them directly
+                total_volume = max(db_volume, buy_sell_sum)  # Use the larger value
+                buy_volume = buy_quantity
+                sell_volume = sell_quantity
+            elif db_volume > 0:
+                # Use volume as total and distribute buy/sell proportionally
+                total_volume = db_volume
+                if buy_sell_sum > 0:
+                    # Distribute volume proportionally based on buy/sell ratio
+                    buy_ratio = buy_quantity / buy_sell_sum
+                    sell_ratio = sell_quantity / buy_sell_sum
+                    buy_volume = int(total_volume * buy_ratio)
+                    sell_volume = int(total_volume * sell_ratio)
+                else:
+                    # No buy/sell data, split 50/50 (neutral)
+                    buy_volume = int(total_volume / 2)
+                    sell_volume = int(total_volume / 2)
+            else:
+                # No volume data, use buy/sell quantities as is
+                total_volume = buy_sell_sum
+                buy_volume = buy_quantity
+                sell_volume = sell_quantity
+            
             net_volume = buy_volume - sell_volume
             
             footprint_levels.append({

@@ -340,6 +340,65 @@ def is_access_token_valid(access_token):
         return False
 
 
+# Function to start KiteWS automatically
+def start_kitews_automatically():
+    """Helper function to automatically start KiteWS after token fetch"""
+    try:
+        import subprocess
+        import os
+        import sys
+        from datetime import datetime, timedelta
+        from pytz import timezone
+        
+        # Check if KiteWS is already running
+        try:
+            result = subprocess.run(
+                ['pgrep', '-f', 'KiteWS.py'],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                logging.info("KiteWS is already running, skipping auto-start")
+                return True
+        except Exception as e:
+            # pgrep might not be available, continue anyway
+            logging.debug(f"Could not check if KiteWS is running: {e}")
+        
+        # Start KiteWS using the wrapper script
+        kitews_wrapper_path = os.path.join(os.path.dirname(__file__), 'kite', 'StartKiteWS.py')
+        
+        if not os.path.exists(kitews_wrapper_path):
+            logging.warning(f"StartKiteWS.py not found at {kitews_wrapper_path}, skipping auto-start")
+            return False
+        
+        # Start the process in the background
+        process = subprocess.Popen(
+            [sys.executable, kitews_wrapper_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=os.path.dirname(os.path.dirname(kitews_wrapper_path)),
+            preexec_fn=os.setsid if hasattr(os, 'setsid') else None
+        )
+        
+        ist = timezone('Asia/Kolkata')
+        current_time = datetime.now(ist)
+        target_time = current_time.replace(hour=15, minute=30, second=0, microsecond=0)
+        
+        # If current time is past 3:30 PM, set target to next day
+        if current_time >= target_time:
+            target_time = target_time + timedelta(days=1)
+        
+        logging.info(f"Auto-started KiteWS process (PID: {process.pid}) at {current_time.strftime('%Y-%m-%d %H:%M:%S IST')}")
+        logging.info(f"KiteWS will run until {target_time.strftime('%Y-%m-%d %H:%M:%S IST')}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error auto-starting KiteWS: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return False
+
+
 # Function to generate a new access token
 def generate_new_access_token(request_token):
     print('generate token')
@@ -351,6 +410,10 @@ def generate_new_access_token(request_token):
         logging.info(" --- XXXX ---")
         logging.info(f"New access token generated: {access_token}")
         logging.info(" --- XXXX ---")
+
+        # Auto-start KiteWS after successful token generation
+        logging.info("Auto-starting KiteWS after successful token fetch...")
+        start_kitews_automatically()
 
         return access_token
     except Exception as e:
@@ -1147,6 +1210,13 @@ def get_access_token():
             if is_access_token_valid(existing_token):
                 logging.info("Using existing valid access token")
                 ACCESS_TOKEN = existing_token
+                
+                # Auto-start KiteWS if not already running (for existing valid tokens)
+                try:
+                    start_kitews_automatically()
+                except Exception as e:
+                    logging.debug(f"Could not auto-start KiteWS: {e}")
+                
                 return existing_token
         except TokenException:
             logging.warning("Existing token is invalid, will generate new one")

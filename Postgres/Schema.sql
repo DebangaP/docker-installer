@@ -384,6 +384,7 @@ CREATE TABLE IF NOT EXISTS my_schema.mf_nav_history (
     mf_symbol VARCHAR(50) NOT NULL,
     scheme_code VARCHAR(20),  -- AMFI scheme code
     fund_name VARCHAR(200),
+    yahoo_symbol VARCHAR(50),  -- Yahoo Finance symbol (may differ from Zerodha symbol)
     nav_date DATE NOT NULL,
     nav_value FLOAT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -391,6 +392,19 @@ CREATE TABLE IF NOT EXISTS my_schema.mf_nav_history (
 	run_date date default current_date,
     CONSTRAINT mf_nav_history_pk PRIMARY KEY (mf_symbol, nav_date)
 );
+
+-- Add yahoo_symbol column if it doesn't exist (for existing installations)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'my_schema' 
+        AND table_name = 'mf_nav_history' 
+        AND column_name = 'yahoo_symbol'
+    ) THEN
+        ALTER TABLE my_schema.mf_nav_history ADD COLUMN yahoo_symbol VARCHAR(50);
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_mf_nav_symbol_date ON my_schema.mf_nav_history(mf_symbol, nav_date DESC);
 CREATE INDEX IF NOT EXISTS idx_mf_nav_scheme_code ON my_schema.mf_nav_history(scheme_code);
@@ -402,6 +416,34 @@ COMMENT ON COLUMN my_schema.mf_nav_history.scheme_code IS 'AMFI scheme code for 
 COMMENT ON COLUMN my_schema.mf_nav_history.fund_name IS 'Mutual Fund name';
 COMMENT ON COLUMN my_schema.mf_nav_history.nav_date IS 'Date of NAV value';
 COMMENT ON COLUMN my_schema.mf_nav_history.nav_value IS 'Net Asset Value on the given date';
+
+-- MF Portfolio Holdings table (constituent stocks in each MF)
+CREATE TABLE IF NOT EXISTS my_schema.mf_portfolio_holdings (
+    id SERIAL PRIMARY KEY,
+    mf_symbol VARCHAR(50) NOT NULL,
+    scheme_code VARCHAR(20),
+    stock_symbol VARCHAR(50) NOT NULL,
+    stock_name VARCHAR(200),
+    weight_pct FLOAT,
+    quantity FLOAT,
+    value FLOAT,
+    sector VARCHAR(100),
+    portfolio_date DATE NOT NULL,
+    fetch_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT mf_portfolio_unique UNIQUE (mf_symbol, stock_symbol, portfolio_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mf_portfolio_mf_symbol ON my_schema.mf_portfolio_holdings(mf_symbol, portfolio_date DESC);
+CREATE INDEX IF NOT EXISTS idx_mf_portfolio_stock_symbol ON my_schema.mf_portfolio_holdings(stock_symbol);
+CREATE INDEX IF NOT EXISTS idx_mf_portfolio_date ON my_schema.mf_portfolio_holdings(portfolio_date DESC);
+
+-- Comments on MF portfolio holdings table
+COMMENT ON TABLE my_schema.mf_portfolio_holdings IS 'Stores constituent stock holdings for Mutual Funds';
+COMMENT ON COLUMN my_schema.mf_portfolio_holdings.mf_symbol IS 'Mutual Fund trading symbol';
+COMMENT ON COLUMN my_schema.mf_portfolio_holdings.scheme_code IS 'AMFI scheme code for the mutual fund';
+COMMENT ON COLUMN my_schema.mf_portfolio_holdings.stock_symbol IS 'Stock trading symbol (constituent)';
+COMMENT ON COLUMN my_schema.mf_portfolio_holdings.weight_pct IS 'Percentage weight of stock in MF portfolio';
+COMMENT ON COLUMN my_schema.mf_portfolio_holdings.portfolio_date IS 'Date of portfolio snapshot';
 
 CREATE TABLE IF NOT EXISTS my_schema.margins (
     fetch_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

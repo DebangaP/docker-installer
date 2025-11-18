@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
 Wrapper script to run TaskAPI using uvicorn
-This is needed because Python doesn't support hyphens in module names
+This is needed because the directory name 'task-services' contains a hyphen,
+which prevents direct Python module imports
 """
+# need to fix this
+# This is needed because the directory name 'task-services' contains a hyphen,
+# which prevents direct Python module imports
 
 import sys
 import os

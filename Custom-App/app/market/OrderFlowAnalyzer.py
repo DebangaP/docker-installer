@@ -359,31 +359,38 @@ class OrderFlowAnalyzer:
                 sell_vol = ticks_data['sell_quantity'].iloc[i]
                 
                 if price_change > 0 and buy_vol > sell_vol:
-                    # Bullish exhaustion
+                    # Buying exhaustion: High volume buying at rising prices suggests buying is exhausted
+                    # This indicates a potential top/reversal downward
                     exhaustion_events.append({
                         'timestamp': ticks_data['timestamp'].iloc[i],
-                        'type': 'bullish_exhaustion',
+                        'type': 'buying_exhaustion',  # Changed from 'bullish_exhaustion' for clarity
                         'price': float(ticks_data['last_price'].iloc[i]),
                         'volume': int(current_volume),
                         'volume_multiple': round(current_volume / avg_volume, 2) if avg_volume > 0 else 0,
-                        'signal': 'potential_top'
+                        'signal': 'potential_top',
+                        'direction': 'bearish'  # Price likely to reverse down
                     })
                 elif price_change < 0 and sell_vol > buy_vol:
-                    # Bearish exhaustion
+                    # Selling exhaustion: High volume selling at falling prices suggests selling is exhausted
+                    # This indicates a potential bottom/reversal upward
                     exhaustion_events.append({
                         'timestamp': ticks_data['timestamp'].iloc[i],
-                        'type': 'bearish_exhaustion',
+                        'type': 'selling_exhaustion',  # Changed from 'bearish_exhaustion' for clarity
                         'price': float(ticks_data['last_price'].iloc[i]),
                         'volume': int(current_volume),
                         'volume_multiple': round(current_volume / avg_volume, 2) if avg_volume > 0 else 0,
-                        'signal': 'potential_bottom'
+                        'signal': 'potential_bottom',
+                        'direction': 'bullish'  # Price likely to reverse up
                     })
         
         return {
             'exhaustion_events': exhaustion_events[-10:] if exhaustion_events else [],  # Last 10
             'count': len(exhaustion_events),
-            'bullish_exhaustion': len([e for e in exhaustion_events if e['type'] == 'bullish_exhaustion']),
-            'bearish_exhaustion': len([e for e in exhaustion_events if e['type'] == 'bearish_exhaustion'])
+            'buying_exhaustion': len([e for e in exhaustion_events if e['type'] == 'buying_exhaustion']),
+            'selling_exhaustion': len([e for e in exhaustion_events if e['type'] == 'selling_exhaustion']),
+            # Keep old keys for backward compatibility
+            'bullish_exhaustion': len([e for e in exhaustion_events if e['type'] == 'buying_exhaustion']),
+            'bearish_exhaustion': len([e for e in exhaustion_events if e['type'] == 'selling_exhaustion'])
         }
     
     def _analyze_pressure(self, ticks_data: pd.DataFrame) -> Dict:
@@ -490,8 +497,10 @@ class OrderFlowAnalyzer:
             signals.append(f'{bearish_divs} bearish volume divergences')
         
         # Exhaustion contribution
-        bullish_exh = exhaustion_signals.get('bullish_exhaustion', 0)
-        bearish_exh = exhaustion_signals.get('bearish_exhaustion', 0)
+        buying_exh = exhaustion_signals.get('buying_exhaustion', exhaustion_signals.get('bullish_exhaustion', 0))
+        selling_exh = exhaustion_signals.get('selling_exhaustion', exhaustion_signals.get('bearish_exhaustion', 0))
+        bullish_exh = buying_exh  # For backward compatibility
+        bearish_exh = selling_exh  # For backward compatibility
         if bullish_exh > bearish_exh:
             sentiment_score -= 5
             signals.append(f'{bullish_exh} bullish exhaustion signals')
