@@ -551,6 +551,145 @@ def get_tick_data_status():
             'latest_tick_str': None
         }
 
+# Function to check if KiteWS is running by checking for recent database data
+def check_kitews_running_by_data(minutes_threshold: int = 3) -> bool:
+    """
+    Check if KiteWS is running by checking if there's recent data in the database.
+    
+    Args:
+        minutes_threshold: Number of minutes to check back for recent data (default: 3)
+        
+    Returns:
+        True if recent data exists (indicating KiteWS is likely running), False otherwise
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check for ticks in the last N minutes
+        # Using string formatting for interval since PostgreSQL doesn't support parameterized intervals
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM my_schema.ticks 
+            WHERE timestamp > NOW() - INTERVAL '{minutes_threshold} minutes'
+            AND instrument_token IN (256265, 52168, 37054)
+        """)
+        
+        recent_ticks = cursor.fetchone()[0]
+        conn.close()
+        
+        is_running = recent_ticks > 0
+        logging.debug(f"KiteWS data check: {recent_ticks} ticks in last {minutes_threshold} minutes, is_running={is_running}")
+        
+        return is_running
+        
+    except Exception as e:
+        logging.error(f"Error checking KiteWS data status: {e}")
+        return False
+
+# Function to check and auto-start KiteWS if not running
+def check_and_auto_start_kitews():
+    """
+    Check if KiteWS is running (by checking database for recent data) and auto-start it if not.
+    This function checks both process status and database data to ensure KiteWS is actually working.
+    
+    Returns:
+        dict with status information
+    """
+    try:
+        import subprocess
+        from datetime import datetime
+        from pytz import timezone
+        
+        ist = timezone('Asia/Kolkata')
+        current_time = datetime.now(ist)
+        current_hour = current_time.hour
+        current_minute = current_time.minute
+        
+        # Only check during market hours (9:00 AM to 3:30 PM IST)
+        if current_hour < 9 or (current_hour == 15 and current_minute > 30) or current_hour > 15:
+            logging.debug(f"Skipping KiteWS auto-check outside market hours (current time: {current_time.strftime('%H:%M:%S IST')})")
+            return {
+                'checked': False,
+                'reason': 'outside_market_hours',
+                'message': 'Market is closed, skipping KiteWS check'
+            }
+        
+        # Check if KiteWS process is running
+        process_running = False
+        try:
+            result = subprocess.run(
+                ['pgrep', '-f', 'KiteWS.py'],
+                capture_output=True,
+                text=True
+            )
+            process_running = result.returncode == 0 and result.stdout.strip()
+        except Exception as e:
+            logging.debug(f"Could not check KiteWS process status: {e}")
+        
+        # Check if there's recent data in database (more reliable indicator)
+        data_running = check_kitews_running_by_data(minutes_threshold=3)
+        
+        if process_running and data_running:
+            logging.debug("KiteWS is running (both process and data check passed)")
+            return {
+                'checked': True,
+                'running': True,
+                'process_running': True,
+                'data_running': True,
+                'message': 'KiteWS is running normally'
+            }
+        
+        if not data_running:
+            # No recent data - KiteWS is not working properly
+            logging.warning(f"KiteWS appears to be not running (no recent data in last 3 minutes). Process running: {process_running}")
+            
+            # If process is running but no data, it might be stuck - we'll still try to start a new one
+            # The StartKiteWS wrapper will handle if one is already running
+            
+            # Auto-start KiteWS
+            logging.info("Auto-starting KiteWS due to missing recent data...")
+            start_result = start_kitews_automatically()
+            
+            if start_result:
+                return {
+                    'checked': True,
+                    'running': False,
+                    'process_running': process_running,
+                    'data_running': False,
+                    'auto_started': True,
+                    'message': 'KiteWS was not running (no recent data). Auto-started successfully.'
+                }
+            else:
+                return {
+                    'checked': True,
+                    'running': False,
+                    'process_running': process_running,
+                    'data_running': False,
+                    'auto_started': False,
+                    'message': 'KiteWS was not running (no recent data). Auto-start failed.'
+                }
+        else:
+            # Data is running but process check failed - might be a false negative
+            logging.info("KiteWS appears to be running (data check passed, but process check inconclusive)")
+            return {
+                'checked': True,
+                'running': True,
+                'process_running': process_running,
+                'data_running': True,
+                'message': 'KiteWS appears to be running (data check passed)'
+            }
+            
+    except Exception as e:
+        logging.error(f"Error in check_and_auto_start_kitews: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            'checked': True,
+            'running': False,
+            'error': str(e),
+            'message': f'Error checking/starting KiteWS: {str(e)}'
+        }
+
 # Function to get system status
 def get_system_status():
     # Get current IST time
