@@ -7041,23 +7041,37 @@
             `;
             container.innerHTML = html;
             
-            // Prepare chart data
+            // Prepare chart data - collect all points first, then sort by timestamp
+            const allDataPoints = [];
+            
+            data.data.forEach((dayData, dayIndex) => {
+                dayData.time_series.forEach(point => {
+                    allDataPoints.push({
+                        timestamp: new Date(point.timestamp),
+                        buy_quantity: point.buy_quantity || 0,
+                        sell_quantity: point.sell_quantity || 0,
+                        net_flow: point.net_flow || 0
+                    });
+                });
+            });
+            
+            // Sort by timestamp (oldest first - left to right)
+            allDataPoints.sort((a, b) => a.timestamp - b.timestamp);
+            
+            // Create arrays for chart
             const allLabels = [];
             const buyData = [];
             const sellData = [];
             const netFlowData = [];
             
-            data.data.forEach((dayData, dayIndex) => {
-                dayData.time_series.forEach(point => {
-                    const timestamp = new Date(point.timestamp);
-                    const timeLabel = timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-                    const dateLabel = timestamp.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-                    
-                    allLabels.push(`${dateLabel} ${timeLabel}`);
-                    buyData.push(point.buy_quantity || 0);
-                    sellData.push(point.sell_quantity || 0);
-                    netFlowData.push(point.net_flow || 0);
-                });
+            allDataPoints.forEach(point => {
+                const timeLabel = point.timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+                const dateLabel = point.timestamp.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                
+                allLabels.push(`${dateLabel} ${timeLabel}`);
+                buyData.push(point.buy_quantity);
+                sellData.push(point.sell_quantity);
+                netFlowData.push(point.net_flow);
             });
             
             // Get chart context
