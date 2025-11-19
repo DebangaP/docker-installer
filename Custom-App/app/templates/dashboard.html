@@ -1433,6 +1433,10 @@
                             <option value="180">180 Days</option>
                         </select>
                         <input type="text" id="sectorSearchInput" placeholder="Search by sector..." style="padding: 4px 8px; font-size: 12px; border: none; border-radius: 4px; min-width: 150px;" onkeyup="applySectorSearch()">
+                        <label style="color: white; font-size: 12px; margin-right: 5px; display: flex; align-items: center; gap: 5px;">
+                            <input type="checkbox" id="testModeCheckbox" style="margin: 0; cursor: pointer;" title="Test Mode: Generate predictions without saving to database">
+                            🧪 Test Mode
+                        </label>
                         <button onclick="generateProphetPredictionsWithDays()" class="btn" style="padding: 6px 12px; font-size: 12px; background-color: #17a2b8; color: white; border: none;">
                             ⚡ Generate Predictions
                         </button>
@@ -1574,254 +1578,100 @@
         {% if show_utilities_tab %}
         <!-- Utilities Tab Content -->
         <div id="utilities-tab" class="tab-content">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                <!-- Export Data Section -->
-                <div class="card" id="section-export" style="margin-bottom: 20px;">
-                    <div class="card-header" style="background-color: #28a745; color: white;">
-                        <h3 class="card-title" style="color: white;">📤 Export Data</h3>
-                    </div>
-                    <div style="padding: 15px;">
-                        <div style="margin-bottom: 15px;">
-                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Type of Data (Table Name):</label>
-                            <select id="exportTableName" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
-                                <option value="">-- Select Table --</option>
-                                <option value="ticks">ticks</option>
-                                <option value="futures_ticks">futures_ticks</option>
-                                <option value="options_ticks">options_ticks</option>
-                                <option value="holdings">holdings</option>
-                                <option value="mf_holdings">mf_holdings</option>
-                                <option value="positions">positions</option>
-                                <option value="orders">orders</option>
-                                <option value="trades">trades</option>
-                                <option value="market_structure">market_structure</option>
-                                <option value="rt_intraday_price">rt_intraday_price</option>
-                                <option value="iv_history">iv_history</option>
-                                <option value="market_depth">market_depth</option>
-                                <option value="futures_tick_depth">futures_tick_depth</option>
-                            </select>
-                        </div>
-                        
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-                            <div>
-                                <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">From Date:</label>
-                                <input type="date" id="exportFromDate" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
-                            </div>
-                            <div>
-                                <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">To Date:</label>
-                                <input type="date" id="exportToDate" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
-                            </div>
-                        </div>
-                        
-                        <div style="margin-bottom: 15px;">
-                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Columns (Leave empty for all columns):</label>
-                            <input type="text" id="exportColumns" placeholder="e.g., id,instrument_token,last_price (comma-separated)" 
-                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
-                            <small style="color: #666; font-size: 11px;">Optional: Specify columns to export, separated by commas</small>
-                        </div>
-                        
-                        <div style="margin-bottom: 10px;">
-                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Export Format:</label>
-                            <select id="exportFormat" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
-                                <option value="csv">CSV</option>
-                                <option value="excel">Excel (XLSX)</option>
-                                <option value="json">JSON</option>
-                            </select>
-                        </div>
-                        
-                        <button onclick="exportData()" class="btn" style="width: 100%; padding: 10px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                            📥 Export Data
+            <!-- Quick Actions Section -->
+            <div class="card" id="section-quick-actions" style="margin-bottom: 20px;">
+                <div class="card-header" style="background-color: #6f42c1; color: white;">
+                    <h3 class="card-title" style="color: white;">⚡ Quick Actions</h3>
+                </div>
+                <div style="padding: 15px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <button onclick="startKiteWS()" id="startKiteWSBtn" class="btn" style="width: 100%; padding: 12px; background-color: #6f42c1; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                            📡 Start KiteWS (Fetch Ticks)
                         </button>
-                        
-                        <div id="exportStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                        <button onclick="refreshStockPrices()" id="refreshStockPricesBtn" class="btn" style="width: 100%; padding: 12px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                            🔄 Refresh Stock Prices
+                        </button>
+                        <button onclick="refreshHoldings()" id="refreshHoldingsBtn" class="btn" style="width: 100%; padding: 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                            💼 Fetch Holdings
+                        </button>
+                    </div>
+                    <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr; gap: 10px;">
+                        <div id="quickActionsStatus" style="font-size: 12px; color: #666;"></div>
                     </div>
                 </div>
-                
-                <!-- Import Data Section -->
-                <div class="card" id="section-import" style="margin-bottom: 20px;">
-                    <div class="card-header" style="background-color: #007bff; color: white;">
-                        <h3 class="card-title" style="color: white;">📥 Import Data</h3>
-                    </div>
-                    <div style="padding: 15px;">
-                        <div style="margin-bottom: 15px;">
-                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Type of Data (Table Name):</label>
-                            <select id="importTableName" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
-                                <option value="">-- Select Table --</option>
-                                <option value="ticks">ticks</option>
-                                <option value="futures_ticks">futures_ticks</option>
-                                <option value="options_ticks">options_ticks</option>
-                                <option value="holdings">holdings</option>
-                                <option value="mf_holdings">mf_holdings</option>
-                                <option value="positions">positions</option>
-                                <option value="orders">orders</option>
-                                <option value="trades">trades</option>
-                                <option value="market_structure">market_structure</option>
-                                <option value="rt_intraday_price">rt_intraday_price</option>
-                                <option value="iv_history">iv_history</option>
-                                <option value="market_depth">market_depth</option>
-                                <option value="futures_tick_depth">futures_tick_depth</option>
-                            </select>
-                        </div>
-                        
-                        <div style="margin-bottom: 15px;">
-                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">CSV File:</label>
-                            <input type="file" id="importCsvFile" accept=".csv" 
-                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
-                            <small style="color: #666; font-size: 11px;">Select a CSV file to import. On conflict, new data will be skipped (not updated).</small>
-                        </div>
-                        
-                        <div style="margin-bottom: 10px; padding: 10px; background-color: #fff3cd; border-radius: 4px; border-left: 3px solid #ffc107;">
-                            <div style="font-size: 11px; font-weight: 600; color: #856404; margin-bottom: 5px;">⚠️ Import Behavior:</div>
-                            <div style="font-size: 10px; color: #856404;">
-                                • On conflict (duplicate rows), new data will be <strong>skipped</strong> (not updated)<br>
-                                • CSV header row must match table column names<br>
-                                • Data types must match table schema
-                            </div>
-                        </div>
-                        
-                        <button onclick="importData()" class="btn" style="width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                            📤 Import Data
+            </div>
+            
+            <!-- Cron Job Status Monitor Section -->
+            <div class="card" id="section-cron-status" style="margin-bottom: 20px; margin-top: 20px;">
+                <div class="card-header" style="background-color: #17a2b8; color: white;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 class="card-title" style="color: white;">📊 Cron Jobs Status Monitor</h3>
+                        <button onclick="loadCronJobsStatus()" class="btn" style="padding: 6px 12px; background-color: white; color: #17a2b8; border: none; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer;">
+                            🔄 Refresh
                         </button>
-                        
-                        <div id="importStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
-                        
-                        <div id="importPreview" style="margin-top: 15px; display: none;">
-                            <div style="font-size: 12px; font-weight: 600; margin-bottom: 5px;">Preview (first 5 rows):</div>
-                            <div id="importPreviewContent" style="max-height: 200px; overflow-y: auto; font-size: 11px;"></div>
+                    </div>
+                </div>
+                <div style="padding: 15px;">
+                    <div id="cronJobsStatusContainer" style="font-size: 12px;">
+                        <div style="text-align: center; padding: 20px; color: #666;">
+                            Click Refresh to load cron jobs status
                         </div>
                     </div>
                 </div>
             </div>
             
-            <!-- Refresh Stock Price Data Section -->
-            <div class="card" id="section-refresh" style="margin-bottom: 20px; margin-top: 20px;">
+            <!-- Add New Stock Section -->
+            <div class="card" id="section-add-stock" style="margin-bottom: 20px; margin-top: 20px;">
                 <div class="card-header" style="background-color: #17a2b8; color: white;">
-                    <h3 class="card-title" style="color: white;">🔄 Refresh Stock Price Data</h3>
+                    <h3 class="card-title" style="color: white;">➕ Add New Stock</h3>
                 </div>
                 <div style="padding: 15px;">
                     <div style="margin-bottom: 15px;">
-                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
-                            This will fetch the latest stock price data from Yahoo Finance and update the <code>Database</code> table. 
-                            The process will automatically determine the date range based on existing data.
-                        </p>
-                        <div style="margin-bottom: 10px; padding: 10px; background-color: #d1ecf1; border-radius: 4px; border-left: 3px solid #17a2b8;">
-                            <div style="font-size: 11px; font-weight: 600; color: #0c5460; margin-bottom: 5px;">ℹ️ Note:</div>
-                            <div style="font-size: 10px; color: #0c5460;">
-                                • This process may take several minutes depending on the number of stocks<br>
-                                • The system will automatically skip stocks that already have the latest data<br>
-                                • Existing records will be updated if new data is available
-                            </div>
-                        </div>
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Stock Symbol (e.g., E2E):</label>
+                        <input type="text" id="newStockSymbol" placeholder="Enter stock symbol" 
+                               style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; text-transform: uppercase;"
+                               maxlength="10">
+                        <small style="color: #666; font-size: 11px;">Enter the stock symbol as it appears in NSE/BSE</small>
                     </div>
                     
-                    <button onclick="refreshStockPrices()" id="refreshStockPricesBtn" class="btn" style="width: 100%; padding: 10px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                        🔄 Refresh Stock Prices
+                    <div style="margin-bottom: 15px;">
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Yahoo Finance Code (e.g., E2E.NS):</label>
+                        <input type="text" id="newStockYahooCode" placeholder="Enter Yahoo Finance code (e.g., E2E.NS)" 
+                               style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                        <small style="color: #666; font-size: 11px;">Yahoo Finance code format: SYMBOL.NS for NSE, SYMBOL.BO for BSE. You can find this on Yahoo Finance.</small>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Country:</label>
+                        <select id="newStockCountry" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                            <option value="IN">India (IN)</option>
+                            <option value="">Other</option>
+                        </select>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Sector Code (Optional):</label>
+                        <input type="text" id="newStockSector" placeholder="Enter sector code (e.g., PHARMA, IT, etc.)" 
+                               style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                    </div>
+                    
+                    <div style="margin-bottom: 15px; padding: 10px; background-color: #e7f3ff; border-radius: 4px; border-left: 3px solid #0066cc;">
+                        <div style="font-size: 11px; color: #333; font-weight: 600; margin-bottom: 5px;">📋 What will happen:</div>
+                        <ul style="font-size: 11px; color: #666; margin: 0; padding-left: 20px;">
+                            <li>Stock will be added to master_scrips table</li>
+                            <li>Historical price data for last 6 months will be fetched from Yahoo Finance</li>
+                            <li>Price data will be inserted into rt_intraday_price table</li>
+                            <li>This process may take a few minutes depending on data availability</li>
+                        </ul>
+                    </div>
+                    
+                    <button onclick="addNewStock()" id="addNewStockBtn" class="btn" style="width: 100%; padding: 10px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                        ➕ Add Stock & Fetch Historical Data (6 Months)
                     </button>
                     
-                    <div id="refreshStockPricesStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                    <div id="addStockStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
                 </div>
-                
-                <!-- Add New Stock Section -->
-                <div class="card" id="section-add-stock" style="margin-bottom: 20px;">
-                    <div class="card-header" style="background-color: #17a2b8; color: white;">
-                        <h3 class="card-title" style="color: white;">➕ Add New Stock</h3>
-                    </div>
-                    <div style="padding: 15px;">
-                        <div style="margin-bottom: 15px;">
-                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Stock Symbol (e.g., E2E):</label>
-                            <input type="text" id="newStockSymbol" placeholder="Enter stock symbol" 
-                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; text-transform: uppercase;"
-                                   maxlength="10">
-                            <small style="color: #666; font-size: 11px;">Enter the stock symbol as it appears in NSE/BSE</small>
-                        </div>
-                        
-                        <div style="margin-bottom: 15px;">
-                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Yahoo Finance Code (e.g., E2E.NS):</label>
-                            <input type="text" id="newStockYahooCode" placeholder="Enter Yahoo Finance code (e.g., E2E.NS)" 
-                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
-                            <small style="color: #666; font-size: 11px;">Yahoo Finance code format: SYMBOL.NS for NSE, SYMBOL.BO for BSE. You can find this on Yahoo Finance.</small>
-                        </div>
-                        
-                        <div style="margin-bottom: 15px;">
-                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Country:</label>
-                            <select id="newStockCountry" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
-                                <option value="IN">India (IN)</option>
-                                <option value="">Other</option>
-                            </select>
-                        </div>
-                        
-                        <div style="margin-bottom: 15px;">
-                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Sector Code (Optional):</label>
-                            <input type="text" id="newStockSector" placeholder="Enter sector code (e.g., PHARMA, IT, etc.)" 
-                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
-                        </div>
-                        
-                        <div style="margin-bottom: 15px; padding: 10px; background-color: #e7f3ff; border-radius: 4px; border-left: 3px solid #0066cc;">
-                            <div style="font-size: 11px; color: #333; font-weight: 600; margin-bottom: 5px;">📋 What will happen:</div>
-                            <ul style="font-size: 11px; color: #666; margin: 0; padding-left: 20px;">
-                                <li>Stock will be added to master_scrips table</li>
-                                <li>Historical price data for last 6 months will be fetched from Yahoo Finance</li>
-                                <li>Price data will be inserted into rt_intraday_price table</li>
-                                <li>This process may take a few minutes depending on data availability</li>
-                            </ul>
-                        </div>
-                        
-                        <button onclick="addNewStock()" id="addNewStockBtn" class="btn" style="width: 100%; padding: 10px; background-color: #17a2b8; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                            ➕ Add Stock & Fetch Historical Data (6 Months)
-                        </button>
-                        
-                        <div id="addStockStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
-                    </div>
-                </div>
-                
-                
-                <!-- Start KiteWS Section -->
-                <div class="card" id="section-kitews" style="margin-bottom: 20px; margin-top: 20px;">
-                    <div class="card-header" style="background-color: #6f42c1; color: white;">
-                        <h3 class="card-title" style="color: white;">📡 Start Kite WebSocket (KiteWS)</h3>
-                    </div>
-                    <div style="padding: 15px;">
-                        <div style="margin-bottom: 15px;">
-                            <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
-                                This will start the Kite WebSocket connection to receive real-time tick data. 
-                                The process will automatically run until 3:30 PM IST.
-                            </p>
-                            <div style="margin-bottom: 10px; padding: 10px; background-color: #e7d5ff; border-radius: 4px; border-left: 3px solid #6f42c1;">
-                                <div style="font-size: 11px; font-weight: 600; color: #4a2c7a; margin-bottom: 5px;">ℹ️ Note:</div>
-                                <div style="font-size: 10px; color: #4a2c7a;">
-                                    • KiteWS will run until 3:30 PM IST and then automatically stop<br>
-                                    • If KiteWS is already running, you'll see a message indicating it's already active<br>
-                                    • This is useful when the crontab doesn't start KiteWS automatically<br>
-                                    • Tick data will be saved to the database in real-time
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <button onclick="startKiteWS()" id="startKiteWSBtn" class="btn" style="width: 100%; padding: 10px; background-color: #6f42c1; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                            🚀 Start KiteWS (Runs until 3:30 PM IST)
-                        </button>
-                        
-                        <div id="startKiteWSStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
-                    </div>
-                </div>
-                
-                <!-- Cron Job Status Monitor Section -->
-                <div class="card" id="section-cron-status" style="margin-bottom: 20px; margin-top: 20px;">
-                    <div class="card-header" style="background-color: #17a2b8; color: white;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <h3 class="card-title" style="color: white;">📊 Cron Jobs Status Monitor</h3>
-                            <button onclick="loadCronJobsStatus()" class="btn" style="padding: 6px 12px; background-color: white; color: #17a2b8; border: none; border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer;">
-                                🔄 Refresh
-                            </button>
-                        </div>
-                    </div>
-                    <div style="padding: 15px;">
-                        <div id="cronJobsStatusContainer" style="font-size: 12px;">
-                            <div style="text-align: center; padding: 20px; color: #666;">
-                                Click Refresh to load cron jobs status
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            </div>
                 
                 <!-- Cron Utilities Section -->
                 <div class="card" id="section-cron" style="margin-bottom: 20px; margin-top: 20px;">
@@ -1935,6 +1785,124 @@
                                 </button>
                             </div>
                             <div id="fetchYahooStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                        </div>
+                    </div>
+                </div>
+            
+            <!-- Export Data and Import Data Sections -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; margin-top: 20px;">
+                <!-- Export Data Section -->
+                <div class="card" id="section-export" style="margin-bottom: 20px;">
+                    <div class="card-header" style="background-color: #28a745; color: white;">
+                        <h3 class="card-title" style="color: white;">📤 Export Data</h3>
+                    </div>
+                    <div style="padding: 15px;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Type of Data (Table Name):</label>
+                            <select id="exportTableName" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                <option value="">-- Select Table --</option>
+                                <option value="ticks">ticks</option>
+                                <option value="futures_ticks">futures_ticks</option>
+                                <option value="options_ticks">options_ticks</option>
+                                <option value="holdings">holdings</option>
+                                <option value="mf_holdings">mf_holdings</option>
+                                <option value="positions">positions</option>
+                                <option value="orders">orders</option>
+                                <option value="trades">trades</option>
+                                <option value="market_structure">market_structure</option>
+                                <option value="rt_intraday_price">rt_intraday_price</option>
+                                <option value="iv_history">iv_history</option>
+                                <option value="market_depth">market_depth</option>
+                                <option value="futures_tick_depth">futures_tick_depth</option>
+                            </select>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                            <div>
+                                <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">From Date:</label>
+                                <input type="date" id="exportFromDate" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                            </div>
+                            <div>
+                                <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">To Date:</label>
+                                <input type="date" id="exportToDate" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Columns (Leave empty for all columns):</label>
+                            <input type="text" id="exportColumns" placeholder="e.g., id,instrument_token,last_price (comma-separated)" 
+                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                            <small style="color: #666; font-size: 11px;">Optional: Specify columns to export, separated by commas</small>
+                        </div>
+                        
+                        <div style="margin-bottom: 10px;">
+                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Export Format:</label>
+                            <select id="exportFormat" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                <option value="csv">CSV</option>
+                                <option value="excel">Excel (XLSX)</option>
+                                <option value="json">JSON</option>
+                            </select>
+                        </div>
+                        
+                        <button onclick="exportData()" class="btn" style="width: 100%; padding: 10px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                            📥 Export Data
+                        </button>
+                        
+                        <div id="exportStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                    </div>
+                </div>
+                
+                <!-- Import Data Section -->
+                <div class="card" id="section-import" style="margin-bottom: 20px;">
+                    <div class="card-header" style="background-color: #007bff; color: white;">
+                        <h3 class="card-title" style="color: white;">📥 Import Data</h3>
+                    </div>
+                    <div style="padding: 15px;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Type of Data (Table Name):</label>
+                            <select id="importTableName" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                <option value="">-- Select Table --</option>
+                                <option value="ticks">ticks</option>
+                                <option value="futures_ticks">futures_ticks</option>
+                                <option value="options_ticks">options_ticks</option>
+                                <option value="holdings">holdings</option>
+                                <option value="mf_holdings">mf_holdings</option>
+                                <option value="positions">positions</option>
+                                <option value="orders">orders</option>
+                                <option value="trades">trades</option>
+                                <option value="market_structure">market_structure</option>
+                                <option value="rt_intraday_price">rt_intraday_price</option>
+                                <option value="iv_history">iv_history</option>
+                                <option value="market_depth">market_depth</option>
+                                <option value="futures_tick_depth">futures_tick_depth</option>
+                            </select>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">CSV File:</label>
+                            <input type="file" id="importCsvFile" accept=".csv" 
+                                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                            <small style="color: #666; font-size: 11px;">Select a CSV file to import. On conflict, new data will be skipped (not updated).</small>
+                        </div>
+                        
+                        <div style="margin-bottom: 10px; padding: 10px; background-color: #fff3cd; border-radius: 4px; border-left: 3px solid #ffc107;">
+                            <div style="font-size: 11px; font-weight: 600; color: #856404; margin-bottom: 5px;">⚠️ Import Behavior:</div>
+                            <div style="font-size: 10px; color: #856404;">
+                                • On conflict (duplicate rows), new data will be <strong>skipped</strong> (not updated)<br>
+                                • CSV header row must match table column names<br>
+                                • Data types must match table schema
+                            </div>
+                        </div>
+                        
+                        <button onclick="importData()" class="btn" style="width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                            📤 Import Data
+                        </button>
+                        
+                        <div id="importStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                        
+                        <div id="importPreview" style="margin-top: 15px; display: none;">
+                            <div style="font-size: 12px; font-weight: 600; margin-bottom: 5px;">Preview (first 5 rows):</div>
+                            <div id="importPreviewContent" style="max-height: 200px; overflow-y: auto; font-size: 11px;"></div>
                         </div>
                     </div>
                 </div>
@@ -2442,13 +2410,13 @@
                 { id: 'section-combined-sentiment', title: 'Combined Sentiment' }
             ]{% if show_utilities_tab %},{% endif %}
             {% endif %}{% if show_utilities_tab %}'utilities': [
-                { id: 'section-export', title: 'Export Data' },
-                { id: 'section-import', title: 'Import Data' },
-                { id: 'section-refresh', title: 'Refresh Stock Data' },
+                { id: 'section-quick-actions', title: 'Quick Actions' },
+                { id: 'section-cron-status', title: 'Cron Status Monitor' },
                 { id: 'section-add-stock', title: 'Add New Stock' },
-                { id: 'section-kitews', title: 'Kite WebSocket' },
                 { id: 'section-cron', title: 'Cron Utilities' },
-                { id: 'section-yahoo-data', title: 'Yahoo Finance Data' }
+                { id: 'section-yahoo-data', title: 'Yahoo Finance Data' },
+                { id: 'section-export', title: 'Export Data' },
+                { id: 'section-import', title: 'Import Data' }
             ]
             {% endif %}
         };
@@ -7560,10 +7528,19 @@
         
         function refreshStockPrices() {
             const statusDiv = document.getElementById('refreshStockPricesStatus');
-            const btn = document.getElementById('refreshStockPricesBtn');
+            const quickActionsStatus = document.getElementById('quickActionsStatus');
+            const btn = document.getElementById('refreshStockPricesBtn') || document.getElementById('refreshStockPricesBtn2');
             
-            if (!statusDiv || !btn) {
-                console.error('Required elements not found');
+            // Use quickActionsStatus as fallback if statusDiv doesn't exist
+            const displayStatus = statusDiv || quickActionsStatus;
+            
+            if (!btn) {
+                console.error('Button not found');
+                return;
+            }
+            
+            if (!displayStatus) {
+                console.error('Status div not found');
                 return;
             }
             
@@ -7572,7 +7549,10 @@
             btn.style.opacity = '0.6';
             btn.style.cursor = 'not-allowed';
             btn.innerHTML = '⏳ Refreshing...';
-            statusDiv.innerHTML = '<span style="color: #666;">Starting stock price refresh process...</span>';
+            displayStatus.innerHTML = '<span style="color: #666;">🔄 Refreshing stock prices...</span>';
+            if (statusDiv && quickActionsStatus) {
+                quickActionsStatus.innerHTML = '<span style="color: #666;">🔄 Refreshing stock prices...</span>';
+            }
             
             // Call API endpoint (task endpoint on port 8001)
             fetch(`${TASKS_API_BASE_URL}/api/refresh_stock_prices`, {
@@ -7590,10 +7570,13 @@
                 btn.innerHTML = '🔄 Refresh Stock Prices';
                 
                 if (data.error || !data.success) {
-                    statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${data.error || data.message || 'Refresh failed'}</span>`;
+                    let errorMsg = `<span style="color: #dc3545;">❌ Error: ${data.error || data.message || 'Refresh failed'}</span>`;
                     if (data.errors && data.errors.length > 0) {
-                        const errorList = data.errors.slice(0, 5).join('<br>');
-                        statusDiv.innerHTML += `<div style="margin-top: 10px; font-size: 11px; color: #856404;">${errorList}</div>`;
+                        errorMsg += `<div style="margin-top: 10px; font-size: 11px; color: #856404;">${data.errors.slice(0, 5).join('<br>')}</div>`;
+                    }
+                    displayStatus.innerHTML = errorMsg;
+                    if (statusDiv && quickActionsStatus) {
+                        quickActionsStatus.innerHTML = errorMsg;
                     }
                     return;
                 }
@@ -7616,7 +7599,10 @@
                     message += `</div>`;
                 }
                 
-                statusDiv.innerHTML = message;
+                displayStatus.innerHTML = message;
+                if (statusDiv && quickActionsStatus) {
+                    quickActionsStatus.innerHTML = `<span style="color: #28a745;">✅ Stock prices refreshed successfully!</span>`;
+                }
             })
             .catch(error => {
                 // Re-enable button
@@ -7626,17 +7612,30 @@
                 btn.innerHTML = '🔄 Refresh Stock Prices';
                 
                 console.error('Error refreshing stock prices:', error);
-                statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message || 'Failed to refresh stock prices'}</span>`;
+                const errorMsg = `<span style="color: #dc3545;">❌ Error: ${error.message || 'Failed to refresh stock prices'}</span>`;
+                displayStatus.innerHTML = errorMsg;
+                if (statusDiv && quickActionsStatus) {
+                    quickActionsStatus.innerHTML = errorMsg;
+                }
             });
         }
         
         
         function startKiteWS() {
             const statusDiv = document.getElementById('startKiteWSStatus');
-            const btn = document.getElementById('startKiteWSBtn');
+            const quickActionsStatus = document.getElementById('quickActionsStatus');
+            const btn = document.getElementById('startKiteWSBtn') || document.getElementById('startKiteWSBtn2');
             
-            if (!statusDiv || !btn) {
-                console.error('Required elements not found');
+            // Use quickActionsStatus as fallback if statusDiv doesn't exist
+            const displayStatus = statusDiv || quickActionsStatus;
+            
+            if (!btn) {
+                console.error('Button not found');
+                return;
+            }
+            
+            if (!displayStatus) {
+                console.error('Status div not found');
                 return;
             }
             
@@ -7645,7 +7644,10 @@
             btn.style.opacity = '0.6';
             btn.style.cursor = 'not-allowed';
             btn.innerHTML = '⏳ Starting KiteWS...';
-            statusDiv.innerHTML = '<span style="color: #666;">Starting KiteWS... This may take a few seconds.</span>';
+            displayStatus.innerHTML = '<span style="color: #666;">📡 Starting KiteWS... This may take a few seconds.</span>';
+            if (statusDiv && quickActionsStatus) {
+                quickActionsStatus.innerHTML = '<span style="color: #666;">📡 Starting KiteWS...</span>';
+            }
             
             // Call API endpoint
             fetch('/api/start_kitews', {
@@ -7663,16 +7665,28 @@
                 btn.innerHTML = '🚀 Start KiteWS (Runs until 3:30 PM IST)';
                 
                 if (data.success) {
-                    statusDiv.innerHTML = `<span style="color: #28a745;">✅ ${data.message}</span><br>` +
+                    const successMsg = `<span style="color: #28a745;">✅ ${data.message}</span><br>` +
                         `<span style="color: #666; font-size: 11px;">Started at: ${data.started_at}<br>` +
                         `Will run until: ${data.will_run_until}<br>` +
                         `Process ID: ${data.pid}</span>`;
+                    displayStatus.innerHTML = successMsg;
+                    if (statusDiv && quickActionsStatus) {
+                        quickActionsStatus.innerHTML = `<span style="color: #28a745;">✅ KiteWS started successfully!</span>`;
+                    }
                 } else {
                     if (data.message && data.message.includes('already running')) {
-                        statusDiv.innerHTML = `<span style="color: #ffc107;">⚠️ ${data.message}</span><br>` +
+                        const warningMsg = `<span style="color: #ffc107;">⚠️ ${data.message}</span><br>` +
                             `<span style="color: #666; font-size: 11px;">Process ID: ${data.pid}</span>`;
+                        displayStatus.innerHTML = warningMsg;
+                        if (statusDiv && quickActionsStatus) {
+                            quickActionsStatus.innerHTML = `<span style="color: #ffc107;">⚠️ KiteWS is already running</span>`;
+                        }
                     } else {
-                        statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${data.error || data.message || 'Failed to start KiteWS'}</span>`;
+                        const errorMsg = `<span style="color: #dc3545;">❌ Error: ${data.error || data.message || 'Failed to start KiteWS'}</span>`;
+                        displayStatus.innerHTML = errorMsg;
+                        if (statusDiv && quickActionsStatus) {
+                            quickActionsStatus.innerHTML = errorMsg;
+                        }
                     }
                 }
             })
@@ -7682,8 +7696,12 @@
                 btn.disabled = false;
                 btn.style.opacity = '1';
                 btn.style.cursor = 'pointer';
-                btn.innerHTML = '🚀 Start KiteWS (Runs until 3:30 PM IST)';
-                statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message || 'Failed to start KiteWS'}</span>`;
+                btn.innerHTML = '📡 Start KiteWS (Fetch Ticks)';
+                const errorMsg = `<span style="color: #dc3545;">❌ Error: ${error.message || 'Failed to start KiteWS'}</span>`;
+                displayStatus.innerHTML = errorMsg;
+                if (statusDiv && quickActionsStatus) {
+                    quickActionsStatus.innerHTML = errorMsg;
+                }
             });
         }
         
@@ -7827,6 +7845,7 @@
         
         function refreshHoldings() {
             const statusDiv = document.getElementById('cronUtilitiesStatus');
+            const quickActionsStatus = document.getElementById('quickActionsStatus');
             const btn = document.getElementById('refreshHoldingsBtn');
             
             if (!statusDiv || !btn) return;
@@ -7835,6 +7854,7 @@
             btn.style.opacity = '0.6';
             btn.innerHTML = '⏳ Refreshing...';
             statusDiv.innerHTML = '<span style="color: #666;">Refreshing holdings from Kite API...</span>';
+            if (quickActionsStatus) quickActionsStatus.innerHTML = '<span style="color: #666;">💼 Fetching holdings...</span>';
             
             // NOTE: This endpoint is now handled by api/routers/holdings.py
             fetch('/api/refresh_holdings', { method: 'POST' })
@@ -7843,15 +7863,22 @@
                 btn.disabled = false;
                 btn.style.opacity = '1';
                 btn.innerHTML = '🔄 Refresh Holdings';
-                statusDiv.innerHTML = data.success 
-                    ? `<span style="color: #28a745;">✅ ${data.message}</span>`
-                    : `<span style="color: #dc3545;">❌ Error: ${data.error || 'Failed'}</span>`;
+                if (data.success) {
+                    statusDiv.innerHTML = `<span style="color: #28a745;">✅ ${data.message}</span>`;
+                    if (quickActionsStatus) quickActionsStatus.innerHTML = `<span style="color: #28a745;">✅ Holdings fetched successfully!</span>`;
+                } else {
+                    const errorMsg = `<span style="color: #dc3545;">❌ Error: ${data.error || 'Failed'}</span>`;
+                    statusDiv.innerHTML = errorMsg;
+                    if (quickActionsStatus) quickActionsStatus.innerHTML = errorMsg;
+                }
             })
             .catch(error => {
                 btn.disabled = false;
                 btn.style.opacity = '1';
                 btn.innerHTML = '🔄 Refresh Holdings';
-                statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
+                const errorMsg = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
+                statusDiv.innerHTML = errorMsg;
+                if (quickActionsStatus) quickActionsStatus.innerHTML = errorMsg;
             });
         }
         
@@ -9787,19 +9814,23 @@
         function generateProphetPredictionsWithDays() {
             const daysSelect = document.getElementById('predictionDaysSelect');
             const predictionDays = daysSelect ? parseInt(daysSelect.value) : 30;
-            generateProphetPredictions(predictionDays);
+            const testModeCheckbox = document.getElementById('testModeCheckbox');
+            const testMode = testModeCheckbox ? testModeCheckbox.checked : false;
+            generateProphetPredictions(predictionDays, null, false, testMode);
         }
         
         // Prophet Predictions Generation Function
-        function generateProphetPredictions(predictionDays = 30, limit = null, force = false) {
+        function generateProphetPredictions(predictionDays = 30, limit = null, force = false, testMode = false) {
             const statusDiv = document.getElementById('topGainersStatus');
             const tbody = document.getElementById('topGainersTableBody');
             
             if (statusDiv) {
-                statusDiv.innerHTML = `<span style="color: #17a2b8;">⏳ Queuing Prophet prediction generation for ${predictionDays} days... This will run in the background.</span>`;
+                const modeText = testMode ? ' (TEST MODE - not saving to database)' : '';
+                statusDiv.innerHTML = `<span style="color: #17a2b8;">⏳ Queuing Prophet prediction generation for ${predictionDays} days${modeText}... This will run in the background.</span>`;
             }
             if (tbody) {
-                tbody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Starting background prediction generation... Predictions will appear as they are calculated.</td></tr>';
+                const modeText = testMode ? ' (TEST MODE)' : '';
+                tbody.innerHTML = `<tr><td colspan="7" style="padding: 15px; text-align: center; color: #666; font-size: 14px;">Starting background prediction generation${modeText}... Predictions will appear as they are calculated.</td></tr>`;
             }
             
             let url = `${TASKS_API_BASE_URL}/api/prophet_predictions/generate?prediction_days=${predictionDays}`;
@@ -9809,13 +9840,17 @@
             if (force) {
                 url += '&force=true';
             }
+            if (testMode) {
+                url += '&test_mode=true';
+            }
             
             fetch(url)
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
                         if (statusDiv) {
-                            statusDiv.innerHTML = `<span style="color: #17a2b8;">✓ ${data.message || 'Prediction generation started in background'}. <span style="font-size: 11px; color: #666;">(Status: ${data.status || 'queued'})</span></span>`;
+                            const modeIndicator = testMode ? ' <span style="color: #ffc107; font-weight: bold;">🧪 TEST MODE</span>' : '';
+                            statusDiv.innerHTML = `<span style="color: #17a2b8;">✓ ${data.message || 'Prediction generation started in background'}.${modeIndicator} <span style="font-size: 11px; color: #666;">(Status: ${data.status || 'queued'})</span></span>`;
                         }
                         // Start polling for predictions after a short delay
                         // Predictions are saved immediately as they are calculated

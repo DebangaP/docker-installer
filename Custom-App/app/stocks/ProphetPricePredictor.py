@@ -191,7 +191,7 @@ class ProphetPricePredictor:
             cursor.execute("""
                 SELECT 
                     price_date as ds,
-                    round(price_close) as y
+                    price_close as y
                 FROM my_schema.rt_intraday_price
                 WHERE scrip_id = %s
                 AND country = 'IN'
@@ -481,9 +481,11 @@ class ProphetPricePredictor:
                     return None
                 
                 # Define default Prophet model parameters
+                # changepoint_prior_scale: Lower = fewer changepoints, more stable trend (0.01 = very conservative)
+                # changepoint_range: Lower = changepoints only in earlier part of data, not near end (0.80 = first 80% only)
                 default_model_params = {
-                    'changepoint_prior_scale': 0.05,  # More conservative changepoints for stock data
-                    'changepoint_range': 0.9,  # Reduced from 0.95 to prevent changepoints too close to end
+                    'changepoint_prior_scale': 0.01,  # Very conservative - reduced from 0.05 to prevent false changepoints from today's data
+                    'changepoint_range': 0.80,  # Reduced from 0.85 - changepoints only in first 80% of data, not last 20%
                     'seasonality_prior_scale': 10.0,
                     'interval_width': 0.80  # 80% confidence interval
                 }
@@ -500,9 +502,10 @@ class ProphetPricePredictor:
                     logger.info(f"Cross-validation enabled for {scrip_id} (data_days={data_days}). Running cross-validation on default model...")
                     
                     # Create a temporary model with default parameters for cross-validation
+                    # All seasonality disabled - stock prices don't follow weekly/yearly patterns
                     temp_model = Prophet(
                         daily_seasonality=False,
-                        weekly_seasonality=True,
+                        weekly_seasonality=False,  # Disabled - stock prices don't follow weekly patterns
                         yearly_seasonality=False,
                         changepoint_prior_scale=model_params['changepoint_prior_scale'],
                         changepoint_range=model_params['changepoint_range'],
@@ -527,9 +530,11 @@ class ProphetPricePredictor:
                 # This prevents today's outlier from creating a changepoint that leads to negative predictions
                 adjusted_changepoint_range = min(0.85, model_params['changepoint_range'])
                 
+                # All seasonality disabled - stock prices don't follow weekly/yearly patterns
+                # This prevents Prophet from adding seasonal components that can cause prediction errors
                 model = Prophet(
                     daily_seasonality=False,
-                    weekly_seasonality=True,
+                    weekly_seasonality=False,  # Disabled - stock prices don't follow weekly patterns
                     yearly_seasonality=False,
                     changepoint_prior_scale=model_params['changepoint_prior_scale'],
                     changepoint_range=adjusted_changepoint_range,  # Use adjusted range
@@ -577,35 +582,134 @@ class ProphetPricePredictor:
                 predicted_row = future_forecast.iloc[-1]
             
             # Convert NumPy types to native Python types
-            predicted_price = convert_numpy_to_native(predicted_row['yhat'])
-            predicted_price = float(predicted_price) if predicted_price is not None else 0.0
+            predicted_price_raw = convert_numpy_to_native(predicted_row['yhat'])
+            predicted_price_raw = float(predicted_price_raw) if predicted_price_raw is not None else 0.0
             
-            # Ensure predicted price is not negative or unreasonably low
-            # This prevents Prophet from predicting negative values due to outlier data
+            # DEBUG: Analyze Prophet model components to understand negative predictions
+            logger.info(f"=== PROPHET DEBUG ANALYSIS for {scrip_id} ===")
+            logger.info(f"Data points used: {len(prophet_df)}, Date range: {prophet_df['ds'].min()} to {prophet_df['ds'].max()}")
+            logger.info(f"Price range: min={prophet_df['y'].min():.2f}, max={prophet_df['y'].max():.2f}, mean={prophet_df['y'].mean():.2f}, std={prophet_df['y'].std():.2f}")
+            logger.info(f"Latest 5 prices: {prophet_df['y'].tail(5).tolist()}")
+            logger.info(f"Current price: {current_price:.2f}")
+            
+            # Analyze changepoints detected by Prophet
+            recent_changepoints_detected = False
+            if hasattr(model, 'changepoints') and model.changepoints is not None:
+                logger.info(f"Changepoints detected: {len(model.changepoints)}")
+                if len(model.changepoints) > 0:
+                    # Get changepoint dates and their impact
+                    changepoint_dates = pd.to_datetime(model.changepoints)
+                    recent_changepoints = changepoint_dates[changepoint_dates >= prophet_df['ds'].max() - timedelta(days=30)]
+                    if len(recent_changepoints) > 0:
+                        recent_changepoints_detected = True
+                        logger.warning(f"⚠️ Recent changepoints detected (last 30 days): {recent_changepoints.tolist()}")
+                        logger.warning(f"  This may indicate Prophet detected a trend change near today's date, which could cause negative predictions")
+                        logger.warning(f"  RECOMMENDATION: Consider excluding today's price data or adjusting changepoint_prior_scale to reduce sensitivity")
+            
+            # Analyze trend component
+            try:
+                # Get trend for historical and future dates
+                historical_trend = forecast[forecast['ds'] <= last_date]['trend'].values
+                future_trend = forecast[forecast['ds'] > last_date]['trend'].values
+                
+                if len(historical_trend) > 0 and len(future_trend) > 0:
+                    trend_at_end = historical_trend[-1]
+                    trend_at_prediction = future_trend[days_to_predict - 1] if len(future_trend) >= days_to_predict else future_trend[-1]
+                    trend_change = trend_at_prediction - trend_at_end
+                    trend_change_pct = (trend_change / trend_at_end * 100) if trend_at_end > 0 else 0
+                    
+                    logger.info(f"Trend component: end={trend_at_end:.2f}, prediction={trend_at_prediction:.2f}, change={trend_change:.2f} ({trend_change_pct:.2f}%)")
+                    if trend_change_pct < -50:
+                        logger.warning(f"⚠️ Large negative trend change detected: {trend_change_pct:.2f}% - This is likely causing negative predictions!")
+            except Exception as e:
+                logger.debug(f"Could not analyze trend component: {e}")
+            
+            # Analyze seasonality components (all disabled for stock prices)
+            try:
+                if hasattr(model, 'seasonalities'):
+                    seasonality_keys = list(model.seasonalities.keys())
+                    if seasonality_keys:
+                        logger.info(f"Seasonality components: {seasonality_keys}")
+                    else:
+                        logger.info(f"Seasonality: All disabled (no weekly/yearly patterns for stock prices)")
+            except Exception as e:
+                logger.debug(f"Could not analyze seasonality: {e}")
+            
+            # Analyze forecast components breakdown (seasonality disabled, so only trend matters)
+            try:
+                predicted_row_components = {
+                    'yhat': predicted_price_raw,
+                    'trend': convert_numpy_to_native(predicted_row.get('trend', 0)),
+                }
+                # Only include seasonality if it exists (should be 0 or missing since disabled)
+                if 'weekly' in predicted_row:
+                    predicted_row_components['weekly'] = convert_numpy_to_native(predicted_row.get('weekly', 0))
+                if 'yearly' in predicted_row:
+                    predicted_row_components['yearly'] = convert_numpy_to_native(predicted_row.get('yearly', 0))
+                
+                logger.info(f"Forecast components breakdown: {predicted_row_components}")
+                logger.info(f"  Trend contributes: {predicted_row_components.get('trend', 0):.2f}")
+                if 'weekly' in predicted_row_components:
+                    logger.info(f"  Weekly seasonality contributes: {predicted_row_components.get('weekly', 0):.2f} (should be 0 - disabled)")
+                if 'yearly' in predicted_row_components:
+                    logger.info(f"  Yearly seasonality contributes: {predicted_row_components.get('yearly', 0):.2f} (should be 0 - disabled)")
+                
+                # Check if trend is the main culprit
+                if predicted_row_components.get('trend', 0) < 0:
+                    logger.error(f"❌ NEGATIVE TREND DETECTED: {predicted_row_components.get('trend', 0):.2f} - This is the root cause of negative prediction!")
+                    if recent_changepoints_detected:
+                        logger.error(f"  ROOT CAUSE: Recent changepoints detected + negative trend = Prophet extrapolating downward trend")
+                        logger.error(f"  SOLUTION: Exclude today's price data or reduce changepoint sensitivity (changepoint_prior_scale)")
+                elif predicted_row_components.get('trend', 0) < current_price * 0.3:
+                    logger.warning(f"⚠️ Very low trend value: {predicted_row_components.get('trend', 0):.2f} vs current_price={current_price:.2f}")
+                    if recent_changepoints_detected:
+                        logger.warning(f"  Likely caused by recent changepoints - Prophet is extrapolating a downward trend")
+            except Exception as e:
+                logger.debug(f"Could not analyze forecast components: {e}")
+            
+            logger.info(f"=== END PROPHET DEBUG ANALYSIS for {scrip_id} ===")
+            
+            # Log the raw prediction from Prophet for debugging
+            if current_price > 0:
+                raw_change_pct = ((predicted_price_raw - current_price) / current_price) * 100
+                logger.info(f"Prophet raw prediction for {scrip_id}: predicted_price={predicted_price_raw:.2f}, current_price={current_price:.2f}, raw_change_pct={raw_change_pct:.2f}%")
+            
+            predicted_price = predicted_price_raw
+            
+            # Only protect against truly impossible negative prices (less than 0)
+            # Allow all other predictions (even very negative ones) to pass through
+            # This lets Prophet's actual predictions show, even if they're extreme
             if predicted_price < 0:
-                logger.warning(f"Negative prediction detected for {scrip_id}: {predicted_price:.2f}. Setting to 0.1 * current_price")
-                predicted_price = max(0.1 * current_price, 0.01)  # At least 10% of current price or 0.01
-            elif current_price > 0 and predicted_price < 0.01 * current_price:
-                logger.warning(f"Unreasonably low prediction for {scrip_id}: {predicted_price:.2f} (current: {current_price:.2f}). Capping to 0.1 * current_price")
-                predicted_price = 0.1 * current_price
+                logger.warning(f"Negative price prediction detected for {scrip_id}: predicted_price={predicted_price:.2f}, current_price={current_price:.2f}")
+                logger.warning(f"  Prophet predicted a negative price, which is impossible. Setting to minimum of 0.01 to avoid database errors.")
+                predicted_price = 0.01  # Set to minimum value to avoid database constraint errors
+                logger.info(f"After negative price fix for {scrip_id}: predicted_price={predicted_price:.2f}, will result in {((predicted_price - current_price) / current_price) * 100:.2f}% change")
+            # Removed the check for predicted_price < 0.01 * current_price - let all positive predictions pass through
             
-            # Sanity check: predicted price should be reasonable (within 0.5x to 2x of current price)
-            # This catches data quality issues or calculation errors
+            # Don't cap predictions - let Prophet's actual predictions show
+            # Only log warnings for truly extreme cases but don't modify the prediction
             if current_price > 0 and predicted_price > 0:
                 price_ratio = predicted_price / current_price
-                if price_ratio < 0.5 or price_ratio > 2:
-                    logger.error(f"WARNING: Unusual predicted price for {scrip_id}: current_price={current_price:.2f}, predicted_price={predicted_price:.2f}, ratio={price_ratio:.2f}")
-                    logger.error(f"  This may indicate a data quality issue. Check historical prices for {scrip_id}")
-                    # Cap to reasonable range
-                    if price_ratio < 0.5:
-                        predicted_price = 0.5 * current_price
-                        logger.warning(f"Capped predicted_price to 0.1 * current_price = {predicted_price:.2f}")
-                    elif price_ratio > 2.0:
-                        predicted_price = 2.0 * current_price
-                        logger.warning(f"Capped predicted_price to 10.0 * current_price = {predicted_price:.2f}")
+                price_change_pct_raw = ((predicted_price - current_price) / current_price) * 100
+                
+                # Only log warnings for truly extreme predictions (worse than -90% or better than +200%)
+                # But don't cap them - let Prophet's predictions show as-is
+                if price_ratio < 0.1 or price_ratio > 3:
+                    logger.warning(f"WARNING: Very extreme predicted price for {scrip_id}: current_price={current_price:.2f}, predicted_price={predicted_price:.2f}, ratio={price_ratio:.2f}, change_pct={price_change_pct_raw:.2f}%")
+                    logger.warning(f"  This may indicate a data quality issue or unusual market conditions. Prediction will be shown as-is.")
+                elif price_ratio < 0.5 or price_ratio > 2:
+                    # Log moderate outliers for debugging but don't cap
+                    logger.debug(f"Moderate outlier prediction for {scrip_id}: ratio={price_ratio:.2f}, change_pct={price_change_pct_raw:.2f}% (allowing through)")
             
             # Calculate percentage change
             price_change_pct = ((predicted_price - current_price) / current_price) * 100
+            
+            # If prediction is negative, set to 0% instead of storing negative values
+            if price_change_pct < 0:
+                logger.warning(f"Negative prediction detected for {scrip_id}: calculated change_pct={price_change_pct:.2f}%. Setting to 0% for storage.")
+                price_change_pct = 0.0
+            
+            logger.info(f"Final calculation for {scrip_id}: predicted_price={predicted_price:.2f}, current_price={current_price:.2f}, price_ratio={predicted_price/current_price:.4f}, price_change_pct={price_change_pct:.2f}%")
             
             # Calculate confidence based on prediction intervals
             lower_bound = convert_numpy_to_native(predicted_row['yhat_lower'])
@@ -686,7 +790,7 @@ class ProphetPricePredictor:
             logger.error(traceback.format_exc())
             return None
     
-    def predict_all_stocks(self, limit: Optional[int] = None, prediction_days: Optional[int] = None, save_immediately: bool = True, run_date: Optional[date] = None) -> List[Dict]:
+    def predict_all_stocks(self, limit: Optional[int] = None, prediction_days: Optional[int] = None, save_immediately: bool = True, run_date: Optional[date] = None, test_mode: bool = False) -> List[Dict]:
         """
         Generate predictions for all stocks
         
@@ -695,6 +799,7 @@ class ProphetPricePredictor:
             prediction_days: Number of days to predict ahead (default: uses self.prediction_days)
             save_immediately: If True, save each prediction immediately after calculation (default: True)
             run_date: Date for the predictions (default: today)
+            test_mode: If True, predictions will not be saved to database (default: False)
             
         Returns:
             List of prediction dictionaries
@@ -705,8 +810,10 @@ class ProphetPricePredictor:
         if prediction_days is None:
             prediction_days = self.prediction_days
         
-        # If saving immediately, delete existing predictions for this run_date and prediction_days first
-        if save_immediately:
+        # NEVER delete existing predictions in test mode - always check test_mode first
+        if test_mode:
+            logger.info(f"[TEST MODE] Running in test mode - predictions will NOT be saved or deleted from database")
+        elif save_immediately:
             try:
                 conn = get_db_connection()
                 cursor = conn.cursor()
@@ -739,7 +846,7 @@ class ProphetPricePredictor:
         cv_failed_count = 0
         insufficient_data_count = 0
         
-        logger.info(f"Starting Prophet predictions for {total} stocks (cross_validation={self.enable_cross_validation}, save_immediately={save_immediately})...")
+        logger.info(f"Starting Prophet predictions for {total} stocks (cross_validation={self.enable_cross_validation}, save_immediately={save_immediately}, test_mode={test_mode})...")
         
         for idx, stock in enumerate(stocks, 1):
             # Log progress every 10 stocks or at milestones (10%, 25%, 50%, 75%, 100%)
@@ -754,9 +861,11 @@ class ProphetPricePredictor:
                     if prediction.get('cv_metrics'):
                         cv_ran_count += 1
                     
-                    # Save immediately if requested
-                    if save_immediately:
-                        if self.save_single_prediction(prediction, run_date=run_date, prediction_days=prediction_days):
+                    # Save immediately if requested (ALWAYS skip in test mode - double check)
+                    if test_mode:
+                        logger.debug(f"[TEST MODE] Prediction for {stock} generated but NOT saved to database")
+                    elif save_immediately:
+                        if self.save_single_prediction(prediction, run_date=run_date, prediction_days=prediction_days, test_mode=test_mode):
                             saved_count += 1
                         else:
                             save_failed_count += 1
@@ -778,8 +887,12 @@ class ProphetPricePredictor:
                 logger.info(f"Generating 60-day prediction for {nifty_id}")
                 nifty_prediction = self.predict_price(nifty_id, prediction_days=60)
                 if nifty_prediction:
-                    if save_immediately:
-                        if self.save_single_prediction(nifty_prediction, run_date=run_date, prediction_days=60):
+                    if test_mode:
+                        predictions.append(nifty_prediction)
+                        nifty50_predicted = True
+                        logger.info(f"[TEST MODE] Successfully generated 60-day prediction for {nifty_id} (NOT saved to database)")
+                    elif save_immediately:
+                        if self.save_single_prediction(nifty_prediction, run_date=run_date, prediction_days=60, test_mode=test_mode):
                             saved_count += 1
                             nifty50_predicted = True
                             logger.info(f"Successfully generated and saved 60-day prediction for {nifty_id}")
@@ -798,7 +911,9 @@ class ProphetPricePredictor:
             logger.warning("Failed to generate Nifty50 60-day prediction")
         
         logger.info(f"✓ Prophet predictions completed: {len(predictions)} successful, {len(skipped)} skipped, {len(errors)} errors out of {total} stocks")
-        if save_immediately:
+        if test_mode:
+            logger.info(f"  [TEST MODE] Predictions generated but NOT saved to database")
+        elif save_immediately:
             logger.info(f"  Saved: {saved_count} predictions saved immediately, {save_failed_count} save failures")
         if self.enable_cross_validation:
             logger.info(f"  Cross-validation: {cv_ran_count} predictions have cv_metrics out of {len(predictions)} successful predictions")
@@ -807,7 +922,7 @@ class ProphetPricePredictor:
         
         return predictions
     
-    def save_single_prediction(self, prediction: Dict, run_date: Optional[date] = None, prediction_days: Optional[int] = None) -> bool:
+    def save_single_prediction(self, prediction: Dict, run_date: Optional[date] = None, prediction_days: Optional[int] = None, test_mode: bool = False) -> bool:
         """
         Save a single prediction to database immediately
         
@@ -815,10 +930,15 @@ class ProphetPricePredictor:
             prediction: Prediction dictionary
             run_date: Date for the prediction (default: today)
             prediction_days: Number of days predicted (default: self.prediction_days)
+            test_mode: If True, skip saving (safety check)
             
         Returns:
             True if successful, False otherwise
         """
+        # Safety check: NEVER save in test mode
+        if test_mode:
+            logger.warning(f"[TEST MODE] save_single_prediction called for {prediction.get('scrip_id')} but test_mode=True - SKIPPING SAVE")
+            return False
         if not run_date:
             run_date = date.today()
         

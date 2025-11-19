@@ -94,7 +94,8 @@ def run_prophet_predictions_background(
     prediction_days: int,
     limit: Optional[int],
     fetch_sentiment: bool,
-    run_date: date
+    run_date: date,
+    test_mode: bool = False
 ):
     """
     Background task function to generate Prophet predictions asynchronously
@@ -111,9 +112,9 @@ def run_prophet_predictions_background(
         # Generate predictions with sentiment integration
         predictor = ProphetPricePredictor(prediction_days=prediction_days, enable_sentiment=fetch_sentiment)
         
-        # Generate predictions and save immediately after each calculation
-        logger.info(f"[Background] Starting Prophet prediction generation for run_date={run_date}, prediction_days={prediction_days}, limit={limit}")
-        predictions = predictor.predict_all_stocks(limit=limit, prediction_days=prediction_days, save_immediately=True, run_date=run_date)
+        # Generate predictions and save immediately after each calculation (unless in test mode)
+        logger.info(f"[Background] Starting Prophet prediction generation for run_date={run_date}, prediction_days={prediction_days}, limit={limit}, test_mode={test_mode}")
+        predictions = predictor.predict_all_stocks(limit=limit, prediction_days=prediction_days, save_immediately=not test_mode, run_date=run_date, test_mode=test_mode)
         
         logger.info(f"[Background] Prophet prediction generation completed: {len(predictions)} predictions generated and saved")
         
@@ -136,7 +137,8 @@ async def api_generate_prophet_predictions(
     limit: int = Query(None, description="Limit number of stocks to process (default: all)"),
     fetch_fundamentals: bool = Query(True, description="Check and fetch fundamental data if >30 days old (monthly refresh)"),
     force_fundamentals: bool = Query(False, description="Force fetch fundamentals even if recent data exists"),
-    fetch_sentiment: bool = Query(True, description="Fetch and calculate sentiment (always daily)")
+    fetch_sentiment: bool = Query(True, description="Fetch and calculate sentiment (always daily)"),
+    test_mode: bool = Query(False, description="Test mode: generate predictions without saving to database")
 ):
     """API endpoint to generate Prophet price predictions for all stocks with sentiment analysis (runs asynchronously)"""
     try:
@@ -150,20 +152,24 @@ async def api_generate_prophet_predictions(
             prediction_days=prediction_days,
             limit=limit,
             fetch_sentiment=fetch_sentiment,
-            run_date=run_date
+            run_date=run_date,
+            test_mode=test_mode
         )
         
-        logger.info(f"Prophet prediction generation task queued for background execution: run_date={run_date}, prediction_days={prediction_days}, limit={limit}")
+        logger.info(f"Prophet prediction generation task queued for background execution: run_date={run_date}, prediction_days={prediction_days}, limit={limit}, test_mode={test_mode}")
+        
+        mode_note = "TEST MODE: Predictions will be generated but NOT saved to database." if test_mode else "The prediction generation is running asynchronously. Predictions will be saved to the database as they are calculated. Monitor application logs for progress."
         
         return {
             "success": True,
-            "message": f"Prophet prediction generation started in background for {prediction_days} days. Check application logs for progress and completion status.",
+            "message": f"Prophet prediction generation started in background for {prediction_days} days {'(TEST MODE)' if test_mode else ''}. Check application logs for progress and completion status.",
             "run_date": str(run_date),
             "prediction_days": prediction_days,
             "limit": limit,
             "fetch_sentiment": fetch_sentiment,
+            "test_mode": test_mode,
             "status": "queued",
-            "note": "The prediction generation is running asynchronously. Predictions will be saved to the database as they are calculated. Monitor application logs for progress."
+            "note": mode_note
         }
         
     except Exception as e:

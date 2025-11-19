@@ -100,15 +100,15 @@ def refresh_stock_prices(db_config=None):
                     """
                     
                     try:
-                        # Convert numpy types to Python native types
+                        # Convert numpy types to Python native types and round prices to integers
                         _DBconnection.execute(
                             text(_insert_RT_OHLC), 
                             {
                                 'param1': str(_scrip_id),
-                                'param2': float(dailyrow.values[0]) if not pd.isna(dailyrow.values[0]) else None,
-                                'param3': float(dailyrow.values[1]) if not pd.isna(dailyrow.values[1]) else None,
-                                'param4': float(dailyrow.values[2]) if not pd.isna(dailyrow.values[2]) else None,
-                                'param5': float(dailyrow.values[3]) if not pd.isna(dailyrow.values[3]) else None,
+                                'param2': round(float(dailyrow.values[0])) if not pd.isna(dailyrow.values[0]) else None,
+                                'param3': round(float(dailyrow.values[1])) if not pd.isna(dailyrow.values[1]) else None,
+                                'param4': round(float(dailyrow.values[2])) if not pd.isna(dailyrow.values[2]) else None,
+                                'param5': round(float(dailyrow.values[3])) if not pd.isna(dailyrow.values[3]) else None,
                                 'param6': date.strftime('%Y-%m-%d'),
                                 'param7': 'IN',
                                 'param8': int(dailyrow.values[4]) if len(dailyrow.values) > 4 and not pd.isna(dailyrow.values[4]) else 0
@@ -215,15 +215,15 @@ if __name__ == '__main__':
     
                     try:
                         from sqlalchemy import text
-                        # Convert numpy types to Python native types
+                        # Convert numpy types to Python native types and round prices to integers
                         _DBconnection.execute(
                             text(_insert_RT_OHLC), 
                             {
                                 'param1': str(_scrip_id),
-                                'param2': float(dailyrow.values[0]),
-                                'param3': float(dailyrow.values[1]),
-                                'param4': float(dailyrow.values[2]),
-                                'param5': float(dailyrow.values[3]),
+                                'param2': round(float(dailyrow.values[0])),
+                                'param3': round(float(dailyrow.values[1])),
+                                'param4': round(float(dailyrow.values[2])),
+                                'param5': round(float(dailyrow.values[3])),
                                 'param6': date.strftime('%Y-%m-%d'),
                                 'param7': 'IN',
                                 'param8': int(dailyrow.values[4]) if not pd.isna(dailyrow.values[4]) else 0

@@ -2194,19 +2194,21 @@ async def api_add_new_stock(request: Request):
                     # yfinance returns DataFrame with columns: Open, High, Low, Close, Adj Close, Volume
                     # Access by column name (dailyrow is a pandas Series with index as column names)
                     try:
-                        open_price = float(dailyrow['Open']) if 'Open' in dailyrow.index and not pd.isna(dailyrow['Open']) else None
-                        high_price = float(dailyrow['High']) if 'High' in dailyrow.index and not pd.isna(dailyrow['High']) else None
-                        low_price = float(dailyrow['Low']) if 'Low' in dailyrow.index and not pd.isna(dailyrow['Low']) else None
-                        close_price = float(dailyrow['Close']) if 'Close' in dailyrow.index and not pd.isna(dailyrow['Close']) else None
+                        # Round prices to integers for consistent storage
+                        open_price = round(float(dailyrow['Open'])) if 'Open' in dailyrow.index and not pd.isna(dailyrow['Open']) else None
+                        high_price = round(float(dailyrow['High'])) if 'High' in dailyrow.index and not pd.isna(dailyrow['High']) else None
+                        low_price = round(float(dailyrow['Low'])) if 'Low' in dailyrow.index and not pd.isna(dailyrow['Low']) else None
+                        close_price = round(float(dailyrow['Close'])) if 'Close' in dailyrow.index and not pd.isna(dailyrow['Close']) else None
                         volume_value = int(dailyrow['Volume']) if 'Volume' in dailyrow.index and not pd.isna(dailyrow['Volume']) else 0
                     except (KeyError, IndexError):
                         # Fallback to positional access if column names not available
                         # yfinance returns: Open, High, Low, Close, Adj Close, Volume
                         # So: values[0]=Open, values[1]=High, values[2]=Low, values[3]=Close, values[5]=Volume
-                        open_price = float(dailyrow.values[0]) if len(dailyrow.values) > 0 and not pd.isna(dailyrow.values[0]) else None
-                        high_price = float(dailyrow.values[1]) if len(dailyrow.values) > 1 and not pd.isna(dailyrow.values[1]) else None
-                        low_price = float(dailyrow.values[2]) if len(dailyrow.values) > 2 and not pd.isna(dailyrow.values[2]) else None
-                        close_price = float(dailyrow.values[3]) if len(dailyrow.values) > 3 and not pd.isna(dailyrow.values[3]) else None
+                        # Round prices to integers for consistent storage
+                        open_price = round(float(dailyrow.values[0])) if len(dailyrow.values) > 0 and not pd.isna(dailyrow.values[0]) else None
+                        high_price = round(float(dailyrow.values[1])) if len(dailyrow.values) > 1 and not pd.isna(dailyrow.values[1]) else None
+                        low_price = round(float(dailyrow.values[2])) if len(dailyrow.values) > 2 and not pd.isna(dailyrow.values[2]) else None
+                        close_price = round(float(dailyrow.values[3])) if len(dailyrow.values) > 3 and not pd.isna(dailyrow.values[3]) else None
                         volume_value = int(dailyrow.values[5]) if len(dailyrow.values) > 5 and not pd.isna(dailyrow.values[5]) else 0
                     
                     date_str = date.strftime('%Y-%m-%d') if hasattr(date, 'strftime') else str(date)[:10]
