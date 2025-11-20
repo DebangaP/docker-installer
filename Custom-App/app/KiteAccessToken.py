@@ -5288,6 +5288,7 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
                 sma_20 = talib.SMA(closes_array, timeperiod=20)
                 sma_50 = talib.SMA(closes_array, timeperiod=50)
                 sma_200 = talib.SMA(closes_array, timeperiod=200)
+                ema_200 = talib.EMA(closes_array, timeperiod=200)
                 supertrend, supertrend_direction = calculate_supertrend(highs_array, lows_array, closes_array)
                 logging.info(f"Indicators calculated successfully")
             except Exception as e:
@@ -5298,6 +5299,7 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
                 sma_20 = np.full(len(closes_array), np.nan)
                 sma_50 = np.full(len(closes_array), np.nan)
                 sma_200 = np.full(len(closes_array), np.nan)
+                ema_200 = np.full(len(closes_array), np.nan)
                 supertrend = np.full(len(closes_array), np.nan)
                 supertrend_direction = np.zeros(len(closes_array))
         else:
@@ -5311,9 +5313,36 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
             sma_20 = df['close'].rolling(window=20).mean().values
             sma_50 = df['close'].rolling(window=50).mean().values
             sma_200 = df['close'].rolling(window=200).mean().values
+            ema_200 = df['close'].ewm(span=200, adjust=False).mean().values
             # Simple Supertrend calculation
             supertrend, supertrend_direction = calculate_supertrend(highs_array, lows_array, closes_array)
             logging.info(f"Indicators calculated using pandas")
+        
+        # Check if current price is 40% above EMA_200 (for alert)
+        alert_40_percent_above_ema200 = False
+        percent_above_ema200 = None
+        if len(closes_array) > 0 and len(ema_200) > 0:
+            current_price = closes_array[-1]
+            current_ema200 = ema_200[-1]
+            if not np.isnan(current_price) and not np.isnan(current_ema200) and current_ema200 > 0:
+                percent_above = ((current_price - current_ema200) / current_ema200) * 100
+                percent_above_ema200 = round(percent_above, 2)
+                if percent_above >= 40:
+                    alert_40_percent_above_ema200 = True
+                    logging.info(f"ALERT: {trading_symbol} is {percent_above:.2f}% above 200 EMA (Price: {current_price:.2f}, EMA200: {current_ema200:.2f})")
+        
+        # Check if current price is 15% above SMA_50 (for alert)
+        alert_15_percent_above_sma50 = False
+        percent_above_sma50 = None
+        if len(closes_array) > 0 and len(sma_50) > 0:
+            current_price = closes_array[-1]
+            current_sma50 = sma_50[-1]
+            if not np.isnan(current_price) and not np.isnan(current_sma50) and current_sma50 > 0:
+                percent_above = ((current_price - current_sma50) / current_sma50) * 100
+                percent_above_sma50 = round(percent_above, 2)
+                if percent_above >= 15:
+                    alert_15_percent_above_sma50 = True
+                    logging.info(f"ALERT: {trading_symbol} is {percent_above:.2f}% above 50 SMA (Price: {current_price:.2f}, SMA50: {current_sma50:.2f})")
         
         # Build data array with indicators (rounded to 2 decimal places)
         for i in range(len(dates)):
@@ -5328,6 +5357,7 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
                 "sma_20": round(float(sma_20[i]), 2) if not np.isnan(sma_20[i]) else None,
                 "sma_50": round(float(sma_50[i]), 2) if not np.isnan(sma_50[i]) else None,
                 "sma_200": round(float(sma_200[i]), 2) if not np.isnan(sma_200[i]) else None,
+                "ema_200": round(float(ema_200[i]), 2) if not np.isnan(ema_200[i]) else None,
                 "supertrend": round(float(supertrend[i]), 2) if not np.isnan(supertrend[i]) else None,
                 "supertrend_direction": int(supertrend_direction[i]) if not np.isnan(supertrend_direction[i]) else None
             })
@@ -5573,7 +5603,11 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
             "data": data,
             "fundamental_data": fundamental_data,
             "prediction_data": prediction_data,
-            "accumulation_data": accumulation_data
+            "accumulation_data": accumulation_data,
+            "alert_40_percent_above_ema200": alert_40_percent_above_ema200,
+            "percent_above_ema200": percent_above_ema200,
+            "alert_15_percent_above_sma50": alert_15_percent_above_sma50,
+            "percent_above_sma50": percent_above_sma50
         }
     except Exception as e:
         logging.error(f"Error fetching candlestick data: {e}")

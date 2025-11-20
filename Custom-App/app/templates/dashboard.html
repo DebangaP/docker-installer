@@ -7084,6 +7084,22 @@
                             borderWidth: 2,
                             borderDash: [5, 5],
                             yAxisID: 'y1'
+                        },
+                        {
+                            label: 'Net Flow = 0',
+                            data: allLabels.map(() => 0),
+                            borderColor: 'rgba(0, 0, 0, 1)',
+                            backgroundColor: 'rgba(0, 0, 0, 0)',
+                            fill: false,
+                            tension: 0,
+                            borderWidth: 3,
+                            borderDash: [],
+                            pointRadius: 0,
+                            pointHoverRadius: 0,
+                            yAxisID: 'y1',
+                            order: -1,
+                            hidden: false,
+                            showLine: true
                         }
                     ]
                 },
@@ -7105,7 +7121,11 @@
                         },
                         legend: {
                             display: true,
-                            position: 'top'
+                            position: 'top',
+                            filter: function(item, chart) {
+                                // Hide the Net Flow = 0 reference line from legend
+                                return item.text !== 'Net Flow = 0';
+                            }
                         },
                         tooltip: {
                             callbacks: {
@@ -9072,6 +9092,16 @@
                     </div>
                     <div id="accumulationConfidence" style="display: none;">
                         <strong>Wyckoff Confidence:</strong> <span id="accumulationConfidenceValue" style="font-weight: bold;">-</span>%
+                    </div>
+                    <div id="ema200Alert" style="display: none;">
+                        <span style="background-color: #ffc107; color: #000; padding: 6px 12px; border-radius: 4px; font-weight: bold; font-size: 13px; display: inline-block;">
+                            ⚠️ ALERT: Stock is <span id="ema200PercentAbove">-</span>% above 200 EMA
+                        </span>
+                    </div>
+                    <div id="sma50Alert" style="display: none;">
+                        <span style="background-color: #ff9800; color: #000; padding: 6px 12px; border-radius: 4px; font-weight: bold; font-size: 13px; display: inline-block;">
+                            ⚠️ ALERT: Stock is <span id="sma50PercentAbove">-</span>% above 50 SMA
+                        </span>
                     </div>
                 </div>
             </div>
@@ -11639,6 +11669,22 @@
                         document.getElementById('accumulationConfidence').style.display = 'none';
                     }
                     
+                    // Display EMA 200 Alert (40% above)
+                    if (data.alert_40_percent_above_ema200 && data.percent_above_ema200 !== null && data.percent_above_ema200 !== undefined) {
+                        document.getElementById('ema200Alert').style.display = 'block';
+                        document.getElementById('ema200PercentAbove').textContent = data.percent_above_ema200.toFixed(2);
+                    } else {
+                        document.getElementById('ema200Alert').style.display = 'none';
+                    }
+                    
+                    // Display SMA 50 Alert (15% above)
+                    if (data.alert_15_percent_above_sma50 && data.percent_above_sma50 !== null && data.percent_above_sma50 !== undefined) {
+                        document.getElementById('sma50Alert').style.display = 'block';
+                        document.getElementById('sma50PercentAbove').textContent = data.percent_above_sma50.toFixed(2);
+                    } else {
+                        document.getElementById('sma50Alert').style.display = 'none';
+                    }
+                    
                     console.log('Candlestick data received:', data);
                     console.log('Prediction data:', data.prediction_data);
                     console.log('First data point structure:', data.data[0]);
@@ -11682,6 +11728,11 @@
                         y: d.sma_200 !== null && !isNaN(d.sma_200) ? parseFloat(d.sma_200.toFixed(2)) : null
                     })).filter(d => d.y !== null && !isNaN(d.y));
                     
+                    const ema200Data = data.data.map(d => ({
+                        x: new Date(d.date).getTime(),
+                        y: d.ema_200 !== null && !isNaN(d.ema_200) ? parseFloat(d.ema_200.toFixed(2)) : null
+                    })).filter(d => d.y !== null && !isNaN(d.y));
+                    
                     const supertrendData = data.data.map(d => ({
                         x: new Date(d.date).getTime(),
                         y: d.supertrend !== null && !isNaN(d.supertrend) ? parseFloat(d.supertrend.toFixed(2)) : null,
@@ -11692,6 +11743,7 @@
                     console.log('SMA 20 data:', sma20Data.slice(0, 5));
                     console.log('SMA 50 data:', sma50Data.slice(0, 5));
                     console.log('SMA 200 data:', sma200Data.slice(0, 5));
+                    console.log('EMA 200 data:', ema200Data.slice(0, 5));
                     console.log('Supertrend data:', supertrendData.slice(0, 5));
                     
                     // Get the container dimensions
@@ -11883,6 +11935,21 @@
                             pointRadius: 0,
                             tension: 0.1,
                             fill: false
+                        });
+                    }
+                    
+                    if (ema200Data.length > 0) {
+                        candlestickChart.data.datasets.push({
+                            label: 'EMA 200',
+                            data: ema200Data,
+                            type: 'line',
+                            borderColor: 'rgba(153, 102, 255, 1)',
+                            backgroundColor: 'rgba(153, 102, 255, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            tension: 0.1,
+                            fill: false,
+                            borderDash: [5, 5]
                         });
                     }
                     

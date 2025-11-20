@@ -485,7 +485,7 @@ class ProphetPricePredictor:
                 # changepoint_range: Lower = changepoints only in earlier part of data, not near end (0.80 = first 80% only)
                 default_model_params = {
                     'changepoint_prior_scale': 0.01,  # Very conservative - reduced from 0.05 to prevent false changepoints from today's data
-                    'changepoint_range': 0.80,  # Reduced from 0.85 - changepoints only in first 80% of data, not last 20%
+                    'changepoint_range': 0.90,  # Reduced from 0.85 - changepoints only in first 80% of data, not last 20%
                     'seasonality_prior_scale': 10.0,
                     'interval_width': 0.80  # 80% confidence interval
                 }
