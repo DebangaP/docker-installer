@@ -46,7 +46,7 @@ except ImportError:
     plt = None
     mdates = None
 
-from api.utils.cache import cached_json_response, cache_get_json, cache_set_json
+from api.utils.cache import cached_json_response, cache_get_json, cache_set_json, cache_delete_pattern
 from api.utils.technical_indicators import get_latest_supertrend
 from api.utils.supertrend_cache import get_cached_supertrend, set_cached_supertrend
 from api.services.holdings_service import HoldingsService
@@ -596,6 +596,14 @@ async def api_refresh_holdings():
     try:
         from holdings.RefreshHoldings import refresh_holdings
         refresh_holdings()
+        
+        # Clear holdings cache to ensure fresh data is loaded
+        from api.utils.cache import cache_delete_pattern, cache_delete_json
+        cache_delete_pattern("holdings:*")
+        # Also clear P&L summary cache as it depends on holdings data
+        cache_delete_json("today_pnl_summary")
+        logging.info("Cleared holdings and P&L summary cache after refresh")
+        
         return {"success": True, "message": "Holdings refreshed successfully"}
     except Exception as e:
         logging.error(f"Error refreshing holdings: {e}")

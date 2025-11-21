@@ -135,3 +135,39 @@ def cache_set_json(key: str, value: dict, ttl_seconds: int = 5):
     except Exception as e:
         logging.error(f"Error setting cache for key {key}: {e}")
 
+
+def cache_delete_json(key: str):
+    """
+    Delete a specific cache key from Redis
+    """
+    from common.Boilerplate import redis_client
+    
+    try:
+        redis_client.delete(key)
+        logging.debug(f"Deleted cache key: {key}")
+    except Exception as e:
+        logging.error(f"Error deleting cache for key {key}: {e}")
+
+
+def cache_delete_pattern(pattern: str):
+    """
+    Delete all cache keys matching a pattern from Redis
+    Uses SCAN to find matching keys and deletes them
+    """
+    from common.Boilerplate import redis_client
+    
+    try:
+        deleted_count = 0
+        cursor = 0
+        while True:
+            cursor, keys = redis_client.scan(cursor, match=pattern, count=100)
+            if keys:
+                deleted = redis_client.delete(*keys)
+                deleted_count += deleted if isinstance(deleted, int) else len(keys)
+            if cursor == 0:
+                break
+        logging.info(f"Deleted {deleted_count} cache keys matching pattern: {pattern}")
+        return deleted_count
+    except Exception as e:
+        logging.error(f"Error deleting cache for pattern {pattern}: {e}")
+        return 0

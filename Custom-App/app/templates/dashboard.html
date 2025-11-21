@@ -7886,6 +7886,22 @@
                 if (data.success) {
                     statusDiv.innerHTML = `<span style="color: #28a745;">✅ ${data.message}</span>`;
                     if (quickActionsStatus) quickActionsStatus.innerHTML = `<span style="color: #28a745;">✅ Holdings fetched successfully!</span>`;
+                    
+                    // Reload holdings page to show fresh data (cache has been cleared on server)
+                    {% if show_holdings %}
+                    if (TabLoadTracker.isLoaded('holdings') && typeof currentHoldingsPage !== 'undefined') {
+                        // Reload current page with fresh data
+                        loadHoldingsPage(currentHoldingsPage);
+                        // Also reload P&L summary and portfolio chart
+                        if (!isMarketClosedIST()) {
+                            loadPnlSummary();
+                            const daysSelector = document.getElementById('portfolioDaysSelector');
+                            if (daysSelector) {
+                                loadPortfolioChart(daysSelector.value || 30);
+                            }
+                        }
+                    }
+                    {% endif %}
                 } else {
                     const errorMsg = `<span style="color: #dc3545;">❌ Error: ${data.error || 'Failed'}</span>`;
                     statusDiv.innerHTML = errorMsg;
@@ -9169,14 +9185,14 @@
             const actualSymbols = symbols.map(symbolOrId => {
                 if (symbolOrId.startsWith('sparkline-')) {
                     const withoutPrefix = symbolOrId.replace(/^sparkline-/, '');
-                    const knownMiddlePrefixes = ['swing', 'gainer', 'loser', 'ajax'];
+                    const knownMiddlePrefixes = ['swing', 'gainer', 'loser', 'ajax', 'search'];
                     const parts = withoutPrefix.split('-');
                     if (parts.length >= 2 && knownMiddlePrefixes.includes(parts[0])) {
                         return parts.slice(1).join('-');
                     }
                     return withoutPrefix;
                 } else if (symbolOrId.includes('-')) {
-                    const knownPrefixes = ['gainer', 'loser', 'ajax', 'swing'];
+                    const knownPrefixes = ['gainer', 'loser', 'ajax', 'swing', 'search'];
                     const parts = symbolOrId.split('-');
                     if (parts.length >= 2 && knownPrefixes.includes(parts[0])) {
                         return parts.slice(1).join('-');
@@ -9225,10 +9241,13 @@
                         canvas = document.getElementById(`sparkline-swing-${symbol}`);
                     }
                     if (!canvas) {
+                        canvas = document.getElementById(`sparkline-search-${symbol}`);
+                    }
+                    if (!canvas) {
                         // Try to find by checking original symbolOrId format
                         const originalSymbolOrId = symbols.find(s => {
                             const extracted = s.startsWith('sparkline-') 
-                                ? s.replace(/^sparkline-/, '').replace(/^(swing|ajax|gainer|loser)-/, '')
+                                ? s.replace(/^sparkline-/, '').replace(/^(swing|ajax|gainer|loser|search)-/, '')
                                 : s.includes('-') 
                                     ? s.split('-').slice(1).join('-')
                                     : s;
@@ -9284,7 +9303,7 @@
                 canvasId = symbolOrId; // Keep the full ID for canvas lookup
                 // Extract the symbol by removing "sparkline-" prefix and any known middle prefixes
                 const withoutPrefix = symbolOrId.replace(/^sparkline-/, '');
-                const knownMiddlePrefixes = ['swing', 'gainer', 'loser', 'ajax'];
+                const knownMiddlePrefixes = ['swing', 'gainer', 'loser', 'ajax', 'search'];
                 const parts = withoutPrefix.split('-');
                 if (parts.length >= 2 && knownMiddlePrefixes.includes(parts[0])) {
                     // Remove the middle prefix to get the actual symbol
@@ -9294,7 +9313,7 @@
                 }
             } else if (symbolOrId.includes('-')) {
                 // Handle formats like "gainer-RELIANCE" or "swing-RELIANCE"
-                const knownPrefixes = ['gainer', 'loser', 'ajax', 'swing'];
+                const knownPrefixes = ['gainer', 'loser', 'ajax', 'swing', 'search'];
                 const parts = symbolOrId.split('-');
                 if (parts.length >= 2 && knownPrefixes.includes(parts[0])) {
                     // Remove the known prefix to get the actual symbol
@@ -9321,9 +9340,12 @@
                     if (!canvas) {
                         canvas = document.getElementById(`sparkline-swing-${symbol}`);
                     }
+                    if (!canvas) {
+                        canvas = document.getElementById(`sparkline-search-${symbol}`);
+                    }
                     if (!canvas && canvasId && canvasId !== `sparkline-${symbol}`) {
                         // If canvasId is provided (e.g., "swing-RELIANCE"), try to extract and find
-                        const extractedSymbol = canvasId.replace(/^(sparkline-)?(swing-|ajax-)?/, '').replace(/^swing-/, '');
+                        const extractedSymbol = canvasId.replace(/^(sparkline-)?(swing-|ajax-|search-)?/, '').replace(/^(swing-|search-)/, '');
                         if (extractedSymbol && extractedSymbol !== canvasId) {
                             canvas = document.getElementById(`sparkline-swing-${extractedSymbol}`);
                             if (!canvas) {
