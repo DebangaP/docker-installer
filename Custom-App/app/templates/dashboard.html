@@ -1594,6 +1594,9 @@
                         <button onclick="refreshHoldings()" id="refreshHoldingsBtn" class="btn" style="width: 100%; padding: 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;">
                             💼 Fetch Holdings
                         </button>
+                        <button onclick="clearAllCache()" id="clearCacheBtn" class="btn" style="width: 100%; padding: 12px; background-color: #dc3545; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                            🗑️ Clear All Cache
+                        </button>
                     </div>
                     <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr; gap: 10px;">
                         <div id="quickActionsStatus" style="font-size: 12px; color: #666;"></div>
@@ -2008,6 +2011,12 @@
                     <button onclick="downloadHoldings('pdf')" class="btn btn-danger" style="padding: 6px 12px; font-size: 12px;" title="Download as PDF">
                         📥 PDF
                     </button>
+                </div>
+            </div>
+            <!-- Accumulation/Distribution Summary -->
+            <div id="accumulationSummary" style="padding: 12px; background-color: #e7f3ff; border-bottom: 1px solid #ddd; display: none;">
+                <div style="font-size: 14px; font-weight: 600; color: #0066cc;">
+                    <span id="accumulationSummaryText">Loading summary...</span>
                 </div>
             </div>
             <div style="padding: 12px; background-color: #f8f9fa; border-bottom: 1px solid #ddd;">
@@ -3717,6 +3726,21 @@
                     holdingsTotalCount = data.total_count;
                     holdingsPerPage = data.per_page;
                     updateHoldingsPagination(data.total_count, data.per_page, data.page);
+                    
+                    // Display accumulation/distribution summary
+                    if (data.accumulation_summary) {
+                        const summaryDiv = document.getElementById('accumulationSummary');
+                        const summaryText = document.getElementById('accumulationSummaryText');
+                        if (summaryDiv && summaryText) {
+                            summaryText.textContent = data.accumulation_summary;
+                            summaryDiv.style.display = 'block';
+                        }
+                    } else {
+                        const summaryDiv = document.getElementById('accumulationSummary');
+                        if (summaryDiv) {
+                            summaryDiv.style.display = 'none';
+                        }
+                    }
                     
                     // Load sparklines for the displayed holdings using batch API
                     const holdingsSymbols = data.holdings.map(h => h.trading_symbol);
@@ -7914,6 +7938,55 @@
                 btn.innerHTML = '🔄 Refresh Holdings';
                 const errorMsg = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
                 statusDiv.innerHTML = errorMsg;
+                if (quickActionsStatus) quickActionsStatus.innerHTML = errorMsg;
+            });
+        }
+        
+        function clearAllCache() {
+            const quickActionsStatus = document.getElementById('quickActionsStatus');
+            const btn = document.getElementById('clearCacheBtn');
+            
+            if (!btn) {
+                console.error('Clear cache button not found');
+                return;
+            }
+            
+            // Confirm before clearing cache
+            if (!confirm('Are you sure you want to clear all cache? This will force fresh data to be loaded on next request.')) {
+                return;
+            }
+            
+            // Disable button and show loading state
+            btn.disabled = true;
+            btn.style.opacity = '0.6';
+            btn.innerHTML = '⏳ Clearing...';
+            if (quickActionsStatus) quickActionsStatus.innerHTML = '<span style="color: #666;">🗑️ Clearing all cache...</span>';
+            
+            fetch('/api/clear_cache', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.innerHTML = '🗑️ Clear All Cache';
+                
+                if (data.success) {
+                    const successMsg = `<span style="color: #28a745;">✅ ${data.message}</span><br><span style="color: #666; font-size: 11px;">Deleted ${data.keys_deleted || 0} cache keys</span>`;
+                    if (quickActionsStatus) quickActionsStatus.innerHTML = successMsg;
+                    
+                    // Show a temporary success message
+                    setTimeout(() => {
+                        if (quickActionsStatus) quickActionsStatus.innerHTML = '';
+                    }, 5000);
+                } else {
+                    const errorMsg = `<span style="color: #dc3545;">❌ Error: ${data.error || 'Failed to clear cache'}</span>`;
+                    if (quickActionsStatus) quickActionsStatus.innerHTML = errorMsg;
+                }
+            })
+            .catch(error => {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.innerHTML = '🗑️ Clear All Cache';
+                const errorMsg = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
                 if (quickActionsStatus) quickActionsStatus.innerHTML = errorMsg;
             });
         }

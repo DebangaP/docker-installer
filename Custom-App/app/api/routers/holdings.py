@@ -84,12 +84,14 @@ async def api_holdings(
     #print(f"---XXX--- api_holdings called: page={page}, per_page={per_page}, sort_by={sort_by}, search={search}")
     try:
         # Small cache for hot endpoint (exclude search from cache key for real-time search)
+        cache_key = None
         if not search:
             cache_key = f"holdings:{page}:{per_page}:{sort_by}:{sort_dir}"
             cached = cache_get_json(cache_key)
-            if cached:
+            if cached and 'accumulation_summary' in cached:
                 print(f"---XXX--- Returning cached result for {cache_key}")
                 return cached
+            # If cached but missing summary, continue to recalculate (cache might be old)
         #print(f"---XXX--- Not using cache, proceeding with fresh data")
         # If sorting by today_pnl, prophet_prediction_pct, below_supertrend, accumulation_state, or accumulation_pattern, we need to get all holdings, enrich them, sort, then paginate
         if sort_by == 'today_pnl' or sort_by == 'prophet_prediction_pct' or sort_by == 'below_supertrend' or sort_by == 'accumulation_state' or sort_by == 'accumulation_pattern':
@@ -575,13 +577,134 @@ async def api_holdings(
         else:
             total_count = holdings_info["total_count"]
         
+        # Calculate accumulation/distribution summary
+        # Always count from ALL holdings (not just current page) for accurate portfolio summary
+        accumulation_summary = "Current Holdings (No data available)"
+        accumulation_stats = {
+            "total": 0,
+            "accumulation": 0,
+            "distribution": 0,
+            "neutral": 0,
+            "unknown": 0,
+            "accumulation_pct": 0,
+            "distribution_pct": 0,
+            "neutral_pct": 0
+        }
+        
+        try:
+            accumulation_count = 0
+            distribution_count = 0
+            neutral_count = 0
+            unknown_count = 0
+            
+            # Get all holdings for summary calculation (if we don't already have them)
+            all_holdings_for_summary = holdings_info["holdings"]
+            if sort_by not in ['today_pnl', 'prophet_prediction_pct', 'below_supertrend', 'accumulation_state', 'accumulation_pattern']:
+                # We only have paginated holdings, need to get all for accurate summary
+                all_holdings_info = holdings_service.get_holdings_data(page=1, per_page=10000, sort_by='trading_symbol', sort_dir='asc', search=search)
+                all_holdings_for_summary = all_holdings_info["holdings"]
+                # Also need to get accumulation data for all holdings
+                all_symbols_list = [h.get("trading_symbol") for h in all_holdings_for_summary if h.get("trading_symbol")]
+                if all_symbols_list:
+                    conn_summary = get_db_connection()
+                    cursor_summary = conn_summary.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                    try:
+                        cursor_summary.execute("""
+                            SELECT DISTINCT ON (scrip_id)
+                                scrip_id,
+                                state
+                            FROM my_schema.accumulation_distribution
+                            WHERE scrip_id = ANY(%s)
+                            AND analysis_date = %s
+                            ORDER BY scrip_id, created_at DESC
+                        """, (all_symbols_list, date.today()))
+                        summary_rows = cursor_summary.fetchall()
+                        # Create a map for summary counting
+                        summary_accumulation_map = {row['scrip_id']: row['state'] for row in summary_rows}
+                        logging.debug(f"Summary: Loaded {len(summary_accumulation_map)} accumulation states for {len(all_symbols_list)} symbols")
+                    except Exception as e:
+                        logging.warning(f"Error getting accumulation data for summary: {e}")
+                        summary_accumulation_map = accumulation_map  # Fallback to existing map
+                    finally:
+                        cursor_summary.close()
+                        conn_summary.close()
+                else:
+                    summary_accumulation_map = accumulation_map
+            else:
+                # We already have all holdings and accumulation_map
+                summary_accumulation_map = accumulation_map
+            
+            # Count holdings by accumulation state from all holdings
+            for holding in all_holdings_for_summary:
+                symbol = holding.get("trading_symbol")
+                if symbol and symbol in summary_accumulation_map:
+                    state_value = summary_accumulation_map[symbol]
+                    if isinstance(state_value, str):
+                        state = state_value
+                    elif isinstance(state_value, dict):
+                        state = state_value.get('state')
+                    else:
+                        state = None
+                    
+                    if state == 'ACCUMULATION':
+                        accumulation_count += 1
+                    elif state == 'DISTRIBUTION':
+                        distribution_count += 1
+                    elif state == 'NEUTRAL':
+                        neutral_count += 1
+                    else:
+                        unknown_count += 1
+                else:
+                    unknown_count += 1
+            
+            # Calculate total and percentages
+            total_holdings = accumulation_count + distribution_count + neutral_count + unknown_count
+            if total_holdings > 0:
+                neutral_pct = round((neutral_count / total_holdings) * 100)
+                accumulation_pct = round((accumulation_count / total_holdings) * 100)
+                distribution_pct = round((distribution_count / total_holdings) * 100)
+                
+                # Build summary string: "Current Holdings (70% Neutral, 10% Accumulation, 20% Distribution)"
+                summary_parts = []
+                if neutral_pct > 0:
+                    summary_parts.append(f"{neutral_pct}% Neutral")
+                if accumulation_pct > 0:
+                    summary_parts.append(f"{accumulation_pct}% Accumulation")
+                if distribution_pct > 0:
+                    summary_parts.append(f"{distribution_pct}% Distribution")
+                
+                accumulation_summary = f"Current Holdings ({', '.join(summary_parts)})" if summary_parts else "Current Holdings (No data available)"
+                
+                accumulation_stats = {
+                    "total": total_holdings,
+                    "accumulation": accumulation_count,
+                    "distribution": distribution_count,
+                    "neutral": neutral_count,
+                    "unknown": unknown_count,
+                    "accumulation_pct": accumulation_pct,
+                    "distribution_pct": distribution_pct,
+                    "neutral_pct": neutral_pct
+                }
+                
+                logging.info(f"Accumulation summary calculated: {accumulation_summary}")
+            else:
+                logging.warning("No holdings found for accumulation summary calculation")
+        except Exception as e:
+            logging.error(f"Error calculating accumulation/distribution summary: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+        
         result = {
             "holdings": holdings_list,
             "total_count": total_count,
             "page": page,
-            "per_page": per_page
+            "per_page": per_page,
+            "accumulation_summary": accumulation_summary,
+            "accumulation_stats": accumulation_stats
         }
-        cache_set_json(cache_key, result, ttl_seconds=5)
+        # Only cache if cache_key is defined (i.e., when search is not provided)
+        if cache_key:
+            cache_set_json(cache_key, result, ttl_seconds=5)
         return cached_json_response(result, "/api/holdings")
     except Exception as e:
         logging.error(f"Error fetching holdings: {e}")

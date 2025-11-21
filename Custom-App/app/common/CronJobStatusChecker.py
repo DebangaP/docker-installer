@@ -77,8 +77,8 @@ class CronJobStatusChecker:
             'log_file': '/app/logs/mf_nav_refresh.log'
         },
         'AccumDistAnalysis': {
-            'script': 'AccumDistAnalysis.py',
-            'module_path': 'market.AccumDistAnalysis',
+            'script': 'AccumulationDistributionScheduler.py',
+            'module_path': 'scheduled_jobs.AccumulationDistributionScheduler',
             'schedule': 'Daily at 4:30 PM (after market close)',
             'expected_during_hours': [16],
             'log_file': '/app/logs/accum_dist.log'

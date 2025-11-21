@@ -1309,6 +1309,19 @@ async def logout():
     redis_client.delete("kite_request_token")
     return {"message": "Logged out successfully", "status": "success"}
 
+@app.post("/api/clear_cache")
+async def api_clear_cache():
+    """API endpoint to clear all application cache"""
+    try:
+        from api.utils.cache import cache_clear_all
+        result = cache_clear_all()
+        return result
+    except Exception as e:
+        logging.error(f"Error clearing cache: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e), "keys_deleted": 0}
+
 @app.get("/redirect", response_class=HTMLResponse)
 async def handle_redirect(request_token: str = None):
     logging.info('redirects')

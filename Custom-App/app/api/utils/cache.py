@@ -171,3 +171,61 @@ def cache_delete_pattern(pattern: str):
     except Exception as e:
         logging.error(f"Error deleting cache for pattern {pattern}: {e}")
         return 0
+
+
+def cache_clear_all():
+    """
+    Clear all application cache keys from Redis
+    Uses common cache key patterns to clear all cached data
+    """
+    from common.Boilerplate import redis_client
+    
+    try:
+        total_deleted = 0
+        
+        # Common cache key patterns used in the application
+        cache_patterns = [
+            "holdings:*",
+            "today_pnl_summary",
+            "options_*",
+            "market_*",
+            "gainers*",
+            "losers*",
+            "swing_trades*",
+            "portfolio_*",
+            "sparkline*",
+            "candlestick*",
+            "margin_*",
+            "derivatives_*",
+            "premarket_*",
+            "futures_*",
+            "mf_*",
+        ]
+        
+        # Clear each pattern
+        for pattern in cache_patterns:
+            deleted = cache_delete_pattern(pattern)
+            total_deleted += deleted
+        
+        # Also clear supertrend cache (in-memory cache)
+        try:
+            from api.utils.supertrend_cache import clear_cache as clear_supertrend_cache
+            clear_supertrend_cache()
+        except Exception as e:
+            logging.warning(f"Error clearing supertrend cache: {e}")
+        
+        logging.info(f"Cleared all cache. Total keys deleted: {total_deleted}")
+        return {
+            "success": True,
+            "message": f"Cleared all cache successfully",
+            "keys_deleted": total_deleted
+        }
+    except Exception as e:
+        logging.error(f"Error clearing all cache: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "keys_deleted": 0
+        }
