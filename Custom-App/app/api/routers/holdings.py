@@ -291,6 +291,8 @@ async def api_holdings(
                 
                 try:
                     # Query all accumulation/distribution data at once
+                    # Get the most recent data for each symbol (prefer today's date, but fallback to any recent data)
+                    # DISTINCT ON with ORDER BY analysis_date DESC ensures we get the latest per symbol
                     cursor3.execute("""
                         SELECT DISTINCT ON (scrip_id)
                             scrip_id,
@@ -303,11 +305,14 @@ async def api_holdings(
                             pattern_detected,
                             volume_analysis,
                             confidence_score,
-                            technical_context
+                            technical_context,
+                            analysis_date
                         FROM my_schema.accumulation_distribution
                         WHERE scrip_id = ANY(%s)
-                        AND analysis_date = %s
-                        ORDER BY scrip_id, created_at DESC
+                        ORDER BY scrip_id, 
+                            CASE WHEN analysis_date = %s THEN 0 ELSE 1 END,
+                            analysis_date DESC, 
+                            created_at DESC
                     """, (symbols_list, date.today()))
                     
                     rows = cursor3.fetchall()
@@ -315,7 +320,17 @@ async def api_holdings(
                         symbol = row['scrip_id']
                         accumulation_map[symbol] = dict(row)
                     
-                    logging.debug(f"Loaded {len(accumulation_map)} accumulation/distribution records in batch")
+                    if len(accumulation_map) > 0:
+                        # Log the date range of data found
+                        dates_found = [row['analysis_date'] for row in rows if row.get('analysis_date')]
+                        if dates_found:
+                            min_date = min(dates_found)
+                            max_date = max(dates_found)
+                            logging.info(f"Loaded {len(accumulation_map)} accumulation/distribution records (date range: {min_date} to {max_date}, out of {len(symbols_list)} symbols)")
+                        else:
+                            logging.info(f"Loaded {len(accumulation_map)} accumulation/distribution records (out of {len(symbols_list)} symbols)")
+                    else:
+                        logging.warning(f"No accumulation/distribution data found for any of {len(symbols_list)} symbols")
                 except Exception as e:
                     logging.warning(f"Error in batch accumulation/distribution query: {e}")
                 finally:
@@ -609,14 +624,18 @@ async def api_holdings(
                     conn_summary = get_db_connection()
                     cursor_summary = conn_summary.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                     try:
+                        # Get the most recent data for each symbol (prefer today's date, but fallback to any recent data)
                         cursor_summary.execute("""
                             SELECT DISTINCT ON (scrip_id)
                                 scrip_id,
-                                state
+                                state,
+                                analysis_date
                             FROM my_schema.accumulation_distribution
                             WHERE scrip_id = ANY(%s)
-                            AND analysis_date = %s
-                            ORDER BY scrip_id, created_at DESC
+                            ORDER BY scrip_id, 
+                                CASE WHEN analysis_date = %s THEN 0 ELSE 1 END,
+                                analysis_date DESC, 
+                                created_at DESC
                         """, (all_symbols_list, date.today()))
                         summary_rows = cursor_summary.fetchall()
                         # Create a map for summary counting
@@ -673,7 +692,14 @@ async def api_holdings(
                 if distribution_pct > 0:
                     summary_parts.append(f"{distribution_pct}% Distribution")
                 
-                accumulation_summary = f"Current Holdings ({', '.join(summary_parts)})" if summary_parts else "Current Holdings (No data available)"
+                # Show summary if available, otherwise show holdings count if we have holdings
+                if summary_parts:
+                    accumulation_summary = f"Current Holdings ({', '.join(summary_parts)})"
+                elif total_holdings > 0:
+                    # Show total holdings count if we have holdings but no accumulation data
+                    accumulation_summary = f"Current Holdings ({total_holdings} holdings)"
+                else:
+                    accumulation_summary = "Current Holdings (No data available)"
                 
                 accumulation_stats = {
                     "total": total_holdings,
