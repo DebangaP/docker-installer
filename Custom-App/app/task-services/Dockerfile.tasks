@@ -19,9 +19,9 @@ RUN python -c "import cmdstanpy; cmdstanpy.install_cmdstan()" || \
     echo "Warning: cmdstan installation may have failed, but continuing..."
 
 # Remove build dependencies to reduce image size (optional - uncomment if you want smaller image)
-# RUN apt-get purge -y build-essential make gcc g++ && \
-#     apt-get autoremove -y && \
-#     apt-get clean
+ RUN apt-get purge -y build-essential make gcc g++ && \
+     apt-get autoremove -y && \
+     apt-get clean
 
 # Copy application code
 COPY app/ .
