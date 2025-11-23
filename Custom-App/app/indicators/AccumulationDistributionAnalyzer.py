@@ -11,6 +11,16 @@ import logging
 import json
 import psycopg2
 import psycopg2.extras
+import sys
+import os
+
+# Add parent directory to path to allow imports from common module
+# This ensures the module can be imported from different execution contexts
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 from common.Boilerplate import get_db_connection, log_stock_price_fetch_error
 from common.TechnicalIndicators import (
     calculate_obv, 
@@ -466,6 +476,186 @@ class AccumulationDistributionAnalyzer:
         
         return False, False
     
+    def _detect_lower_highs_lower_lows(self, price_data: pd.DataFrame) -> bool:
+        """
+        Detect series of lower highs and lower lows (distribution signal)
+        
+        This pattern indicates sellers are dominating and is a key sign of distribution.
+        Lower highs show inability to make new highs, lower lows show breakdown in support.
+        
+        Args:
+            price_data: DataFrame with OHLC data
+            
+        Returns:
+            True if pattern detected, False otherwise
+        """
+        if len(price_data) < 20:
+            return False
+        
+        try:
+            recent_data = price_data.tail(20)
+            highs = recent_data['high'].values
+            lows = recent_data['low'].values
+            
+            # Find local peaks (highs)
+            peaks = []
+            for i in range(2, len(highs) - 2):
+                if (highs[i] > highs[i-1] and highs[i] > highs[i-2] and 
+                    highs[i] > highs[i+1] and highs[i] > highs[i+2]):
+                    peaks.append((i, highs[i]))
+            
+            # Find local troughs (lows)
+            troughs = []
+            for i in range(2, len(lows) - 2):
+                if (lows[i] < lows[i-1] and lows[i] < lows[i-2] and 
+                    lows[i] < lows[i+1] and lows[i] < lows[i+2]):
+                    troughs.append((i, lows[i]))
+            
+            # Check for lower highs (at least 2 peaks showing decline)
+            lower_highs = False
+            if len(peaks) >= 2:
+                peaks.sort(key=lambda x: x[0])  # Sort by index (chronological)
+                lower_highs = True
+                for i in range(1, len(peaks)):
+                    # Current peak should be lower than previous peak
+                    if peaks[i][1] >= peaks[i-1][1] * 0.995:  # Allow 0.5% tolerance
+                        lower_highs = False
+                        break
+            
+            # Check for lower lows (at least 2 troughs showing decline)
+            lower_lows = False
+            if len(troughs) >= 2:
+                troughs.sort(key=lambda x: x[0])  # Sort by index (chronological)
+                lower_lows = True
+                for i in range(1, len(troughs)):
+                    # Current trough should be lower than previous trough
+                    if troughs[i][1] >= troughs[i-1][1] * 0.995:  # Allow 0.5% tolerance
+                        lower_lows = False
+                        break
+            
+            # Both lower highs AND lower lows = strong distribution signal
+            if lower_highs and lower_lows:
+                return True
+            
+            return False
+        except Exception as e:
+            logger.debug(f"Error detecting lower highs/lows: {e}")
+            return False
+    
+    def _detect_ma_break(self, price_data: pd.DataFrame, ma_period: int = 200) -> bool:
+        """
+        Detect break below key moving average (distribution confirmation signal)
+        
+        A break below the 200-day MA after a rally is a strong confirmation that
+        distribution phase has ended and a downtrend is beginning.
+        
+        Args:
+            price_data: DataFrame with OHLC data
+            ma_period: Moving average period (default: 200 for 200-day MA)
+            
+        Returns:
+            True if price breaks below MA after rally, False otherwise
+        """
+        if len(price_data) < ma_period + 10:
+            return False
+        
+        try:
+            closes = price_data['close']
+            
+            # Calculate moving average
+            ma = closes.rolling(window=ma_period).mean()
+            
+            if len(ma) < 10 or ma.iloc[-1] is None or pd.isna(ma.iloc[-1]):
+                return False
+            
+            # Check if price was above MA in recent past (rally condition)
+            # Look back 20 days or 30% of available data, whichever is smaller
+            lookback = min(20, max(5, int(len(ma) * 0.3)))
+            recent_above_ma = False
+            
+            for i in range(len(ma) - lookback, len(ma) - 5):
+                if i >= 0 and i < len(ma) and not pd.isna(ma.iloc[i]) and not pd.isna(closes.iloc[i]):
+                    if closes.iloc[i] > ma.iloc[i]:
+                        recent_above_ma = True
+                        break
+            
+            # Check if current price is below MA (break condition)
+            current_price = closes.iloc[-1]
+            current_ma = ma.iloc[-1]
+            
+            if pd.isna(current_price) or pd.isna(current_ma) or current_ma <= 0:
+                return False
+            
+            if recent_above_ma and current_price < current_ma:
+                # Additional check: price should be at least 1% below MA for confirmation
+                if (current_ma - current_price) / current_ma > 0.01:
+                    return True
+            
+            return False
+        except Exception as e:
+            logger.debug(f"Error detecting MA break: {e}")
+            return False
+    
+    def _detect_high_volume_on_down_days(self, price_data: pd.DataFrame, volume: pd.Series) -> bool:
+        """
+        Detect high volume specifically on down days (distribution signal)
+        
+        High volume on down days indicates selling pressure and is a key sign
+        of distribution, especially after a sustained rally.
+        
+        Args:
+            price_data: DataFrame with OHLC data
+            volume: Series of volume values
+            
+        Returns:
+            True if high volume on down days detected, False otherwise
+        """
+        if len(price_data) < 10 or len(volume) < 10:
+            return False
+        
+        try:
+            recent_data = price_data.tail(10)
+            recent_volume = volume.tail(10)
+            
+            # Calculate average volume for comparison
+            avg_volume = recent_volume.mean()
+            
+            if avg_volume <= 0:
+                return False
+            
+            # Count down days with high volume
+            down_days_with_high_vol = 0
+            total_down_days = 0
+            
+            for i in range(1, len(recent_data)):  # Start from 1 to compare with previous day
+                # Check if price declined from previous day
+                price_change = recent_data.iloc[i]['close'] - recent_data.iloc[i-1]['close']
+                price_change_pct = (price_change / recent_data.iloc[i-1]['close']) * 100 if recent_data.iloc[i-1]['close'] > 0 else 0
+                
+                # Consider it a down day if price declined by at least 0.5%
+                if price_change_pct < -0.5:
+                    total_down_days += 1
+                    volume_ratio = recent_volume.iloc[i] / avg_volume
+                    
+                    # High volume: at least 1.2x average volume
+                    if volume_ratio > 1.2:
+                        down_days_with_high_vol += 1
+            
+            # Distribution signal if:
+            # - At least 3 down days with high volume out of 10 days, OR
+            # - At least 50% of down days have high volume (if there are 4+ down days)
+            if total_down_days >= 4:
+                if down_days_with_high_vol >= 3 or (down_days_with_high_vol / total_down_days) >= 0.5:
+                    return True
+            elif total_down_days >= 2:
+                if down_days_with_high_vol >= 2:
+                    return True
+            
+            return False
+        except Exception as e:
+            logger.debug(f"Error detecting high volume on down days: {e}")
+            return False
+    
     def _analyze_volume_patterns(self, price_data: pd.DataFrame, volume: pd.Series) -> Dict:
         """
         Analyze volume patterns for accumulation/distribution signals
@@ -591,6 +781,11 @@ class AccumulationDistributionAnalyzer:
             # Detect A/D divergences (ENHANCED: new signal)
             ad_bullish_div, ad_bearish_div = self._detect_ad_divergence(price_data, ad_line)
             
+            # Detect new distribution signals (ENHANCED: additional distribution indicators)
+            lower_highs_lows = self._detect_lower_highs_lower_lows(price_data)
+            ma_break_200 = self._detect_ma_break(price_data, ma_period=200)
+            high_vol_down_days = self._detect_high_volume_on_down_days(price_data, volumes)
+            
             # Analyze volume patterns
             volume_analysis = self._analyze_volume_patterns(price_data, volumes)
             
@@ -614,6 +809,12 @@ class AccumulationDistributionAnalyzer:
                 distribution_score += 1.0  # Volume pattern signal
             if ad_bearish_div:
                 distribution_score += 1.5  # Strong divergence signal
+            if lower_highs_lows:
+                distribution_score += 1.5  # Strong pattern signal - lower highs and lower lows
+            if ma_break_200:
+                distribution_score += 2.0  # Very strong confirmation signal - break below 200-day MA
+            if high_vol_down_days:
+                distribution_score += 1.0  # Volume pattern signal - high volume on down days
             if momentum_score < 40:  # Declining momentum
                 # Scale based on how low the momentum is (lower = stronger signal)
                 distribution_score += (40 - momentum_score) / 40.0 * 1.5
@@ -690,6 +891,9 @@ class AccumulationDistributionAnalyzer:
                 'wyckoff_accumulation': wyckoff_accumulation,
                 'ad_bullish_divergence': ad_bullish_div,
                 'ad_bearish_divergence': ad_bearish_div,
+                'lower_highs_lower_lows': lower_highs_lows,
+                'ma_break_200': ma_break_200,
+                'high_volume_on_down_days': high_vol_down_days,
                 'volume_analysis': volume_analysis,
                 'momentum_score': momentum_score
             }
