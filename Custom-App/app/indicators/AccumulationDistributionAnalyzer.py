@@ -645,20 +645,38 @@ class AccumulationDistributionAnalyzer:
             distribution_signals = int(distribution_score)
             accumulation_signals = int(accumulation_score)
             
-            # Determine pattern detected (ENHANCED: include A/D divergence)
+            # Determine pattern detected (FIXED: align with state to prevent inconsistencies)
             pattern_detected = None
-            if head_shoulders:
-                pattern_detected = 'Head and Shoulders'
-            elif double_top:
-                pattern_detected = 'Double Top'
-            elif wyckoff_distribution:
-                pattern_detected = 'Wyckoff Distribution'
-            elif wyckoff_accumulation:
-                pattern_detected = 'Wyckoff Accumulation'
-            elif ad_bearish_div:
-                pattern_detected = 'A/D Bearish Divergence'
-            elif ad_bullish_div:
-                pattern_detected = 'A/D Bullish Divergence'
+            if state == 'DISTRIBUTION':
+                # For distribution state, only show distribution patterns
+                if head_shoulders:
+                    pattern_detected = 'Head and Shoulders'
+                elif double_top:
+                    pattern_detected = 'Double Top'
+                elif wyckoff_distribution:
+                    pattern_detected = 'Wyckoff Distribution'
+                elif ad_bearish_div:
+                    pattern_detected = 'A/D Bearish Divergence'
+            elif state == 'ACCUMULATION':
+                # For accumulation state, only show accumulation patterns
+                if wyckoff_accumulation:
+                    pattern_detected = 'Wyckoff Accumulation'
+                elif ad_bullish_div:
+                    pattern_detected = 'A/D Bullish Divergence'
+            else:
+                # For neutral state, check all patterns in priority order
+                if head_shoulders:
+                    pattern_detected = 'Head and Shoulders'
+                elif double_top:
+                    pattern_detected = 'Double Top'
+                elif wyckoff_distribution:
+                    pattern_detected = 'Wyckoff Distribution'
+                elif wyckoff_accumulation:
+                    pattern_detected = 'Wyckoff Accumulation'
+                elif ad_bearish_div:
+                    pattern_detected = 'A/D Bearish Divergence'
+                elif ad_bullish_div:
+                    pattern_detected = 'A/D Bullish Divergence'
             
             # Build technical context (ENHANCED: include new signals and scores)
             technical_context = {

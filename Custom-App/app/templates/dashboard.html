@@ -10561,8 +10561,12 @@
                 const rmseDisplay = (cvRmse !== null && cvRmse !== undefined && !isNaN(cvRmse) && cvRmse !== Infinity) 
                     ? cvRmse.toFixed(2) : 'N/A';
                 
+                // Highlight rows with DISTRIBUTION state (contradiction for potential gainers)
+                const isDistribution = gainer.accumulation_state === 'DISTRIBUTION';
+                const rowBgColor = isDistribution ? 'background-color: #ffcccc;' : '';
+                
                 const row = `
-                    <tr style="border-bottom: 1px solid #eee;">
+                    <tr style="border-bottom: 1px solid #eee; ${rowBgColor}">
                         <td style="padding: 5px 8px; border: 1px solid #ddd; text-align: center; font-weight: bold; color: #666; font-size: 12px;">${displayIndex + 1}</td>
                         <td style="padding: 5px 8px; border: 1px solid #ddd; font-weight: bold; font-size: 12px;">${symbol}</td>
                         <td style="padding: 5px 8px; border: 1px solid #ddd; font-size: 12px;">${sectorCode}</td>

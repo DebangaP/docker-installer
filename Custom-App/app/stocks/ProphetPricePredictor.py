@@ -23,19 +23,25 @@ from dotenv import load_dotenv
 from common.Boilerplate import get_db_connection
 
 # Import sentiment analysis modules
-try:
-    from sentiment.NewsSentimentAnalyzer import NewsSentimentAnalyzer
-    from sentiment.FundamentalSentimentAnalyzer import FundamentalSentimentAnalyzer
-    from sentiment.CombinedSentimentCalculator import CombinedSentimentCalculator
-    from stocks.EnsemblePredictor import EnsemblePredictor
-    SENTIMENT_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"Sentiment analysis modules not available: {e}")
-    SENTIMENT_AVAILABLE = False
-    NewsSentimentAnalyzer = None
-    FundamentalSentimentAnalyzer = None
-    CombinedSentimentCalculator = None
-    EnsemblePredictor = None
+# COMMENTED OUT: News Sentiment Analyzer and Fundamental Sentiment Analyzer
+# try:
+#     from sentiment.NewsSentimentAnalyzer import NewsSentimentAnalyzer
+#     from sentiment.FundamentalSentimentAnalyzer import FundamentalSentimentAnalyzer
+#     from sentiment.CombinedSentimentCalculator import CombinedSentimentCalculator
+#     from stocks.EnsemblePredictor import EnsemblePredictor
+#     SENTIMENT_AVAILABLE = True
+# except ImportError as e:
+#     logging.warning(f"Sentiment analysis modules not available: {e}")
+#     SENTIMENT_AVAILABLE = False
+#     NewsSentimentAnalyzer = None
+#     FundamentalSentimentAnalyzer = None
+#     CombinedSentimentCalculator = None
+#     EnsemblePredictor = None
+SENTIMENT_AVAILABLE = False
+NewsSentimentAnalyzer = None
+FundamentalSentimentAnalyzer = None
+CombinedSentimentCalculator = None
+EnsemblePredictor = None
 
 # Load environment variables
 load_dotenv()
@@ -124,22 +130,28 @@ class ProphetPricePredictor:
         self.enable_cross_validation = os.getenv("PROPHET_ENABLE_CROSS_VALIDATION", "false").lower() == "true"
         
         # Initialize sentiment analyzers if available
-        self.enable_sentiment = enable_sentiment and SENTIMENT_AVAILABLE
-        if self.enable_sentiment:
-            try:
-                self.news_analyzer = NewsSentimentAnalyzer()
-                self.fundamental_analyzer = FundamentalSentimentAnalyzer()
-                self.combined_calculator = CombinedSentimentCalculator(news_weight=0.5, fundamental_weight=0.5)
-                self.ensemble_predictor = EnsemblePredictor(prophet_weight=0.7, sentiment_weight=0.3)
-                logger.info("Sentiment analysis modules initialized")
-            except Exception as e:
-                logger.warning(f"Failed to initialize sentiment analyzers: {e}")
-                self.enable_sentiment = False
-        else:
-            self.news_analyzer = None
-            self.fundamental_analyzer = None
-            self.combined_calculator = None
-            self.ensemble_predictor = None
+        # COMMENTED OUT: News Sentiment Analyzer and Fundamental Sentiment Analyzer
+        # self.enable_sentiment = enable_sentiment and SENTIMENT_AVAILABLE
+        # if self.enable_sentiment:
+        #     try:
+        #         self.news_analyzer = NewsSentimentAnalyzer()
+        #         self.fundamental_analyzer = FundamentalSentimentAnalyzer()
+        #         self.combined_calculator = CombinedSentimentCalculator(news_weight=0.5, fundamental_weight=0.5)
+        #         self.ensemble_predictor = EnsemblePredictor(prophet_weight=0.7, sentiment_weight=0.3)
+        #         logger.info("Sentiment analysis modules initialized")
+        #     except Exception as e:
+        #         logger.warning(f"Failed to initialize sentiment analyzers: {e}")
+        #         self.enable_sentiment = False
+        # else:
+        #     self.news_analyzer = None
+        #     self.fundamental_analyzer = None
+        #     self.combined_calculator = None
+        #     self.ensemble_predictor = None
+        self.enable_sentiment = False
+        self.news_analyzer = None
+        self.fundamental_analyzer = None
+        self.combined_calculator = None
+        self.ensemble_predictor = None
         
         logger.info(f"ProphetPricePredictor initialized: cross_validation={self.enable_cross_validation}, prediction_days={self.prediction_days}, sentiment={self.enable_sentiment}")
     
@@ -485,7 +497,7 @@ class ProphetPricePredictor:
                 # changepoint_range: Lower = changepoints only in earlier part of data, not near end (0.80 = first 80% only)
                 default_model_params = {
                     'changepoint_prior_scale': 0.01,  # Very conservative - reduced from 0.05 to prevent false changepoints from today's data
-                    'changepoint_range': 0.80,  # Reduced from 0.85 - changepoints only in first 80% of data, not last 20%
+                    'changepoint_range': 0.90,  # Reduced from 0.85 - changepoints only in first 80% of data, not last 20%
                     'seasonality_prior_scale': 10.0,
                     'interval_width': 0.80  # 80% confidence interval
                 }
@@ -1011,6 +1023,7 @@ class ProphetPricePredictor:
             cursor = conn.cursor()
             
             # Get sentiment scores and enhanced prediction if enabled
+            # COMMENTED OUT: News Sentiment Analyzer and Fundamental Sentiment Analyzer
             news_sentiment_score = None
             fundamental_sentiment_score = None
             combined_sentiment_score = None
@@ -1018,32 +1031,32 @@ class ProphetPricePredictor:
             enhanced_prediction_confidence = None
             sentiment_metadata = None
             
-            if self.enable_sentiment and self.ensemble_predictor:
-                try:
-                    # Calculate combined sentiment
-                    combined_sentiment = self.combined_calculator.calculate_combined_sentiment(
-                        scrip_id, run_date
-                    )
-                    if combined_sentiment:
-                        news_sentiment_score = combined_sentiment.get('news_sentiment_score')
-                        fundamental_sentiment_score = combined_sentiment.get('fundamental_sentiment_score')
-                        combined_sentiment_score = combined_sentiment.get('combined_sentiment_score')
-                    
-                    # Enhance prediction with sentiment
-                    enhanced_prediction = self.ensemble_predictor.enhance_prediction(
-                        scrip_id,
-                        float(predicted_price_change_pct) if predicted_price_change_pct else 0.0,
-                        float(prediction_confidence),
-                        combined_sentiment_score,
-                        run_date
-                    )
-                    
-                    if enhanced_prediction:
-                        enhanced_predicted_price_change_pct = enhanced_prediction.get('enhanced_predicted_price_change_pct')
-                        enhanced_prediction_confidence = enhanced_prediction.get('enhanced_prediction_confidence')
-                        sentiment_metadata = enhanced_prediction.get('metadata')
-                except Exception as e:
-                    logger.warning(f"Error calculating sentiment for {scrip_id}: {e}")
+            # if self.enable_sentiment and self.ensemble_predictor:
+            #     try:
+            #         # Calculate combined sentiment
+            #         combined_sentiment = self.combined_calculator.calculate_combined_sentiment(
+            #             scrip_id, run_date
+            #         )
+            #         if combined_sentiment:
+            #             news_sentiment_score = combined_sentiment.get('news_sentiment_score')
+            #             fundamental_sentiment_score = combined_sentiment.get('fundamental_sentiment_score')
+            #             combined_sentiment_score = combined_sentiment.get('combined_sentiment_score')
+            #         
+            #         # Enhance prediction with sentiment
+            #         enhanced_prediction = self.ensemble_predictor.enhance_prediction(
+            #             scrip_id,
+            #             float(predicted_price_change_pct) if predicted_price_change_pct else 0.0,
+            #             float(prediction_confidence),
+            #             combined_sentiment_score,
+            #             run_date
+            #         )
+            #         
+            #         if enhanced_prediction:
+            #             enhanced_predicted_price_change_pct = enhanced_prediction.get('enhanced_predicted_price_change_pct')
+            #             enhanced_prediction_confidence = enhanced_prediction.get('enhanced_prediction_confidence')
+            #             sentiment_metadata = enhanced_prediction.get('metadata')
+            #     except Exception as e:
+            #         logger.warning(f"Error calculating sentiment for {scrip_id}: {e}")
             
             insert_query = """
                 INSERT INTO my_schema.prophet_predictions 
