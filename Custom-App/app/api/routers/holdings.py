@@ -761,6 +761,26 @@ async def api_refresh_holdings():
         return {"success": False, "error": str(e)}
 
 
+@router.post("/update_profile")
+async def api_update_profile():
+    """API endpoint to update user profile from Kite API"""
+    try:
+        from kite.KiteFetchData import fetch_and_save_profile, init_postgres_conn
+        
+        # Initialize postgres connection if needed
+        init_postgres_conn()
+        
+        # Fetch and save profile
+        fetch_and_save_profile()
+        
+        return {"success": True, "message": "Profile updated successfully"}
+    except Exception as e:
+        logging.error(f"Error updating profile: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+
 @router.get("/positions")
 async def api_positions():
     """API endpoint to get latest positions data"""

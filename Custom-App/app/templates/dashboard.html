@@ -127,6 +127,20 @@
         .sidebar-section-link:hover {
             background: #f8f9fa;
             color: #667eea;
+        }
+
+        .risk-tab-btn {
+            transition: all 0.3s ease;
+        }
+
+        .risk-tab-btn:hover {
+            color: #667eea;
+        }
+
+        .risk-tab-btn.active {
+            color: #667eea;
+            border-bottom-color: #667eea !important;
+        }
             border-left-color: #667eea;
         }
 
@@ -1602,6 +1616,9 @@
                         <button onclick="refreshHoldings()" id="refreshHoldingsBtn" class="btn" style="width: 100%; padding: 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;">
                             💼 Fetch Holdings
                         </button>
+                        <button onclick="updateProfile()" id="updateProfileBtn" class="btn" style="width: 100%; padding: 12px; background-color: #ffc107; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                            👤 Update Profile
+                        </button>
                         <button onclick="clearAllCache()" id="clearCacheBtn" class="btn" style="width: 100%; padding: 12px; background-color: #dc3545; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;">
                             🗑️ Clear All Cache
                         </button>
@@ -1976,6 +1993,57 @@
                     </select>
                 </div>
                 <canvas id="portfolioChart" style="max-height: 400px;"></canvas>
+            </div>
+        </div>
+
+        <!-- Risk Management Dashboard Section -->
+        <div class="card" id="section-risk-management" style="margin-bottom: 20px;">
+            <div class="card-header" style="padding: 15px 25px;">
+                <h3 class="card-title" style="font-size: 16px;">📊 Risk Management Dashboard</h3>
+                <span class="card-icon" style="font-size: 20px;">⚠️</span>
+                <button onclick="loadRiskDashboard()" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; margin-left: 10px;">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div style="padding: 15px;">
+                <div style="display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 2px solid #e0e0e0;">
+                    <button class="risk-tab-btn active" onclick="showRiskTab('metrics', event)" style="padding: 8px 15px; border: none; background: transparent; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 600;">
+                        Risk Metrics
+                    </button>
+                    <button class="risk-tab-btn" onclick="showRiskTab('concentration', event)" style="padding: 8px 15px; border: none; background: transparent; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 600;">
+                        Concentration
+                    </button>
+                    <button class="risk-tab-btn" onclick="showRiskTab('limits', event)" style="padding: 8px 8px 15px; border: none; background: transparent; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 600;">
+                        Risk Limits
+                    </button>
+                    <button class="risk-tab-btn" onclick="showRiskTab('advanced-hedging', event)" style="padding: 8px 15px; border: none; background: transparent; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 600;">
+                        Advanced Hedging
+                    </button>
+                </div>
+                
+                <div id="riskMetricsTab" class="risk-tab-content">
+                    <div id="riskMetricsContainer" style="text-align: center; padding: 20px; color: #666;">
+                        Click "Refresh" to load risk metrics
+                    </div>
+                </div>
+                
+                <div id="riskConcentrationTab" class="risk-tab-content" style="display: none;">
+                    <div id="riskConcentrationContainer" style="text-align: center; padding: 20px; color: #666;">
+                        Loading concentration analysis...
+                    </div>
+                </div>
+                
+                <div id="riskLimitsTab" class="risk-tab-content" style="display: none;">
+                    <div id="riskLimitsContainer" style="text-align: center; padding: 20px; color: #666;">
+                        Loading risk limits status...
+                    </div>
+                </div>
+                
+                <div id="riskAdvancedHedgingTab" class="risk-tab-content" style="display: none;">
+                    <div id="riskAdvancedHedgingContainer" style="text-align: center; padding: 20px; color: #666;">
+                        Loading advanced hedging strategies...
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -2403,6 +2471,7 @@
                 { id: 'section-pnl-summary', title: 'P&L Summary' },
                 { id: 'section-portfolio-chart', title: 'Portfolio Chart' },
                 { id: 'section-portfolio-hedge', title: 'Portfolio Hedging' },
+                { id: 'section-risk-management', title: 'Risk Management' },
                 { id: 'section-holdings', title: 'Current Holdings' },
                 { id: 'section-mf-holdings', title: 'Mutual Fund Holdings' },
                 { id: 'section-mf-predictions', title: 'MF Predictions' }
@@ -7999,6 +8068,51 @@
             });
         }
         
+        function updateProfile() {
+            const statusDiv = document.getElementById('cronUtilitiesStatus');
+            const quickActionsStatus = document.getElementById('quickActionsStatus');
+            const btn = document.getElementById('updateProfileBtn');
+            
+            if (!btn) return;
+            
+            btn.disabled = true;
+            btn.style.opacity = '0.6';
+            btn.innerHTML = '⏳ Updating...';
+            if (statusDiv) statusDiv.innerHTML = '<span style="color: #666;">Updating profile from Kite API...</span>';
+            if (quickActionsStatus) quickActionsStatus.innerHTML = '<span style="color: #666;">👤 Updating profile...</span>';
+            
+            fetch('/api/update_profile', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.innerHTML = '👤 Update Profile';
+                
+                if (data.success) {
+                    const successMsg = `<span style="color: #28a745;">✅ ${data.message || 'Profile updated successfully!'}</span>`;
+                    if (statusDiv) statusDiv.innerHTML = successMsg;
+                    if (quickActionsStatus) {
+                        quickActionsStatus.innerHTML = successMsg;
+                        setTimeout(() => {
+                            if (quickActionsStatus) quickActionsStatus.innerHTML = '';
+                        }, 3000);
+                    }
+                } else {
+                    const errorMsg = `<span style="color: #dc3545;">❌ Error: ${data.error || 'Failed to update profile'}</span>`;
+                    if (statusDiv) statusDiv.innerHTML = errorMsg;
+                    if (quickActionsStatus) quickActionsStatus.innerHTML = errorMsg;
+                }
+            })
+            .catch(error => {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.innerHTML = '👤 Update Profile';
+                const errorMsg = `<span style="color: #dc3545;">❌ Error: ${error.message}</span>`;
+                if (statusDiv) statusDiv.innerHTML = errorMsg;
+                if (quickActionsStatus) quickActionsStatus.innerHTML = errorMsg;
+            });
+        }
+        
         function calculateTPO() {
             const statusDiv = document.getElementById('cronUtilitiesStatus');
             const btn = document.getElementById('calculateTPOBtn');
@@ -12835,6 +12949,412 @@
                     container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${error.message}</div>`;
                 });
         }
+
+        // Risk Management Dashboard Functions
+        function showRiskTab(tabName, event) {
+            // Hide all tabs
+            document.querySelectorAll('.risk-tab-content').forEach(tab => {
+                tab.style.display = 'none';
+            });
+            document.querySelectorAll('.risk-tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+                btn.style.borderBottomColor = 'transparent';
+            });
+            
+            // Show selected tab
+            const tabIdMap = {
+                'metrics': 'riskMetricsTab',
+                'concentration': 'riskConcentrationTab',
+                'limits': 'riskLimitsTab',
+                'advanced-hedging': 'riskAdvancedHedgingTab'
+            };
+            const tabContent = document.getElementById(tabIdMap[tabName] || `risk${tabName.charAt(0).toUpperCase() + tabName.slice(1)}Tab`);
+            const tabBtn = event ? event.target : document.querySelector(`[onclick*="showRiskTab('${tabName}')"]`);
+            
+            if (tabContent) {
+                tabContent.style.display = 'block';
+                if (tabBtn) {
+                    tabBtn.classList.add('active');
+                    tabBtn.style.borderBottomColor = '#667eea';
+                }
+                
+                // Load data for the tab
+                if (tabName === 'metrics') {
+                    loadRiskMetrics();
+                } else if (tabName === 'concentration') {
+                    loadRiskConcentration();
+                } else if (tabName === 'limits') {
+                    loadRiskLimits();
+                } else if (tabName === 'advanced-hedging') {
+                    loadAdvancedHedging();
+                }
+            }
+        }
+        
+        // Make functions globally accessible
+        window.showRiskTab = showRiskTab;
+
+        function loadRiskDashboard() {
+            // Load all risk dashboard tabs
+            loadRiskMetrics();
+            loadRiskConcentration();
+            loadRiskLimits();
+            loadAdvancedHedging();
+            // Show metrics tab by default
+            showRiskTab('metrics');
+        }
+        
+        // Make function globally accessible
+        window.loadRiskDashboard = loadRiskDashboard;
+
+        function loadRiskMetrics() {
+            const container = document.getElementById('riskMetricsContainer');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading risk metrics...</div>';
+            
+            fetch('/api/risk/metrics')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${data.error}</div>`;
+                        return;
+                    }
+                    
+                    let html = '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">';
+                    
+                    // Key metrics
+                    html += `<div style="padding: 15px; background: #f8f9fa; border-radius: 5px;">
+                        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">VaR (95%)</div>
+                        <div style="font-size: 18px; font-weight: bold; color: #dc3545;">${(Math.abs(data.var_95_historical || 0) * 100).toFixed(2)}%</div>
+                    </div>`;
+                    
+                    html += `<div style="padding: 15px; background: #f8f9fa; border-radius: 5px;">
+                        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">VaR (99%)</div>
+                        <div style="font-size: 18px; font-weight: bold; color: #dc3545;">${(Math.abs(data.var_99_historical || 0) * 100).toFixed(2)}%</div>
+                    </div>`;
+                    
+                    html += `<div style="padding: 15px; background: #f8f9fa; border-radius: 5px;">
+                        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Sharpe Ratio</div>
+                        <div style="font-size: 18px; font-weight: bold; color: ${(data.sharpe_ratio || 0) > 1 ? '#28a745' : '#dc3545'};">${(data.sharpe_ratio || 0).toFixed(2)}</div>
+                    </div>`;
+                    
+                    html += `<div style="padding: 15px; background: #f8f9fa; border-radius: 5px;">
+                        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Sortino Ratio</div>
+                        <div style="font-size: 18px; font-weight: bold; color: ${(data.sortino_ratio || 0) > 1 ? '#28a745' : '#dc3545'};">${(data.sortino_ratio || 0).toFixed(2)}</div>
+                    </div>`;
+                    
+                    html += `<div style="padding: 15px; background: #f8f9fa; border-radius: 5px;">
+                        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Beta</div>
+                        <div style="font-size: 18px; font-weight: bold; color: #333;">${(data.beta || 0).toFixed(2)}</div>
+                    </div>`;
+                    
+                    html += `<div style="padding: 15px; background: #f8f9fa; border-radius: 5px;">
+                        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Max Drawdown</div>
+                        <div style="font-size: 18px; font-weight: bold; color: #dc3545;">${Math.abs(data.max_drawdown?.max_drawdown_pct || 0).toFixed(2)}%</div>
+                    </div>`;
+                    
+                    html += '</div>';
+                    
+                    // Volatility metrics
+                    html += '<div style="margin-top: 20px;"><h4 style="margin-bottom: 10px;">Volatility Metrics</h4>';
+                    html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">';
+                    html += `<div style="padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                        <div style="font-size: 11px; color: #666;">30D Volatility</div>
+                        <div style="font-size: 16px; font-weight: bold;">${((data.volatility_30d || 0) * 100).toFixed(2)}%</div>
+                    </div>`;
+                    html += `<div style="padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                        <div style="font-size: 11px; color: #666;">60D Volatility</div>
+                        <div style="font-size: 16px; font-weight: bold;">${((data.volatility_60d || 0) * 100).toFixed(2)}%</div>
+                    </div>`;
+                    html += `<div style="padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                        <div style="font-size: 11px; color: #666;">Annual Volatility</div>
+                        <div style="font-size: 16px; font-weight: bold;">${((data.volatility_annual || 0) * 100).toFixed(2)}%</div>
+                    </div>`;
+                    html += '</div></div>';
+                    
+                    container.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error loading risk metrics:', error);
+                    container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${error.message}</div>`;
+                });
+        }
+
+        function loadRiskConcentration() {
+            const container = document.getElementById('riskConcentrationContainer');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading concentration analysis...</div>';
+            
+            fetch('/api/risk/concentration')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${data.error}</div>`;
+                        return;
+                    }
+                    
+                    let html = '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">';
+                    
+                    // Sector concentration with pie chart
+                    let sectorDataForChart = null;
+                    if (data.sector_concentration?.sector_allocation && Array.isArray(data.sector_concentration.sector_allocation)) {
+                        html += '<div><h4 style="margin-bottom: 10px;">Sector Allocation</h4>';
+                        
+                        // Add pie chart container
+                        html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">';
+                        html += '<div><canvas id="sectorPieChart" style="max-height: 300px;"></canvas></div>';
+                        html += '<div style="max-height: 300px; overflow-y: auto;">';
+                        html += '<table style="width: 100%; border-collapse: collapse; font-size: 12px;"><thead><tr style="background: #f8f9fa;"><th style="padding: 8px; border: 1px solid #ddd;">Sector</th><th style="padding: 8px; border: 1px solid #ddd;">%</th><th style="padding: 8px; border: 1px solid #ddd;">Value</th></tr></thead><tbody>';
+                        
+                        sectorDataForChart = data.sector_concentration.sector_allocation.map(sector => {
+                            const weight = sector.weight || 0;
+                            const percentage = (typeof weight === 'number' ? weight : parseFloat(weight) || 0) * 100;
+                            const value = sector.current_value || 0;
+                            const sectorName = sector.sector_name || sector.sector || 'Misc';
+                            return { name: sectorName, percentage, value, weight };
+                        });
+                        
+                        sectorDataForChart.forEach(sector => {
+                            html += `<tr>
+                                <td style="padding: 8px; border: 1px solid #ddd;">${sector.name}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">${sector.percentage.toFixed(2)}%</td>
+                                <td style="padding: 8px; border: 1px solid #ddd;">₹${(sector.value || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                            </tr>`;
+                        });
+                        html += '</tbody></table></div></div>';
+                    }
+                    
+                    // Stock concentration - use top_5_holdings first, then fallback to concentration_distribution
+                    const top5Holdings = data.stock_concentration?.top_5_holdings;
+                    const stockData = top5Holdings || data.stock_concentration?.concentration_distribution;
+                    if (stockData && Array.isArray(stockData) && stockData.length > 0) {
+                        const topHoldings = stockData.slice(0, 5); // Get top 5
+                        html += '<div><h4 style="margin-bottom: 10px;">Top 5 Holdings</h4>';
+                        html += '<div style="max-height: 300px; overflow-y: auto;">';
+                        html += '<table style="width: 100%; border-collapse: collapse; font-size: 12px;"><thead><tr style="background: #f8f9fa;"><th style="padding: 8px; border: 1px solid #ddd;">Stock</th><th style="padding: 8px; border: 1px solid #ddd;">%</th><th style="padding: 8px; border: 1px solid #ddd;">Value</th></tr></thead><tbody>';
+                        topHoldings.forEach(stock => {
+                            const weight = stock.weight || stock.percentage || 0;
+                            const percentage = (typeof weight === 'number' ? weight : parseFloat(weight) || 0) * 100;
+                            // For top_5_holdings, current_value should be present. For concentration_distribution, calculate from total_value
+                            const totalValue = data.stock_concentration?.total_value || 0;
+                            const value = stock.current_value || (stock.weight ? stock.weight * totalValue : stock.value) || 0;
+                            html += `<tr>
+                                <td style="padding: 8px; border: 1px solid #ddd;">${stock.trading_symbol || stock.symbol || 'N/A'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">${percentage.toFixed(2)}%</td>
+                                <td style="padding: 8px; border: 1px solid #ddd;">₹${(value || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                            </tr>`;
+                        });
+                        html += '</tbody></table></div></div>';
+                    }
+                    
+                    html += '</div>';
+                    
+                    // Summary
+                    if (data.summary) {
+                        html += `<div style="margin-top: 20px; padding: 15px; background: ${data.summary.risk_level === 'HIGH' ? '#f8d7da' : data.summary.risk_level === 'MEDIUM' ? '#fff3cd' : '#d4edda'}; border-radius: 5px;">
+                            <h4>Overall Risk Score: ${data.summary.overall_risk_score}/100 (${data.summary.risk_level})</h4>
+                            <ul style="margin-top: 10px;">
+                                ${data.summary.recommendations?.map(r => `<li>${r}</li>`).join('') || ''}
+                            </ul>
+                        </div>`;
+                    }
+                    
+                    container.innerHTML = html;
+                    
+                    // Create pie chart after HTML is set (script tags in innerHTML don't execute)
+                    if (sectorDataForChart && sectorDataForChart.length > 0) {
+                        setTimeout(() => {
+                            const ctx = document.getElementById('sectorPieChart');
+                            if (ctx && typeof Chart !== 'undefined') {
+                                // Destroy existing chart if it exists
+                                if (window.sectorPieChartInstance) {
+                                    window.sectorPieChartInstance.destroy();
+                                }
+                                window.sectorPieChartInstance = new Chart(ctx, {
+                                    type: 'pie',
+                                    data: {
+                                        labels: sectorDataForChart.map(s => s.name),
+                                        datasets: [{
+                                            data: sectorDataForChart.map(s => s.weight * 100),
+                                            backgroundColor: [
+                                                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+                                                '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384',
+                                                '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'
+                                            ]
+                                        }]
+                                    },
+                                    options: {
+                                        responsive: true,
+                                        maintainAspectRatio: true,
+                                        plugins: {
+                                            legend: {
+                                                position: 'right'
+                                            },
+                                            tooltip: {
+                                                callbacks: {
+                                                    label: function(context) {
+                                                        const label = context.label || '';
+                                                        const value = context.parsed || 0;
+                                                        const sector = sectorDataForChart[context.dataIndex];
+                                                        return label + ': ' + value.toFixed(2) + '% (₹' + (sector.value || 0).toLocaleString('en-IN') + ')';
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        }, 100);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading concentration analysis:', error);
+                    container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${error.message}</div>`;
+                });
+        }
+
+        function loadRiskLimits() {
+            const container = document.getElementById('riskLimitsContainer');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading risk limits...</div>';
+            
+            Promise.all([
+                fetch('/api/risk/limits').then(r => r.json()),
+                fetch('/api/risk/limits/check').then(r => r.json())
+            ])
+                .then(([limitsStatus, alerts]) => {
+                    let html = '<div style="margin-bottom: 20px;">';
+                    
+                    // Limits status
+                    if (limitsStatus && Object.keys(limitsStatus).length > 0) {
+                        html += '<h4 style="margin-bottom: 10px;">Risk Limits Status</h4>';
+                        html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px;">';
+                        Object.entries(limitsStatus).forEach(([key, value]) => {
+                            if (value && typeof value === 'object' && value.status) {
+                                html += `<div style="padding: 10px; background: ${value.status === 'BREACH' ? '#f8d7da' : '#d4edda'}; border-radius: 5px;">
+                                    <div style="font-size: 12px; font-weight: bold;">${key.replace(/_/g, ' ').toUpperCase()}</div>
+                                    <div style="font-size: 11px; margin-top: 5px;">Limit: ${value.limit || value.limit_min + '-' + value.limit_max}</div>
+                                    <div style="font-size: 11px;">Current: ${value.current?.toFixed(2) || 'N/A'}</div>
+                                    <div style="font-size: 11px; font-weight: bold; color: ${value.status === 'BREACH' ? '#dc3545' : '#28a745'};">${value.status}</div>
+                                </div>`;
+                            }
+                        });
+                        html += '</div>';
+                    }
+                    
+                    html += '</div>';
+                    
+                    // Alerts
+                    if (alerts && alerts.total_alerts > 0) {
+                        html += '<div><h4 style="margin-bottom: 10px;">Active Alerts</h4>';
+                        if (alerts.critical_alerts?.length > 0) {
+                            html += '<div style="margin-bottom: 10px;"><strong style="color: #dc3545;">CRITICAL:</strong>';
+                            alerts.critical_alerts.forEach(alert => {
+                                html += `<div style="padding: 10px; margin: 5px 0; background: #f8d7da; border-left: 4px solid #dc3545; border-radius: 4px;">
+                                    ${alert.message}
+                                </div>`;
+                            });
+                            html += '</div>';
+                        }
+                        if (alerts.high_alerts?.length > 0) {
+                            html += '<div style="margin-bottom: 10px;"><strong style="color: #ffc107;">HIGH:</strong>';
+                            alerts.high_alerts.forEach(alert => {
+                                html += `<div style="padding: 10px; margin: 5px 0; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                                    ${alert.message}
+                                </div>`;
+                            });
+                            html += '</div>';
+                        }
+                        html += '</div>';
+                    } else {
+                        html += '<div style="padding: 15px; background: #d4edda; border-radius: 5px; color: #155724;">No active alerts. All risk limits are within acceptable ranges.</div>';
+                    }
+                    
+                    container.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error loading risk limits:', error);
+                    container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${error.message}</div>`;
+                });
+        }
+
+        function loadAdvancedHedging() {
+            const container = document.getElementById('riskAdvancedHedgingContainer');
+            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading advanced hedging strategies...</div>';
+            
+            fetch('/api/risk/hedging/advanced')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${data.error}</div>`;
+                        return;
+                    }
+                    
+                    let html = '<div>';
+                    html += `<div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                        <strong>Portfolio Value:</strong> ₹${(data.portfolio_value || 0).toLocaleString('en-IN')} | 
+                        <strong>Portfolio Delta:</strong> ${(data.portfolio_delta || 0).toFixed(2)}
+                    </div>`;
+                    
+                    if (data.strategies && Object.keys(data.strategies).length > 0) {
+                        Object.entries(data.strategies).forEach(([strategyType, strategies]) => {
+                            // Handle both array and single strategy object
+                            const strategyList = Array.isArray(strategies) ? strategies : (strategies ? [strategies] : []);
+                            if (strategyList.length > 0) {
+                                html += `<div style="margin-bottom: 20px;"><h4 style="margin-bottom: 10px;">${strategyType.replace(/_/g, ' ').toUpperCase()}</h4>`;
+                                strategyList.forEach(strategy => {
+                                    html += `<div style="padding: 15px; margin-bottom: 10px; background: #f8f9fa; border-radius: 5px; border-left: 4px solid #667eea;">
+                                        <div style="font-weight: bold; margin-bottom: 5px;">${strategy.strategy_name || strategy.strategy_type || strategyType}</div>
+                                        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">${strategy.rationale || ''}</div>
+                                        ${strategy.expected_impact ? `<div style="font-size: 11px; color: #28a745; margin-top: 5px;"><strong>Expected Impact:</strong> ${strategy.expected_impact}</div>` : ''}
+                                        ${strategy.action ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Action:</strong> ${strategy.action.replace(/_/g, ' ')}</div>` : ''}
+                                        ${strategy.contracts || strategy.quantity ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Contracts/Quantity:</strong> ${strategy.contracts || strategy.quantity || 0} ${strategy.contracts ? 'lots' : 'units'}</div>` : ''}
+                                        ${strategy.underlying ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Underlying:</strong> ${strategy.underlying}</div>` : ''}
+                                        ${strategy.instrument ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Instrument:</strong> ${strategy.instrument}</div>` : ''}
+                                        ${strategy.futures_price ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Futures Price:</strong> ₹${(strategy.futures_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>` : ''}
+                                        ${strategy.contract_value ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Contract Value:</strong> ₹${(strategy.contract_value || 0).toLocaleString('en-IN')}</div>` : ''}
+                                        ${strategy.margin_required ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Margin Required:</strong> ₹${(strategy.margin_required || 0).toLocaleString('en-IN')}</div>` : ''}
+                                        ${strategy.strike ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Strike:</strong> ${strategy.strike}</div>` : ''}
+                                        ${strategy.option_type ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Option Type:</strong> ${strategy.option_type}</div>` : ''}
+                                        ${strategy.estimated_premium_per_lot ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Estimated Premium per Lot:</strong> ₹${(strategy.estimated_premium_per_lot || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>` : ''}
+                                        ${strategy.total_premium ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Total Premium:</strong> ₹${(strategy.total_premium || 0).toLocaleString('en-IN')}</div>` : ''}
+                                        ${(strategy.existing_gold_units !== undefined && strategy.existing_gold_units !== null) ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Existing Gold (SETFGOLD):</strong> ${strategy.existing_gold_units || 0} units${(strategy.existing_gold_value !== undefined && strategy.existing_gold_value !== null && strategy.existing_gold_value > 0) ? ` (₹${(strategy.existing_gold_value || 0).toLocaleString('en-IN')})` : ''}</div>` : ''}
+                                        ${(strategy.existing_silver_units !== undefined && strategy.existing_silver_units !== null) ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Existing Silver (SILVERIETF):</strong> ${strategy.existing_silver_units || 0} units${(strategy.existing_silver_value !== undefined && strategy.existing_silver_value !== null && strategy.existing_silver_value > 0) ? ` (₹${(strategy.existing_silver_value || 0).toLocaleString('en-IN')})` : ''}</div>` : ''}
+                                        ${(strategy.current_allocation_pct !== undefined && strategy.current_allocation_pct !== null) ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Current Allocation:</strong> ${(strategy.current_allocation_pct || 0).toFixed(2)}%</div>` : ''}
+                                        ${(strategy.target_allocation_pct !== undefined && strategy.target_allocation_pct !== null) ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Target Allocation:</strong> ${(strategy.target_allocation_pct || 0).toFixed(2)}%</div>` : ''}
+                                        ${strategy.max_profit ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Max Profit:</strong> ${strategy.max_profit}</div>` : ''}
+                                        ${strategy.max_loss ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Max Loss:</strong> ${strategy.max_loss}</div>` : ''}
+                                        ${strategy.margin_required ? `<div style="font-size: 11px; margin-top: 3px;"><strong>Margin Required:</strong> ₹${(strategy.margin_required || 0).toLocaleString('en-IN')}</div>` : ''}
+                                    </div>`;
+                                });
+                                html += '</div>';
+                            }
+                        });
+                    } else {
+                        html += '<div style="padding: 15px; color: #666;">No hedging strategies available at this time.</div>';
+                    }
+                    
+                    html += '</div>';
+                    container.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error loading advanced hedging:', error);
+                    container.innerHTML = `<div style="padding: 15px; color: #dc3545;">Error: ${error.message}</div>`;
+                });
+        }
+
+        // Make all risk functions globally accessible
+        window.loadRiskDashboard = loadRiskDashboard;
+        window.loadRiskMetrics = loadRiskMetrics;
+        window.loadRiskConcentration = loadRiskConcentration;
+        window.loadRiskLimits = loadRiskLimits;
+        window.loadAdvancedHedging = loadAdvancedHedging;
+        
+        // Initialize risk dashboard on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load risk metrics by default when risk management section is visible
+            const riskSection = document.getElementById('section-risk-management');
+            if (riskSection && riskSection.offsetParent !== null) {
+                loadRiskMetrics();
+            }
+        });
     </script>
 </body>
 </html>
