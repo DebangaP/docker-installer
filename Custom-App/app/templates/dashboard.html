@@ -1449,11 +1449,19 @@
                     <!-- Sectoral Averages Cards -->
                     <div id="sectoralAveragesContainer" style="margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px;"></div>
                     <!-- Top Potential Gainers Header -->
-                    <div style="margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 4px; border-left: 4px solid #28a745; display: flex; justify-content: space-between; align-items: center;">
-                        <h4 style="margin: 0; color: #333; font-size: 16px; font-weight: 600;">🚀 Top Potential Gainers (Confidence > 50%) <span id="topGainersTitleSuffix" style="font-size: 14px; color: #666; font-weight: normal;">(Top 20 by default)</span></h4>
-                        <button id="clearSectorFilterBtn" onclick="clearSectorFilter()" style="display: none; padding: 6px 12px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">
-                            ✕ Clear Sector Filter
-                        </button>
+                    <div style="margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 4px; border-left: 4px solid #28a745;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4 style="margin: 0; color: #333; font-size: 16px; font-weight: 600;">🚀 Top Potential Gainers (Confidence > 50%) <span id="topGainersTitleSuffix" style="font-size: 14px; color: #666; font-weight: normal;">(Top 20 by default)</span></h4>
+                            <button id="clearSectorFilterBtn" onclick="clearSectorFilter()" style="display: none; padding: 6px 12px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold;">
+                                ✕ Clear Sector Filter
+                            </button>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; color: #333; user-select: none;">
+                                <input type="checkbox" id="filterDistributionCheckbox" onchange="toggleDistributionFilter()" style="cursor: pointer; width: 16px; height: 16px;">
+                                <span>Hide Distribution stocks</span>
+                            </label>
+                        </div>
                     </div>
                     <div id="topGainersContainer" style="overflow-x: auto;">
                         <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
@@ -10237,6 +10245,7 @@
         
         // Pagination variables for Top 20 Potential Gainers
         let allTopGainers = [];
+        let filterOutDistribution = false; // Track checkbox state for filtering Distribution stocks
         let topGainersCurrentPage = 1;
         let topGainersItemsPerPage = 10;
         let sectoralAveragesData = [];
@@ -10405,6 +10414,18 @@
             updateClearButtonVisibility();
         }
         
+        // Toggle Distribution filter
+        function toggleDistributionFilter() {
+            const checkbox = document.getElementById('filterDistributionCheckbox');
+            if (checkbox) {
+                filterOutDistribution = checkbox.checked;
+                // Reset to first page when filter changes
+                topGainersCurrentPage = 1;
+                // Re-render the table with new filter
+                renderTopGainersTable();
+            }
+        }
+        
         // Update clear button visibility
         function updateClearButtonVisibility() {
             const clearBtn = document.getElementById('clearSectorFilterBtn');
@@ -10436,6 +10457,14 @@
             const hasSectorFilter = selectedSectorFilter !== null;
             const searchTerm = document.getElementById('sectorSearchInput').value.trim().toLowerCase();
             const hasSearch = searchTerm.length > 0;
+            
+            // Apply Distribution filter - filter out stocks in Distribution state if checkbox is checked
+            if (filterOutDistribution) {
+                filtered = filtered.filter(gainer => {
+                    const accumulationState = (gainer.accumulation_state || '').toUpperCase();
+                    return accumulationState !== 'DISTRIBUTION';
+                });
+            }
             
             // Apply sector filter - if filtering by sector, show ALL stocks for that sector
             if (hasSectorFilter) {
