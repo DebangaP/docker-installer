@@ -1026,6 +1026,208 @@ class AlternateDataService:
             logger.error(traceback.format_exc())
             return []
     
+    def get_stocks_with_rsi_divergence(self, rsi_period: int = 14,
+                                       lookback_days: int = 20,
+                                       min_divergence_strength: float = 0.05) -> List[Dict]:
+        """
+        Get stocks with RSI divergence patterns
+        
+        Bullish divergence: Price makes lower lows, but RSI makes higher lows (potential reversal up)
+        Bearish divergence: Price makes higher highs, but RSI makes lower highs (potential reversal down)
+        
+        Args:
+            rsi_period: RSI calculation period (default: 14)
+            lookback_days: Number of days to analyze (default: 20)
+            min_divergence_strength: Minimum percentage difference to consider divergence (default: 5%)
+            
+        Returns:
+            List of stocks with RSI divergence
+        """
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Get all stocks from master_scrips, excluding indices
+            cursor.execute("""
+                SELECT DISTINCT s.scrip_id
+                FROM my_schema.master_scrips s
+                WHERE s.scrip_id IS NOT NULL
+                AND (s.scrip_group IS NULL OR UPPER(s.scrip_group) != 'INDEX')
+                AND (s.sector_code IS NULL OR UPPER(s.sector_code) != 'INDEX')
+                AND EXISTS (
+                    SELECT 1 
+                    FROM my_schema.rt_intraday_price p
+                    WHERE p.scrip_id = s.scrip_id
+                    AND p.price_close IS NOT NULL
+                    AND p.price_date::date >= CURRENT_DATE - INTERVAL '%s days'
+                )
+            """, (lookback_days + rsi_period + 10,))
+            
+            stock_symbols = [row[0] for row in cursor.fetchall()]
+            
+            if not stock_symbols:
+                cursor.close()
+                conn.close()
+                return []
+            
+            results = []
+            
+            for symbol in stock_symbols:
+                try:
+                    # Get price data with high and low
+                    cursor.execute("""
+                        SELECT 
+                            price_date,
+                            price_close,
+                            price_high,
+                            price_low
+                        FROM my_schema.rt_intraday_price
+                        WHERE scrip_id = %s
+                        AND price_date::date >= CURRENT_DATE - INTERVAL '%s days'
+                        ORDER BY price_date::date ASC
+                    """, (symbol, lookback_days + rsi_period + 10))
+                    
+                    price_data = cursor.fetchall()
+                    
+                    if len(price_data) < rsi_period + 10:
+                        continue
+                    
+                    # Convert to DataFrame
+                    df = pd.DataFrame(price_data, columns=['price_date', 'price_close', 'price_high', 'price_low'])
+                    df = df.sort_values('price_date')
+                    
+                    closes = df['price_close'].astype(float)
+                    highs = df['price_high'].astype(float)
+                    lows = df['price_low'].astype(float)
+                    
+                    # Calculate RSI
+                    rsi = calculate_rsi(closes, period=rsi_period)
+                    
+                    if len(rsi) < 10 or rsi.isna().sum() > len(rsi) * 0.5:
+                        continue
+                    
+                    # Get recent data (last lookback_days)
+                    recent_prices = closes.tail(lookback_days)
+                    recent_rsi = rsi.tail(lookback_days)
+                    recent_highs = highs.tail(lookback_days)
+                    recent_lows = lows.tail(lookback_days)
+                    
+                    # Find local peaks and troughs for price and RSI
+                    # For bearish divergence: look for price peaks and RSI peaks
+                    # For bullish divergence: look for price troughs and RSI troughs
+                    
+                    divergence_type = None
+                    divergence_strength = 0.0
+                    
+                    # Check for bearish divergence (price higher highs, RSI lower highs)
+                    if len(recent_prices) >= 5:
+                        # Find the two most recent significant peaks in price
+                        price_peaks = []
+                        rsi_peaks = []
+                        
+                        for i in range(2, len(recent_prices) - 2):
+                            # Price peak: higher than neighbors
+                            if (recent_highs.iloc[i] >= recent_highs.iloc[i-1] and 
+                                recent_highs.iloc[i] >= recent_highs.iloc[i-2] and
+                                recent_highs.iloc[i] >= recent_highs.iloc[i+1] and
+                                recent_highs.iloc[i] >= recent_highs.iloc[i+2]):
+                                price_peaks.append((i, recent_highs.iloc[i]))
+                            
+                            # RSI peak: higher than neighbors
+                            if (recent_rsi.iloc[i] >= recent_rsi.iloc[i-1] and 
+                                recent_rsi.iloc[i] >= recent_rsi.iloc[i-2] and
+                                recent_rsi.iloc[i] >= recent_rsi.iloc[i+1] and
+                                recent_rsi.iloc[i] >= recent_rsi.iloc[i+2]):
+                                rsi_peaks.append((i, recent_rsi.iloc[i]))
+                        
+                        # Check for bearish divergence: price makes higher high, RSI makes lower high
+                        if len(price_peaks) >= 2 and len(rsi_peaks) >= 2:
+                            # Get last two peaks
+                            last_price_peak = price_peaks[-1]
+                            prev_price_peak = price_peaks[-2]
+                            last_rsi_peak = rsi_peaks[-1]
+                            prev_rsi_peak = rsi_peaks[-2]
+                            
+                            # Check if peaks are close in time (within 10 periods)
+                            if (abs(last_price_peak[0] - last_rsi_peak[0]) <= 3 and
+                                abs(prev_price_peak[0] - prev_rsi_peak[0]) <= 3):
+                                
+                                price_change = (last_price_peak[1] - prev_price_peak[1]) / prev_price_peak[1]
+                                rsi_change = (last_rsi_peak[1] - prev_rsi_peak[1]) / prev_rsi_peak[1]
+                                
+                                # Bearish divergence: price up, RSI down
+                                if price_change > min_divergence_strength and rsi_change < -min_divergence_strength:
+                                    divergence_type = 'BEARISH'
+                                    divergence_strength = abs(price_change) + abs(rsi_change)
+                    
+                    # Check for bullish divergence (price lower lows, RSI higher lows)
+                    if divergence_type is None and len(recent_prices) >= 5:
+                        # Find the two most recent significant troughs in price
+                        price_troughs = []
+                        rsi_troughs = []
+                        
+                        for i in range(2, len(recent_prices) - 2):
+                            # Price trough: lower than neighbors
+                            if (recent_lows.iloc[i] <= recent_lows.iloc[i-1] and 
+                                recent_lows.iloc[i] <= recent_lows.iloc[i-2] and
+                                recent_lows.iloc[i] <= recent_lows.iloc[i+1] and
+                                recent_lows.iloc[i] <= recent_lows.iloc[i+2]):
+                                price_troughs.append((i, recent_lows.iloc[i]))
+                            
+                            # RSI trough: lower than neighbors
+                            if (recent_rsi.iloc[i] <= recent_rsi.iloc[i-1] and 
+                                recent_rsi.iloc[i] <= recent_rsi.iloc[i-2] and
+                                recent_rsi.iloc[i] <= recent_rsi.iloc[i+1] and
+                                recent_rsi.iloc[i] <= recent_rsi.iloc[i+2]):
+                                rsi_troughs.append((i, recent_rsi.iloc[i]))
+                        
+                        # Check for bullish divergence: price makes lower low, RSI makes higher low
+                        if len(price_troughs) >= 2 and len(rsi_troughs) >= 2:
+                            # Get last two troughs
+                            last_price_trough = price_troughs[-1]
+                            prev_price_trough = price_troughs[-2]
+                            last_rsi_trough = rsi_troughs[-1]
+                            prev_rsi_trough = rsi_troughs[-2]
+                            
+                            # Check if troughs are close in time (within 3 periods)
+                            if (abs(last_price_trough[0] - last_rsi_trough[0]) <= 3 and
+                                abs(prev_price_trough[0] - prev_rsi_trough[0]) <= 3):
+                                
+                                price_change = (last_price_trough[1] - prev_price_trough[1]) / prev_price_trough[1]
+                                rsi_change = (last_rsi_trough[1] - prev_rsi_trough[1]) / prev_rsi_trough[1]
+                                
+                                # Bullish divergence: price down, RSI up
+                                if price_change < -min_divergence_strength and rsi_change > min_divergence_strength:
+                                    divergence_type = 'BULLISH'
+                                    divergence_strength = abs(price_change) + abs(rsi_change)
+                    
+                    if divergence_type:
+                        results.append({
+                            'symbol': symbol,
+                            'divergence_type': divergence_type,
+                            'divergence_strength': round(divergence_strength * 100, 2),  # Convert to percentage
+                            'current_price': round(float(closes.iloc[-1]), 2),
+                            'current_rsi': round(float(recent_rsi.iloc[-1]), 2),
+                            'rsi_period': rsi_period
+                        })
+                except Exception as e:
+                    logger.debug(f"Error processing {symbol} for RSI divergence: {e}")
+                    continue
+            
+            cursor.close()
+            conn.close()
+            
+            # Sort by divergence strength (descending)
+            results.sort(key=lambda x: x['divergence_strength'], reverse=True)
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error getting stocks with RSI divergence: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return []
+    
     def get_all_alternate_data(self, volume_threshold: float = 50.0,
                                obv_threshold: float = 20.0,
                                lookback_days: int = 10) -> Dict:
@@ -1083,6 +1285,11 @@ class AlternateDataService:
                     min_momentum_change_pct=20.0,
                     momentum_period=14,
                     lookback_days=lookback_days
+                ),
+                'rsi_divergence': self.get_stocks_with_rsi_divergence(
+                    rsi_period=14,
+                    lookback_days=20,
+                    min_divergence_strength=0.05
                 )
             }
         except Exception as e:
@@ -1098,6 +1305,7 @@ class AlternateDataService:
                 'macd_crossover': [],
                 'atr_expansion': [],
                 'volume_trend_increasing': [],
-                'momentum_change': []
+                'momentum_change': [],
+                'rsi_divergence': []
             }
 

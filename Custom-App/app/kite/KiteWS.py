@@ -70,6 +70,7 @@ def on_ticks(ws, ticks):
     logging.debug("Ticks: {}".format(ticks))
     for tick in ticks:
         save_tick_to_db(tick)
+        logging.debug(tick)
 
 def on_connect(ws, response):
     # Callback on successful connect.

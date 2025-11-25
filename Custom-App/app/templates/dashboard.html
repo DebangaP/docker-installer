@@ -1008,7 +1008,7 @@
                     </div>
                 </div>
                 <div style="padding: 15px;">
-                    <div id="alternateDataContainer" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; align-items: start;">
+                    <div id="alternateDataContainer" style="display: grid; grid-template-columns: repeat(2, 1.2fr); gap: 20px; align-items: start;">
                         <div style="text-align: center; padding: 20px; color: #666; grid-column: 1 / -1;">Click Refresh to load alternate data indicators</div>
                     </div>
                 </div>
@@ -8790,6 +8790,9 @@
                 <div style="flex: 1; overflow: hidden; position: relative; border-top: 2px solid #ddd; margin-top: 10px; padding-top: 10px;">
                     <canvas id="volumeChartCanvas" style="width: 100%; height: 100%;"></canvas>
                 </div>
+                <div style="flex: 1; overflow: hidden; position: relative; border-top: 2px solid #ddd; margin-top: 10px; padding-top: 10px;">
+                    <canvas id="rsiChartCanvas" style="width: 100%; height: 100%;"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -8798,6 +8801,7 @@
         let currentStockSymbol = '';
         let candlestickChart = null;
         let volumeChart = null;
+        let rsiChart = null;
 
         // Helper function to draw sparkline on canvas
         function drawSparkline(canvas, prices) {
@@ -9912,9 +9916,10 @@
                 fetch('/api/alternate-data/macd-crossover?fast=12&slow=26&signal=9&lookback_days=5').then(r => r.json()),
                 fetch('/api/alternate-data/atr-expansion?min_atr_increase_pct=30&atr_period=14&lookback_days=10').then(r => r.json()),
                 fetch('/api/alternate-data/volume-trend?trend_type=increasing&lookback_days=10').then(r => r.json()),
-                fetch('/api/alternate-data/momentum-change?min_momentum_change_pct=20&momentum_period=14&lookback_days=10').then(r => r.json())
+                fetch('/api/alternate-data/momentum-change?min_momentum_change_pct=20&momentum_period=14&lookback_days=10').then(r => r.json()),
+                fetch('/api/alternate-data/rsi-divergence?rsi_period=14&lookback_days=20&min_divergence_strength=0.05').then(r => r.json())
             ])
-            .then(([volumeData, obvData, supertrendData, goldenCrossData, rsiData, macdData, atrData, volumeTrendData, momentumData]) => {
+            .then(([volumeData, obvData, supertrendData, goldenCrossData, rsiData, macdData, atrData, volumeTrendData, momentumData, rsiDivergenceData]) => {
                 // Collect all indicators with their data and status
                 const indicators = [
                     { name: 'Increased Volume', data: volumeData, color: '#17a2b8', icon: '📊', prefix: 'alt-volume' },
@@ -9925,7 +9930,8 @@
                     { name: 'MACD Crossover', data: macdData, color: '#fd7e14', icon: '📊', prefix: 'alt-macd' },
                     { name: 'ATR Expansion (Volatility)', data: atrData, color: '#e83e8c', icon: '⚡', prefix: 'alt-atr' },
                     { name: 'Volume Trend (Increasing)', data: volumeTrendData, color: '#20c997', icon: '📈', prefix: 'alt-voltrend' },
-                    { name: 'Momentum Change', data: momentumData, color: '#6610f2', icon: '🚀', prefix: 'alt-momentum' }
+                    { name: 'Momentum Change', data: momentumData, color: '#6610f2', icon: '🚀', prefix: 'alt-momentum' },
+                    { name: 'RSI Divergence', data: rsiDivergenceData, color: '#dc3545', icon: '🔄', prefix: 'alt-rsi-div' }
                 ];
                 
                 // Separate indicators with data from those without
@@ -9944,23 +9950,23 @@
                 // Combine: with data first, then without data
                 const sortedIndicators = [...withData, ...withoutData];
                 
-                let html = '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; align-items: start;">';
+                let html = '<div style="display: grid; grid-template-columns: repeat(2, 1.2fr); gap: 20px; align-items: start;">';
                 
                 // Render each indicator
                 sortedIndicators.forEach(indicator => {
                     const hasData = indicator.data.success && indicator.data.stocks && indicator.data.stocks.length > 0;
                     
-                    html += `<div style="background: #f8f9fa; border-radius: 5px; padding: 15px; border-left: 4px solid ${indicator.color}; display: flex; flex-direction: column;">`;
-                    html += `<h4 style="margin: 0 0 10px 0; color: #333; font-size: 14px; font-weight: 600;">${indicator.icon} ${indicator.name}</h4>`;
+                    html += `<div style="background: #f8f9fa; border-radius: 5px; padding: 18px; border-left: 4px solid ${indicator.color}; display: flex; flex-direction: column;">`;
+                    html += `<h4 style="margin: 0 0 12px 0; color: #333; font-size: 16px; font-weight: 600;">${indicator.icon} ${indicator.name}</h4>`;
                     
                     if (hasData) {
                         // Render table based on indicator type
                         if (indicator.name === 'Increased Volume') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
-                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 11px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 6px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Volume ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
+                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Volume ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
                             indicator.data.stocks.slice(0, 10).forEach(stock => {
-                                html += `<tr><td style="padding: 6px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                                html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: #28a745; font-weight: 600;">+${stock.volume_increase_pct.toFixed(1)}%</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${indicator.prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
@@ -9968,10 +9974,10 @@
                             html += '</tbody></table></div>';
                         } else if (indicator.name === 'Increased OBV') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
-                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 11px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 6px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">OBV ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
+                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">OBV ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
                             indicator.data.stocks.slice(0, 10).forEach(stock => {
-                                html += `<tr><td style="padding: 6px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                                html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: #28a745; font-weight: 600;">+${stock.obv_increase_pct.toFixed(1)}%</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${indicator.prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
@@ -9979,36 +9985,36 @@
                             html += '</tbody></table></div>';
                         } else if (indicator.name === 'Supertrend Change') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
-                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 11px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 6px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd;">Change</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd;">Date</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
+                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 7px; border: 1px solid #ddd;">Change</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 7px; border: 1px solid #ddd;">Date</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
                             indicator.data.stocks.slice(0, 10).forEach(stock => {
                                 const changeColor = stock.change_type === 'BULLISH' ? '#28a745' : '#dc3545';
-                                html += `<tr><td style="padding: 6px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                                html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; color: ${changeColor}; font-weight: 600;">${stock.change_type}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
-                                html += `<td style="padding: 6px; border: 1px solid #ddd;">${stock.change_date || 'N/A'}</td>`;
+                                html += `<td style="padding: 7px; border: 1px solid #ddd;">${stock.change_date || 'N/A'}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${indicator.prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
                             });
                             html += '</tbody></table></div>';
                         } else if (indicator.name === 'Golden Cross (50/200 MA)') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
-                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 11px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 6px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">50 MA</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">200 MA</th><th style="padding: 6px; border: 1px solid #ddd;">Date</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
+                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">50 MA</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">200 MA</th><th style="padding: 7px; border: 1px solid #ddd;">Date</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
                             indicator.data.stocks.slice(0, 10).forEach(stock => {
-                                html += `<tr><td style="padding: 6px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                                html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${stock.fast_ma_value.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${stock.slow_ma_value.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
-                                html += `<td style="padding: 6px; border: 1px solid #ddd;">${stock.cross_date || 'N/A'}</td>`;
+                                html += `<td style="padding: 7px; border: 1px solid #ddd;">${stock.cross_date || 'N/A'}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${indicator.prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
                             });
                             html += '</tbody></table></div>';
                         } else if (indicator.name === 'RSI Signals') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
-                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 11px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 6px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">RSI</th><th style="padding: 6px; border: 1px solid #ddd;">Signal</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
+                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">RSI</th><th style="padding: 7px; border: 1px solid #ddd;">Signal</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
                             indicator.data.stocks.slice(0, 10).forEach(stock => {
                                 const signalColor = stock.signal_type === 'OVERSOLD' ? '#28a745' : '#dc3545';
-                                html += `<tr><td style="padding: 6px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                                html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; font-weight: 600;">${stock.rsi_value.toFixed(1)}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; color: ${signalColor}; font-weight: 600;">${stock.signal_type}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
@@ -10017,23 +10023,23 @@
                             html += '</tbody></table></div>';
                         } else if (indicator.name === 'MACD Crossover') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
-                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 11px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 6px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd;">Type</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Histogram</th><th style="padding: 6px; border: 1px solid #ddd;">Date</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
+                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 7px; border: 1px solid #ddd;">Type</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Histogram</th><th style="padding: 7px; border: 1px solid #ddd;">Date</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
                             indicator.data.stocks.slice(0, 10).forEach(stock => {
                                 const typeColor = stock.crossover_type === 'BULLISH' ? '#28a745' : '#dc3545';
-                                html += `<tr><td style="padding: 6px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                                html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; color: ${typeColor}; font-weight: 600;">${stock.crossover_type}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: ${typeColor};">${stock.histogram > 0 ? '+' : ''}${stock.histogram.toFixed(2)}</td>`;
-                                html += `<td style="padding: 6px; border: 1px solid #ddd;">${stock.cross_date || 'N/A'}</td>`;
+                                html += `<td style="padding: 7px; border: 1px solid #ddd;">${stock.cross_date || 'N/A'}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${indicator.prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
                             });
                             html += '</tbody></table></div>';
                         } else if (indicator.name === 'ATR Expansion (Volatility)') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
-                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 11px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 6px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">ATR ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Current ATR</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
+                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">ATR ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Current ATR</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
                             indicator.data.stocks.slice(0, 10).forEach(stock => {
-                                html += `<tr><td style="padding: 6px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                                html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: #dc3545; font-weight: 600;">+${stock.atr_increase_pct.toFixed(1)}%</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${stock.latest_atr.toFixed(2)}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
@@ -10042,10 +10048,10 @@
                             html += '</tbody></table></div>';
                         } else if (indicator.name === 'Volume Trend (Increasing)') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
-                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 11px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 6px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Trend ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
+                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Trend ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
                             indicator.data.stocks.slice(0, 10).forEach(stock => {
-                                html += `<tr><td style="padding: 6px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                                html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: #28a745; font-weight: 600;">+${stock.trend_strength_pct.toFixed(1)}%</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${indicator.prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
@@ -10053,13 +10059,27 @@
                             html += '</tbody></table></div>';
                         } else if (indicator.name === 'Momentum Change') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
-                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 11px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 6px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd;">Type</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Change %</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
+                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 7px; border: 1px solid #ddd;">Type</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Change %</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
                             indicator.data.stocks.slice(0, 10).forEach(stock => {
                                 const typeColor = stock.change_type === 'ACCELERATING' ? '#28a745' : '#dc3545';
-                                html += `<tr><td style="padding: 6px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                                html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; color: ${typeColor}; font-weight: 600;">${stock.change_type}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: ${typeColor};">${stock.momentum_change_pct > 0 ? '+' : ''}${stock.momentum_change_pct.toFixed(1)}%</td>`;
+                                html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                                html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${indicator.prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
+                            });
+                            html += '</tbody></table></div>';
+                        } else if (indicator.name === 'RSI Divergence') {
+                            html += '<div style="max-height: 300px; overflow-y: auto;">';
+                            html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 7px; border: 1px solid #ddd;">Type</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Strength %</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">RSI</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
+                            indicator.data.stocks.slice(0, 10).forEach(stock => {
+                                const typeColor = stock.divergence_type === 'BULLISH' ? '#28a745' : '#dc3545';
+                                html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                                html += `<td style="padding: 6px; border: 1px solid #ddd; color: ${typeColor}; font-weight: 600;">${stock.divergence_type}</td>`;
+                                html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: ${typeColor};">${stock.divergence_strength.toFixed(1)}%</td>`;
+                                html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${stock.current_rsi.toFixed(2)}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${indicator.prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
                             });
@@ -10076,7 +10096,8 @@
                             'MACD Crossover': 'No MACD crossover detected',
                             'ATR Expansion (Volatility)': 'No significant ATR expansion',
                             'Volume Trend (Increasing)': 'No stocks with increasing volume trend',
-                            'Momentum Change': 'No significant momentum changes'
+                            'Momentum Change': 'No significant momentum changes',
+                            'RSI Divergence': 'No RSI divergence detected'
                         };
                         html += `<div style="padding: 10px; color: #666; text-align: center;">${noDataMessages[indicator.name] || 'No data available'}</div>`;
                     }
@@ -11461,6 +11482,10 @@
                 volumeChart.destroy();
                 volumeChart = null;
             }
+            if (rsiChart) {
+                rsiChart.destroy();
+                rsiChart = null;
+            }
         }
         
         // Handle window resize to adjust chart size
@@ -11699,6 +11724,11 @@
                         direction: d.supertrend_direction
                     })).filter(d => d.y !== null && !isNaN(d.y));
                     
+                    const rsiData = data.data.map(d => ({
+                        x: new Date(d.date).getTime(),
+                        y: d.rsi !== null && !isNaN(d.rsi) ? parseFloat(d.rsi.toFixed(2)) : null
+                    })).filter(d => d.y !== null && !isNaN(d.y));
+                    
                     console.log('Candlestick data formatted:', candlestickData.slice(0, 5));
                     console.log('SMA 20 data:', sma20Data.slice(0, 5));
                     console.log('SMA 50 data:', sma50Data.slice(0, 5));
@@ -11749,17 +11779,10 @@
                                         tooltipFormat: 'MMM D, YYYY'
                                     },
                                     ticks: {
-                                        source: 'data',
-                                        maxRotation: 45,
-                                        minRotation: 45,
-                                        autoSkip: true,
-                                        maxTicksLimit: 20,
-                                        callback: function(value, index) {
-                                            // Format date as "Nov 11" - consistent with volume chart
-                                            const date = new Date(value);
-                                            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                                            return `${monthNames[date.getMonth()]} ${date.getDate()}`;
-                                        }
+                                        display: false  // Hide x-axis labels on candlestick chart
+                                    },
+                                    grid: {
+                                        display: false  // Hide grid lines on x-axis
                                     }
                                 },
                                 y: {
@@ -12031,20 +12054,10 @@
                                         tooltipFormat: 'MMM D, YYYY'
                                     },
                                     ticks: {
-                                        source: 'data',
-                                        maxRotation: 45,
-                                        minRotation: 45,
-                                        autoSkip: true,
-                                        maxTicksLimit: 20,
-                                        callback: function(value, index) {
-                                            // Format date as "Nov 11" instead of "Nov Fr"
-                                            const date = new Date(value);
-                                            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                                            return `${monthNames[date.getMonth()]} ${date.getDate()}`;
-                                        }
+                                        display: false  // Hide x-axis labels on volume chart
                                     },
                                     grid: {
-                                        display: false
+                                        display: false  // Hide grid lines on x-axis
                                     }
                                 },
                                 'y-volume': {
@@ -12149,6 +12162,383 @@
                             yAxisID: 'y-obv'
                         });
                         volumeChart.update();
+                    }
+                    
+                    // Add RSI divergence markers to candlestick chart
+                    if (data.rsi_divergence && data.rsi_divergence.length > 0 && candlestickChart) {
+                        data.rsi_divergence.forEach(divergence => {
+                            const divergenceDate = new Date(divergence.date).getTime();
+                            const divergenceColor = divergence.type === 'BULLISH' ? 'rgba(40, 167, 69, 0.9)' : 'rgba(220, 53, 69, 0.9)';
+                            const divergenceLabel = divergence.type === 'BULLISH' ? '🔼 Bullish Divergence' : '🔽 Bearish Divergence';
+                            
+                            // Find the corresponding data point in candlestick data
+                            const dataPoint = candlestickData.find(d => Math.abs(d.x - divergenceDate) < 86400000); // Within 1 day
+                            if (dataPoint) {
+                                // Add scatter point for divergence marker
+                                const markerY = divergence.type === 'BULLISH' ? dataPoint.l : dataPoint.h;
+                                candlestickChart.data.datasets.push({
+                                    label: divergenceLabel,
+                                    data: [{
+                                        x: dataPoint.x,
+                                        y: markerY
+                                    }],
+                                    type: 'scatter',
+                                    pointRadius: 10,
+                                    pointBackgroundColor: divergenceColor,
+                                    pointBorderColor: '#ffffff',
+                                    pointBorderWidth: 2,
+                                    showLine: false
+                                });
+                            }
+                        });
+                        candlestickChart.update();
+                    }
+                    
+                    // Create RSI chart
+                    if (rsiData.length > 0) {
+                        const rsiCtx = document.getElementById('rsiChartCanvas').getContext('2d');
+                        const rsiContainer = rsiCtx.canvas.parentElement;
+                        rsiCtx.canvas.width = rsiContainer.clientWidth;
+                        rsiCtx.canvas.height = rsiContainer.clientHeight;
+                        
+                        // Destroy existing RSI chart if it exists
+                        if (rsiChart) {
+                            rsiChart.destroy();
+                        }
+                        
+                        rsiChart = new Chart(rsiCtx, {
+                            type: 'line',
+                            data: {
+                                datasets: [{
+                                    label: 'RSI (14)',
+                                    data: rsiData,
+                                    borderColor: 'rgba(255, 99, 132, 1)',
+                                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    tension: 0.1,
+                                    fill: false
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: {
+                                    mode: 'index',
+                                    intersect: false
+                                },
+                                scales: {
+                                    x: {
+                                        type: 'time',
+                                        adapters: {
+                                            date: {
+                                                locale: 'en'
+                                            }
+                                        },
+                                        time: {
+                                            unit: 'day',
+                                            displayFormats: {
+                                                millisecond: 'MMM D',
+                                                second: 'MMM D',
+                                                minute: 'MMM D',
+                                                hour: 'MMM D',
+                                                day: 'MMM D',  // Format: Nov 11
+                                                week: 'MMM D',
+                                                month: 'MMM D',
+                                                quarter: 'MMM D',
+                                                year: 'MMM D'
+                                            },
+                                            tooltipFormat: 'MMM D, YYYY'
+                                        },
+                                        ticks: {
+                                            source: 'data',
+                                            maxRotation: 45,
+                                            minRotation: 45,
+                                            autoSkip: true,
+                                            maxTicksLimit: 20,
+                                            display: true,  // Show x-axis labels only on RSI chart (bottom)
+                                            callback: function(value, index) {
+                                                const date = new Date(value);
+                                                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                                return `${monthNames[date.getMonth()]} ${date.getDate()}`;
+                                            }
+                                        },
+                                        grid: {
+                                            display: true  // Show grid lines on x-axis for RSI chart
+                                        }
+                                    },
+                                    y: {
+                                        beginAtZero: false,
+                                        min: 30,
+                                        max: 80,
+                                        ticks: {
+                                            callback: function(value) {
+                                                return value.toFixed(0);
+                                            },
+                                            stepSize: 5
+                                        },
+                                        title: {
+                                            display: true,
+                                            text: 'RSI'
+                                        }
+                                    }
+                                },
+                                plugins: {
+                                    legend: {
+                                        display: true,
+                                        position: 'top'
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: 'RSI (14)'
+                                    },
+                                    tooltip: {
+                                        enabled: true,
+                                        mode: 'index',
+                                        intersect: false,
+                                        callbacks: {
+                                            title: function(context) {
+                                                if (context.length > 0 && context[0].raw) {
+                                                    const raw = context[0].raw;
+                                                    if (raw.x) {
+                                                        const date = new Date(raw.x);
+                                                        return date.toLocaleDateString('en-IN', { 
+                                                            year: 'numeric', 
+                                                            month: 'short', 
+                                                            day: 'numeric' 
+                                                        });
+                                                    }
+                                                }
+                                                return '';
+                                            },
+                                            label: function(context) {
+                                                const label = context.dataset.label || '';
+                                                const value = context.parsed.y;
+                                                if (value != null && !isNaN(value)) {
+                                                    let signal = '';
+                                                    if (value >= 70) {
+                                                        signal = ' (Overbought)';
+                                                    } else if (value <= 30) {
+                                                        signal = ' (Oversold)';
+                                                    }
+                                                    return `${label}: ${value.toFixed(2)}${signal}`;
+                                                }
+                                                return label;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                        // Add RSI divergence markers to RSI chart
+                        if (data.rsi_divergence && data.rsi_divergence.length > 0) {
+                            data.rsi_divergence.forEach(divergence => {
+                                const divergenceDate = new Date(divergence.date).getTime();
+                                const divergenceColor = divergence.type === 'BULLISH' ? 'rgba(40, 167, 69, 0.9)' : 'rgba(220, 53, 69, 0.9)';
+                                const divergenceLabel = divergence.type === 'BULLISH' ? '🔼 Bullish' : '🔽 Bearish';
+                                
+                                // Find the corresponding RSI data point
+                                const rsiPoint = rsiData.find(d => Math.abs(d.x - divergenceDate) < 86400000);
+                                if (rsiPoint) {
+                                    rsiChart.data.datasets.push({
+                                        label: divergenceLabel,
+                                        data: [{
+                                            x: rsiPoint.x,
+                                            y: rsiPoint.y
+                                        }],
+                                        type: 'scatter',
+                                        pointRadius: 8,
+                                        pointBackgroundColor: divergenceColor,
+                                        pointBorderColor: '#ffffff',
+                                        pointBorderWidth: 2,
+                                        showLine: false
+                                    });
+                                }
+                            });
+                            rsiChart.update();
+                        }
+                        
+                        console.log('RSI chart created successfully');
+                    }
+                    
+                    // Synchronize tooltips across all charts
+                    if (candlestickChart && volumeChart && rsiChart) {
+                        const charts = [candlestickChart, volumeChart, rsiChart];
+                        let isSyncing = false; // Prevent infinite loops
+                        
+                        // Function to find the closest data point to a timestamp
+                        function findClosestDataPoint(dataset, targetTimestamp) {
+                            let closestIndex = -1;
+                            let minDistance = Infinity;
+                            
+                            for (let i = 0; i < dataset.data.length; i++) {
+                                const point = dataset.data[i];
+                                if (point && point.x !== undefined) {
+                                    const distance = Math.abs(point.x - targetTimestamp);
+                                    if (distance < minDistance) {
+                                        minDistance = distance;
+                                        closestIndex = i;
+                                    }
+                                }
+                            }
+                            
+                            return closestIndex;
+                        }
+                        
+                        // Function to show tooltips at a specific timestamp on all charts
+                        function showTooltipsAtTimestamp(timestamp, sourceChart, mouseX, mouseY) {
+                            if (isSyncing) return;
+                            isSyncing = true;
+                            
+                            charts.forEach(chart => {
+                                if (!chart || !chart.data) {
+                                    return; // Skip invalid charts only
+                                }
+                                
+                                const activeElements = [];
+                                
+                                chart.data.datasets.forEach((dataset, datasetIndex) => {
+                                    const closestIndex = findClosestDataPoint(dataset, timestamp);
+                                    if (closestIndex >= 0) {
+                                        activeElements.push({
+                                            datasetIndex: datasetIndex,
+                                            index: closestIndex
+                                        });
+                                    }
+                                });
+                                
+                                if (activeElements.length > 0) {
+                                    // Set active elements first to ensure highlighting
+                                    chart.setActiveElements(activeElements);
+                                    
+                                    // Calculate the x position on this chart for the timestamp
+                                    const scale = chart.scales.x;
+                                    if (scale && scale.getPixelForValue) {
+                                        const chartX = scale.getPixelForValue(timestamp);
+                                        const rect = chart.canvas.getBoundingClientRect();
+                                        
+                                        // For the source chart, use the actual mouse position
+                                        // For other charts, calculate position based on timestamp
+                                        let finalX, finalY;
+                                        if (chart === sourceChart) {
+                                            finalX = mouseX;
+                                            finalY = mouseY;
+                                        } else {
+                                            finalX = rect.left + chartX;
+                                            finalY = rect.top + rect.height / 2; // Center vertically
+                                        }
+                                        
+                                        // Create a synthetic mouse event at the correct position
+                                        const syntheticEvent = new MouseEvent('mousemove', {
+                                            bubbles: true,
+                                            cancelable: true,
+                                            view: window,
+                                            clientX: finalX,
+                                            clientY: finalY,
+                                            screenX: window.screenX + finalX,
+                                            screenY: window.screenY + finalY
+                                        });
+                                        
+                                        // Dispatch the event on the chart's canvas to trigger tooltip
+                                        chart.canvas.dispatchEvent(syntheticEvent);
+                                        
+                                        // Update chart to ensure tooltip is displayed
+                                        chart.update('none');
+                                    } else {
+                                        // Fallback: just set active elements and update
+                                        chart.setActiveElements(activeElements);
+                                        chart.update('none');
+                                    }
+                                }
+                            });
+                            
+                            isSyncing = false;
+                        }
+                        
+                        // Add mousemove event listeners to all chart canvases
+                        charts.forEach(chart => {
+                            if (!chart || !chart.canvas) return;
+                            
+                            // Ensure tooltips are enabled
+                            if (chart.options.plugins.tooltip) {
+                                chart.options.plugins.tooltip.enabled = true;
+                            }
+                            
+                            // Add mousemove listener that syncs with other charts
+                            chart.canvas.addEventListener('mousemove', (evt) => {
+                                if (isSyncing) return;
+                                
+                                const rect = chart.canvas.getBoundingClientRect();
+                                const x = evt.clientX - rect.left;
+                                const y = evt.clientY - rect.top;
+                                
+                                // Get the timestamp at this x position
+                                const scale = chart.scales.x;
+                                if (scale && scale.getValueForPixel) {
+                                    try {
+                                        const timestamp = scale.getValueForPixel(x);
+                                        if (timestamp !== null && !isNaN(timestamp) && isFinite(timestamp)) {
+                                            // Show tooltips on all charts (including this one)
+                                            showTooltipsAtTimestamp(timestamp, chart, evt.clientX, evt.clientY);
+                                        }
+                                    } catch (e) {
+                                        // Ignore errors in pixel conversion
+                                    }
+                                }
+                            }, { passive: true });
+                            
+                            chart.canvas.addEventListener('mouseleave', () => {
+                                if (isSyncing) return;
+                                isSyncing = true;
+                                
+                                charts.forEach(c => {
+                                    if (c) {
+                                        c.setActiveElements([]);
+                                        // Hide tooltip by dispatching mouseout
+                                        const mouseOutEvent = new MouseEvent('mouseout', {
+                                            bubbles: true,
+                                            cancelable: true,
+                                            view: window
+                                        });
+                                        c.canvas.dispatchEvent(mouseOutEvent);
+                                        c.update('none');
+                                    }
+                                });
+                                
+                                isSyncing = false;
+                            }, { passive: true });
+                        });
+                        
+                        // Also sync on chart's internal tooltip events
+                        charts.forEach(chart => {
+                            if (!chart) return;
+                            
+                            // Override the tooltip's afterEvent to sync with other charts
+                            const originalAfterEvent = chart.options.plugins.tooltip?.afterEvent;
+                            chart.options.plugins.tooltip = chart.options.plugins.tooltip || {};
+                            chart.options.plugins.tooltip.afterEvent = function(context) {
+                                if (originalAfterEvent) {
+                                    originalAfterEvent.call(this, context);
+                                }
+                                
+                                // If tooltip is showing, sync with other charts
+                                if (context.changed && context.chart.tooltip && context.chart.tooltip.opacity > 0) {
+                                    const activeElements = context.chart.getActiveElements();
+                                    if (activeElements && activeElements.length > 0) {
+                                        const firstElement = activeElements[0];
+                                        const dataset = context.chart.data.datasets[firstElement.datasetIndex];
+                                        const dataPoint = dataset.data[firstElement.index];
+                                        if (dataPoint && dataPoint.x !== undefined) {
+                                            // Get mouse position from the event
+                                            const event = context.event;
+                                            const mouseX = event ? event.x : 0;
+                                            const mouseY = event ? event.y : 0;
+                                            showTooltipsAtTimestamp(dataPoint.x, context.chart, mouseX, mouseY);
+                                        }
+                                    }
+                                }
+                            };
+                        });
                     }
                     
                     } catch (error) {

@@ -276,6 +276,36 @@ async def get_momentum_change(
         }
 
 
+@router.get("/rsi-divergence")
+async def get_rsi_divergence(
+    rsi_period: int = Query(14, ge=5, le=30, description="RSI calculation period"),
+    lookback_days: int = Query(20, ge=10, le=60, description="Number of days to analyze"),
+    min_divergence_strength: float = Query(0.05, ge=0.01, le=0.2, description="Minimum divergence strength (5% = 0.05)")
+):
+    """Get stocks with RSI divergence patterns"""
+    try:
+        service = AlternateDataService()
+        results = service.get_stocks_with_rsi_divergence(
+            rsi_period=rsi_period,
+            lookback_days=lookback_days,
+            min_divergence_strength=min_divergence_strength
+        )
+        return {
+            "success": True,
+            "count": len(results),
+            "stocks": results
+        }
+    except Exception as e:
+        logger.error(f"Error getting RSI divergence: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": str(e),
+            "stocks": []
+        }
+
+
 @router.get("/all")
 async def get_all_alternate_data(
     volume_threshold: float = Query(50.0, ge=0, description="Minimum volume increase percentage"),
@@ -302,7 +332,8 @@ async def get_all_alternate_data(
                 "macd_crossover": len(results.get('macd_crossover', [])),
                 "atr_expansion": len(results.get('atr_expansion', [])),
                 "volume_trend_increasing": len(results.get('volume_trend_increasing', [])),
-                "momentum_change": len(results.get('momentum_change', []))
+                "momentum_change": len(results.get('momentum_change', [])),
+                "rsi_divergence": len(results.get('rsi_divergence', []))
             }
         }
     except Exception as e:
@@ -321,7 +352,8 @@ async def get_all_alternate_data(
                 "macd_crossover": [],
                 "atr_expansion": [],
                 "volume_trend_increasing": [],
-                "momentum_change": []
+                "momentum_change": [],
+                "rsi_divergence": []
             }
         }
 

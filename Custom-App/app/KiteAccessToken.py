@@ -5304,6 +5304,7 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
                 sma_50 = talib.SMA(closes_array, timeperiod=50)
                 sma_200 = talib.SMA(closes_array, timeperiod=200)
                 ema_200 = talib.EMA(closes_array, timeperiod=200)
+                rsi = talib.RSI(closes_array, timeperiod=14)
                 supertrend, supertrend_direction = calculate_supertrend(highs_array, lows_array, closes_array)
                 logging.info(f"Indicators calculated successfully")
             except Exception as e:
@@ -5315,11 +5316,13 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
                 sma_50 = np.full(len(closes_array), np.nan)
                 sma_200 = np.full(len(closes_array), np.nan)
                 ema_200 = np.full(len(closes_array), np.nan)
+                rsi = np.full(len(closes_array), np.nan)
                 supertrend = np.full(len(closes_array), np.nan)
                 supertrend_direction = np.zeros(len(closes_array))
         else:
             # Use pandas for calculations
             logging.info(f"TA-Lib not available, using pandas for calculations")
+            from common.TechnicalIndicators import calculate_rsi
             df = pd.DataFrame({
                 'close': closes_array,
                 'high': highs_array,
@@ -5329,6 +5332,9 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
             sma_50 = df['close'].rolling(window=50).mean().values
             sma_200 = df['close'].rolling(window=200).mean().values
             ema_200 = df['close'].ewm(span=200, adjust=False).mean().values
+            # Calculate RSI using TechnicalIndicators
+            rsi_series = calculate_rsi(df['close'], period=14)
+            rsi = rsi_series.values
             # Simple Supertrend calculation
             supertrend, supertrend_direction = calculate_supertrend(highs_array, lows_array, closes_array)
             logging.info(f"Indicators calculated using pandas")
@@ -5359,6 +5365,24 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
                     alert_15_percent_above_sma50 = True
                     logging.info(f"ALERT: {trading_symbol} is {percent_above:.2f}% above 50 SMA (Price: {current_price:.2f}, SMA50: {current_sma50:.2f})")
         
+        # Detect RSI divergence using ChartService
+        rsi_divergence_points = []
+        if len(closes_array) >= 20 and len(rsi) >= 20:
+            try:
+                from api.services.chart_service import ChartService
+                chart_service = ChartService()
+                rsi_divergence_points = chart_service.detect_rsi_divergence_for_chart(
+                    highs=highs_array,
+                    lows=lows_array,
+                    closes=closes_array,
+                    rsi=rsi,
+                    dates=dates,
+                    lookback_periods=20,
+                    min_divergence_strength=0.05
+                )
+            except Exception as e:
+                logging.debug(f"Error detecting RSI divergence for {trading_symbol}: {e}")
+        
         # Build data array with indicators (rounded to 2 decimal places)
         for i in range(len(dates)):
             data.append({
@@ -5373,6 +5397,7 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
                 "sma_50": round(float(sma_50[i]), 2) if not np.isnan(sma_50[i]) else None,
                 "sma_200": round(float(sma_200[i]), 2) if not np.isnan(sma_200[i]) else None,
                 "ema_200": round(float(ema_200[i]), 2) if not np.isnan(ema_200[i]) else None,
+                "rsi": round(float(rsi[i]), 2) if not np.isnan(rsi[i]) else None,
                 "supertrend": round(float(supertrend[i]), 2) if not np.isnan(supertrend[i]) else None,
                 "supertrend_direction": int(supertrend_direction[i]) if not np.isnan(supertrend_direction[i]) else None
             })
@@ -5622,7 +5647,8 @@ async def api_candlestick(trading_symbol: str, days: int = Query(30, ge=7, le=90
             "alert_40_percent_above_ema200": alert_40_percent_above_ema200,
             "percent_above_ema200": percent_above_ema200,
             "alert_15_percent_above_sma50": alert_15_percent_above_sma50,
-            "percent_above_sma50": percent_above_sma50
+            "percent_above_sma50": percent_above_sma50,
+            "rsi_divergence": rsi_divergence_points
         }
     except Exception as e:
         logging.error(f"Error fetching candlestick data: {e}")

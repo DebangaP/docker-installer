@@ -406,3 +406,110 @@ def detect_declining_momentum(close: pd.Series, period: int = 14) -> float:
     score = max(0.0, min(100.0, score))  # Clamp again
     
     return float(score)
+
+
+def detect_rsi_divergence(highs: np.ndarray, lows: np.ndarray, closes: np.ndarray, 
+                          rsi: np.ndarray, dates: list, 
+                          lookback_periods: int = 20, 
+                          min_divergence_strength: float = 0.05) -> list:
+    """
+    Detect RSI divergence patterns
+    
+    Bullish divergence: Price makes lower lows, but RSI makes higher lows (potential reversal up)
+    Bearish divergence: Price makes higher highs, but RSI makes lower highs (potential reversal down)
+    
+    Args:
+        highs: Array of high prices
+        lows: Array of low prices
+        closes: Array of closing prices
+        rsi: Array of RSI values
+        dates: List of date strings corresponding to the data
+        lookback_periods: Number of periods to analyze (default: 20)
+        min_divergence_strength: Minimum percentage difference to consider divergence (default: 5%)
+        
+    Returns:
+        List of divergence dictionaries with 'date', 'type', 'price', 'rsi', and 'strength'
+    """
+    divergence_points = []
+    
+    if len(closes) < lookback_periods or len(rsi) < lookback_periods:
+        return divergence_points
+    
+    try:
+        # Get recent data
+        recent_prices = closes[-lookback_periods:]
+        recent_highs = highs[-lookback_periods:]
+        recent_lows = lows[-lookback_periods:]
+        recent_rsi = rsi[-lookback_periods:]
+        recent_dates = dates[-lookback_periods:]
+        
+        # Find peaks and troughs
+        price_peaks = []
+        price_troughs = []
+        rsi_peaks = []
+        rsi_troughs = []
+        
+        for i in range(2, len(recent_prices) - 2):
+            # Price peaks
+            if (recent_highs[i] >= recent_highs[i-1] and recent_highs[i] >= recent_highs[i-2] and
+                recent_highs[i] >= recent_highs[i+1] and recent_highs[i] >= recent_highs[i+2]):
+                price_peaks.append((i, recent_highs[i], recent_dates[i]))
+            
+            # Price troughs
+            if (recent_lows[i] <= recent_lows[i-1] and recent_lows[i] <= recent_lows[i-2] and
+                recent_lows[i] <= recent_lows[i+1] and recent_lows[i] <= recent_lows[i+2]):
+                price_troughs.append((i, recent_lows[i], recent_dates[i]))
+            
+            # RSI peaks
+            if not np.isnan(recent_rsi[i]) and (recent_rsi[i] >= recent_rsi[i-1] and recent_rsi[i] >= recent_rsi[i-2] and
+                recent_rsi[i] >= recent_rsi[i+1] and recent_rsi[i] >= recent_rsi[i+2]):
+                rsi_peaks.append((i, recent_rsi[i], recent_dates[i]))
+            
+            # RSI troughs
+            if not np.isnan(recent_rsi[i]) and (recent_rsi[i] <= recent_rsi[i-1] and recent_rsi[i] <= recent_rsi[i-2] and
+                recent_rsi[i] <= recent_rsi[i+1] and recent_rsi[i] <= recent_rsi[i+2]):
+                rsi_troughs.append((i, recent_rsi[i], recent_dates[i]))
+        
+        # Check for bearish divergence (price higher highs, RSI lower highs)
+        if len(price_peaks) >= 2 and len(rsi_peaks) >= 2:
+            last_price_peak = price_peaks[-1]
+            prev_price_peak = price_peaks[-2]
+            last_rsi_peak = rsi_peaks[-1]
+            prev_rsi_peak = rsi_peaks[-2]
+            
+            if abs(last_price_peak[0] - last_rsi_peak[0]) <= 3 and abs(prev_price_peak[0] - prev_rsi_peak[0]) <= 3:
+                price_change = (last_price_peak[1] - prev_price_peak[1]) / prev_price_peak[1]
+                rsi_change = (last_rsi_peak[1] - prev_rsi_peak[1]) / prev_rsi_peak[1]
+                
+                if price_change > min_divergence_strength and rsi_change < -min_divergence_strength:
+                    divergence_points.append({
+                        "date": last_price_peak[2],
+                        "type": "BEARISH",
+                        "price": round(float(last_price_peak[1]), 2),
+                        "rsi": round(float(last_rsi_peak[1]), 2),
+                        "strength": round((abs(price_change) + abs(rsi_change)) * 100, 2)
+                    })
+        
+        # Check for bullish divergence (price lower lows, RSI higher lows)
+        if len(price_troughs) >= 2 and len(rsi_troughs) >= 2:
+            last_price_trough = price_troughs[-1]
+            prev_price_trough = price_troughs[-2]
+            last_rsi_trough = rsi_troughs[-1]
+            prev_rsi_trough = rsi_troughs[-2]
+            
+            if abs(last_price_trough[0] - last_rsi_trough[0]) <= 3 and abs(prev_price_trough[0] - prev_rsi_trough[0]) <= 3:
+                price_change = (last_price_trough[1] - prev_price_trough[1]) / prev_price_trough[1]
+                rsi_change = (last_rsi_trough[1] - prev_rsi_trough[1]) / prev_rsi_trough[1]
+                
+                if price_change < -min_divergence_strength and rsi_change > min_divergence_strength:
+                    divergence_points.append({
+                        "date": last_price_trough[2],
+                        "type": "BULLISH",
+                        "price": round(float(last_price_trough[1]), 2),
+                        "rsi": round(float(last_rsi_trough[1]), 2),
+                        "strength": round((abs(price_change) + abs(rsi_change)) * 100, 2)
+                    })
+    except Exception as e:
+        logging.debug(f"Error detecting RSI divergence: {e}")
+    
+    return divergence_points
