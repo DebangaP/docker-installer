@@ -425,9 +425,10 @@ def generate_new_access_token(request_token):
 app = FastAPI()
 
 # Include API routers
-from api.routers import holdings_router, risk_router
+from api.routers import holdings_router, risk_router, alternate_data_router
 app.include_router(holdings_router)
 app.include_router(risk_router)
+app.include_router(alternate_data_router)
 
 # Initialize services
 holdings_service = HoldingsService()

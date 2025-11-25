@@ -5,9 +5,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.Boilerplate import *
 
 def init_postgres_conn():
+    """Initialize PostgreSQL connection and create tables if needed"""
     try:
         print('init postgres')
+        # Get a fresh database connection
+        conn = get_db_connection()
         cursor = conn.cursor()
+        
         # Create tables not created already, and not part of Schema.sql so that the Postgres container data does not need to be deleted using "docker rm -f $(docker ps -a -q)"
         cursor.execute("""
                 CREATE TABLE IF NOT EXISTS my_schema.holdings (
@@ -47,19 +51,41 @@ def init_postgres_conn():
             """)
         
         conn.commit()
+        cursor.close()
+        conn.close()
         logging.info("Connected to PostgreSQL and initialized tables")
     except Exception as e:
-        conn.rollback()
         logging.error(f"Postgres connection failed: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        try:
+            if 'conn' in locals():
+                conn.rollback()
+                conn.close()
+        except:
+            pass
     
 
 def fetch_and_save_profile():
+    """Fetch user profile from Kite API and save to database"""
     print('fetching profile')
-    profile = kite.profile()  # attempt to fetch user profile
-    logging.info(f"User profile: {profile}")
-    print(type(profile))
-
     try:
+        profile = kite.profile()  # attempt to fetch user profile
+        logging.info(f"User profile: {profile}")
+        print(type(profile))
+    except Exception as e:
+        logging.error(f"Error fetching profile from Kite API: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        raise
+
+    # Get a fresh database connection
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
         cursor.execute("""
                     INSERT INTO my_schema.profile (
                         user_id, user_name, email, user_type, broker,
@@ -80,9 +106,20 @@ def fetch_and_save_profile():
                     profile.get('exchanges', [])
                 ))
         conn.commit()
+        logging.info("Profile saved successfully")
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         logging.error(f"Error saving profile: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        raise
+    finally:
+        # Always close connections
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
 def fetch_and_save_orders(kite: KiteConnect, cursor: psycopg2.extensions.cursor):
