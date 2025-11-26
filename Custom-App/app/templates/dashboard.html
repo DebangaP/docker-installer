@@ -46,14 +46,23 @@
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">📊 Navigation</div>
         <div class="sidebar-tabs">
+            {% if kite_connected %}
             <button class="sidebar-tab active" onclick="switchTab('live-market')" data-tab="live-market">
                 📊 Live Market
             </button>
             <button class="sidebar-tab" onclick="switchTab('holdings')" data-tab="holdings">
                 💼 Holdings
             </button>
+            {% else %}
+            <button class="sidebar-tab" onclick="switchTab('live-market')" data-tab="live-market" disabled style="opacity: 0.5; cursor: not-allowed;" title="Kite connection required">
+                📊 Live Market 🔒
+            </button>
+            <button class="sidebar-tab" onclick="switchTab('holdings')" data-tab="holdings" disabled style="opacity: 0.5; cursor: not-allowed;" title="Kite connection required">
+                💼 Holdings 🔒
+            </button>
+            {% endif %}
             {% if show_stocks_tab %}
-            <button class="sidebar-tab" onclick="switchTab('gainers-losers')" data-tab="gainers-losers">
+            <button class="sidebar-tab {% if not kite_connected %}active{% endif %}" onclick="switchTab('gainers-losers')" data-tab="gainers-losers">
                 📈 Stocks
             </button>
             {% endif %}
@@ -81,12 +90,21 @@
     <!-- Tab Navigation (Hidden) -->
     <div class="tab-navigation" style="display: none;">
         <div class="tab-nav-container">
+            {% if kite_connected %}
             <button class="tab-button active" onclick="switchTab('live-market')">
                 📊 Live Market
             </button>
             <button class="tab-button" onclick="switchTab('holdings')">
                 💼 Holdings
             </button>
+            {% else %}
+            <button class="tab-button" onclick="switchTab('live-market')" disabled style="opacity: 0.5; cursor: not-allowed;" title="Kite connection required">
+                📊 Live Market 🔒
+            </button>
+            <button class="tab-button" onclick="switchTab('holdings')" disabled style="opacity: 0.5; cursor: not-allowed;" title="Kite connection required">
+                💼 Holdings 🔒
+            </button>
+            {% endif %}
             {% if show_stocks_tab %}
             <button class="tab-button" onclick="switchTab('gainers-losers')">
                 📈 Stocks
@@ -110,10 +128,25 @@
         </div>
     </div>
 
+    <!-- Kite Connection Status Banner -->
+    {% if kite_connected is defined and not kite_connected %}
+    <div class="kite-warning-banner" style="background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%); color: white; padding: 20px; margin: 20px auto; max-width: 800px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+            <span style="font-size: 32px;">⚠️</span>
+            <div>
+                <strong style="font-size: 18px; display: block; margin-bottom: 8px;">Kite Not Connected</strong>
+                <div style="font-size: 14px; opacity: 0.95; line-height: 1.6;">
+                    Require Kite authentication. <a href="/" style="color: white; text-decoration: underline; font-weight: bold;">Connect Kite</a> to access these features.
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="main-content">
     <div class="container">
         <!-- Live Market Tab Content -->
-        <div id="live-market-tab" class="tab-content active">
+        <div id="live-market-tab" class="tab-content {% if kite_connected %}active{% endif %}">
         <!-- Backtesting Controls -->
         <div class="backtest-controls">
             <div class="backtest-header">
@@ -304,18 +337,25 @@
             </div>
         </div>
 
-        <!-- TPO-Based Derivatives Suggestions Section -->
+        <!-- Derivatives Suggestions Section -->
         <div class="card" style="margin-bottom: 20px;">
             <div class="card-header" style="padding: 15px 25px;">
-                <h3 class="card-title" style="font-size: 16px;">🎯 TPO-Based Derivatives Suggestions</h3>
+                <h3 class="card-title" style="font-size: 16px;">🎯 Derivatives Suggestions</h3>
                 <span class="card-icon" style="font-size: 20px;">💡</span>
-                <button onclick="loadDerivativesSuggestions()" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; margin-left: 10px;">
-                    🔄 Refresh Suggestions
-                </button>
+                <div style="display: flex; align-items: center; gap: 10px; margin-left: 10px;">
+                    <label for="suggestionType" style="font-size: 12px; font-weight: 600;">Type:</label>
+                    <select id="suggestionType" onchange="loadDerivativesSuggestions()" style="padding: 6px 12px; font-size: 12px; border: 1px solid #ddd; border-radius: 4px; cursor: pointer;">
+                        <option value="tpo">TPO-Based</option>
+                        <option value="orderflow">Order Flow-Based</option>
+                    </select>
+                    <button onclick="loadDerivativesSuggestions()" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">
+                        🔄 Refresh Suggestions
+                    </button>
+                </div>
             </div>
             <div id="derivativesSuggestionsContainer" style="padding: 15px;">
                 <div style="text-align: center; padding: 20px; color: #666;">
-                    Click "Refresh Suggestions" to load TPO-based trading suggestions
+                    Select suggestion type and click "Refresh Suggestions" to load trading suggestions
                 </div>
             </div>
         </div>
@@ -700,7 +740,7 @@
 
         <!-- Stocks Tab Content -->
         {% if show_stocks_tab %}
-        <div id="gainers-losers-tab" class="tab-content">
+        <div id="gainers-losers-tab" class="tab-content {% if not kite_connected and show_stocks_tab %}active{% endif %}">
             <!-- Gainers and Losers Section - Side by Side -->
             <div style="margin-bottom: 20px; display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap;">
                 <!-- Top Gainers -->
@@ -1918,6 +1958,9 @@
     <!-- Note: JavaScript contains Jinja2 template syntax and is kept inline for now -->
     <!-- TODO: Extract to /static/dashboard.js and handle template variables appropriately -->
     <script>
+        // Kite connection status
+        const KITE_CONNECTED = {% if kite_connected %}true{% else %}false{% endif %};
+        
         // Base URL for task API endpoints (background tasks container on port 8001)
         // Use the same hostname as the current page, but port 8001
         const TASKS_API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8001`;
@@ -2063,9 +2106,25 @@
 
         // Initialize sidebar on page load
         document.addEventListener('DOMContentLoaded', function() {
-            // Populate sidebar for initial tab (live-market)
-            populateSidebarSections('live-market');
-            updateSidebarTab('live-market');
+            // Determine initial tab based on Kite connection
+            let initialTab = 'live-market';
+            if (!KITE_CONNECTED) {
+                // Default to first available non-Kite tab
+                {% if show_stocks_tab %}
+                initialTab = 'gainers-losers';
+                {% elif show_options_tab %}
+                initialTab = 'options';
+                {% elif show_fundamentals_tab %}
+                initialTab = 'sentiment';
+                {% elif show_utilities_tab %}
+                initialTab = 'utilities';
+                {% endif %}
+                // Switch to the initial tab
+                switchTab(initialTab);
+            }
+            // Populate sidebar for initial tab
+            populateSidebarSections(initialTab);
+            updateSidebarTab(initialTab);
             
             // Add scroll event listener to update active section
             let scrollTimeout;
@@ -4814,9 +4873,10 @@
         
         function loadDerivativesSuggestions() {
             const container = document.getElementById('derivativesSuggestionsContainer');
+            const suggestionType = document.getElementById('suggestionType').value;
             container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Loading suggestions...</div>';
             
-            fetch('/api/derivatives_suggestions')
+            fetch(`/api/derivatives_suggestions?suggestion_type=${suggestionType}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.error || !data.success) {
@@ -4824,8 +4884,9 @@
                         return;
                     }
                     
+                    const suggestionTypeLabel = data.suggestion_type === 'orderflow' ? 'Order Flow-Based' : 'TPO-Based';
                     let html = `<div style="margin-bottom: 15px; font-size: 12px; color: #666;">
-                        Analysis Date: ${data.analysis_date} | Current Price: ₹${data.current_price ? data.current_price.toFixed(2) : 'N/A'} | Total Suggestions: ${data.total_suggestions || 0}
+                        <strong>Suggestion Type:</strong> ${suggestionTypeLabel} | Analysis Date: ${data.analysis_date} | Current Price: ₹${data.current_price ? data.current_price.toFixed(2) : 'N/A'} | Total Suggestions: ${data.total_suggestions || 0}
                     </div>`;
                     
                     // Display Filtering Statistics Table (always show, even if no suggestions)
@@ -4836,9 +4897,10 @@
                                            (stats.filtered_pressure_conflict || 0) + (stats.filtered_weak_confidence || 0);
                         const retentionPct = initialCount > 0 ? ((stats.final_count || 0) / initialCount * 100).toFixed(1) : 0;
                         
+                        const statsTypeLabel = data.suggestion_type === 'orderflow' ? 'Order Flow-Based' : 'TPO-Based';
                         html += `
                             <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-                                <h4 style="margin: 0 0 15px 0; font-size: 14px; font-weight: 600; color: #333;">📊 Filtering Statistics</h4>
+                                <h4 style="margin: 0 0 15px 0; font-size: 14px; font-weight: 600; color: #333;">📊 Filtering Statistics (${statsTypeLabel})</h4>
                                 <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
                                     <thead>
                                         <tr style="background: #e9ecef;">
@@ -4852,7 +4914,7 @@
                                         <tr style="background: ${initialCount === 0 ? '#f8d7da' : '#f8f9fa'};">
                                             <td style="padding: 8px; border: 1px solid #dee2e6;"><strong>Initial Suggestions Generated</strong>${initialCount === 0 ? ' ⚠️' : ''}</td>
                                             <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6; ${initialCount === 0 ? 'color: #721c24; font-weight: bold;' : ''}">${initialCount}</td>
-                                            <td style="padding: 8px; border: 1px solid #dee2e6;">${initialCount === 0 ? '<span style="color: #721c24; font-weight: 600;">⚠️ ISSUE: No suggestions generated. Check TPO data, market conditions, or price levels.</span>' : 'All suggestions before filtering'}</td>
+                                            <td style="padding: 8px; border: 1px solid #dee2e6;">${initialCount === 0 ? `<span style="color: #721c24; font-weight: 600;">⚠️ ISSUE: No suggestions generated. Check ${statsTypeLabel === 'Order Flow-Based' ? 'order flow' : 'TPO'} data, market conditions, or price levels.</span>` : 'All suggestions before filtering'}</td>
                                             <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">${initialCount > 0 ? '100.0%' : 'N/A'}</td>
                                         </tr>
                                         <tr style="background: ${(stats.filtered_exhaustion || 0) > 0 ? '#fff3cd' : '#f8f9fa'};">
@@ -8572,6 +8634,12 @@
 
         // Tab Switching Functionality
         function switchTab(tabName) {
+            // Prevent switching to Kite-dependent tabs if Kite is not connected
+            if (!KITE_CONNECTED && (tabName === 'live-market' || tabName === 'holdings')) {
+                alert('Kite connection is required to access ' + (tabName === 'live-market' ? 'Live Market' : 'Holdings') + ' features. Please connect Kite to continue.');
+                return;
+            }
+            
             // Stop auto-refresh for utilities tab if switching away
             if (tabName !== 'utilities') {
                 stopCronStatusAutoRefresh();

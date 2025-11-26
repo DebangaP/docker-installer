@@ -713,10 +713,13 @@ def get_system_status():
         'last_update': last_update_value
     }
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request, page: int = Query(1, ge=1)):
-    """Dashboard route - shows dashboard if valid token exists"""
+async def dashboard(request: Request, page: int = Query(1, ge=1), skip_kite: bool = Query(False)):
+    """Dashboard route - shows dashboard with or without Kite token"""
     # Check if valid access token exists in Redis
     existing_token = redis_client.get("kite_access_token")
+    kite_connected = False
+    holdings_info = None
+    
     if existing_token:
         # Handle both string and bytes from Redis
         if isinstance(existing_token, bytes):
@@ -725,38 +728,38 @@ async def dashboard(request: Request, page: int = Query(1, ge=1)):
         # Check if token is still valid
         if is_access_token_valid(existing_token):
             logging.info("Valid access token found, showing dashboard")
+            kite_connected = True
             
-            # Get system status for dashboard
-            system_status = get_system_status()
-            tick_data = system_status['tick_data']
-            # Debug: log values being passed to template
-            logging.info(
-                f"DashboardRender last_update={system_status['last_update']}, total_ticks={tick_data['total_ticks']}"
-            )
-            holdings_info = holdings_service.get_holdings_data(page=page, per_page=10)
-            
-            # Enrich holdings with today's P&L
-            holdings_info = holdings_service.enrich_holdings_with_today_pnl(holdings_info)
-            
-            return templates.TemplateResponse("dashboard.html", {
-                "request": request,
-                "token_status": "Valid" if system_status['token_valid'] else "Invalid",
-                "tick_status": "Active" if tick_data['active'] else "Inactive",
-                "last_update": system_status['last_update'],
-                "total_ticks": tick_data['total_ticks'],
-                "holdings_info": holdings_info,
-                "show_holdings": SHOW_HOLDINGS,
-                "show_stocks_tab": SHOW_STOCKS_TAB,
-                "show_options_tab": SHOW_OPTIONS_TAB,
-                "show_utilities_tab": SHOW_UTILITIES_TAB,
-                "show_fundamentals_tab": SHOW_FUNDAMENTALS_TAB
-            })
+            # Get holdings data only if Kite is connected
+            try:
+                holdings_info = holdings_service.get_holdings_data(page=page, per_page=10)
+                # Enrich holdings with today's P&L
+                holdings_info = holdings_service.enrich_holdings_with_today_pnl(holdings_info)
+            except Exception as e:
+                logging.warning(f"Error fetching holdings: {e}")
+                holdings_info = None
     
-    # No valid token, redirect to login
-    login_url = kite.login_url()
-    return templates.TemplateResponse("login.html", {
+    # Get system status for dashboard (works with or without Kite)
+    system_status = get_system_status()
+    tick_data = system_status['tick_data']
+    # Debug: log values being passed to template
+    logging.info(
+        f"DashboardRender last_update={system_status['last_update']}, total_ticks={tick_data['total_ticks']}, kite_connected={kite_connected}"
+    )
+    
+    return templates.TemplateResponse("dashboard.html", {
         "request": request,
-        "login_url": login_url
+        "token_status": "Valid" if kite_connected else "Not Connected",
+        "tick_status": "Active" if tick_data['active'] else "Inactive",
+        "last_update": system_status['last_update'],
+        "total_ticks": tick_data['total_ticks'],
+        "holdings_info": holdings_info,
+        "kite_connected": kite_connected,
+        "show_holdings": SHOW_HOLDINGS and kite_connected,
+        "show_stocks_tab": SHOW_STOCKS_TAB,
+        "show_options_tab": SHOW_OPTIONS_TAB,
+        "show_utilities_tab": SHOW_UTILITIES_TAB,
+        "show_fundamentals_tab": SHOW_FUNDAMENTALS_TAB
     })
 
 @app.get("/", response_class=HTMLResponse)
@@ -803,6 +806,7 @@ async def home(
             "last_update": system_status['last_update'],
             "total_ticks": tick_data['total_ticks'],
             "holdings_info": holdings_info,
+            "kite_connected": True,  # User just logged in with Kite
             "show_holdings": SHOW_HOLDINGS,
             "show_stocks_tab": SHOW_STOCKS_TAB,
             "show_options_tab": SHOW_OPTIONS_TAB,
@@ -824,7 +828,7 @@ async def home(
                 from fastapi.responses import RedirectResponse
                 return RedirectResponse(url="/dashboard", status_code=302)
         
-        # Show login page
+        # Show login page (users can choose to continue without Kite)
         login_url = kite.login_url()
         return templates.TemplateResponse("login.html", {
             "request": request,
@@ -1306,10 +1310,66 @@ async def refresh_data():
 @app.get("/logout")
 async def logout():
     """Endpoint to logout and clear tokens"""
-    redis_client.delete("kite_access_token")
-    redis_client.delete("kite_access_token_timestamp")
-    redis_client.delete("kite_request_token")
-    return {"message": "Logged out successfully", "status": "success"}
+    try:
+        # Test Redis connection first
+        try:
+            redis_client.ping()
+            logging.info("Redis connection is active")
+        except Exception as conn_error:
+            logging.error(f"Redis connection error: {conn_error}")
+            # Still try to delete, but log the error
+        
+        # Get token values before deletion for logging
+        token_before = redis_client.get("kite_access_token")
+        logging.info(f"Token before deletion: {'exists' if token_before else 'not found'}")
+        
+        # Use pipeline for atomic deletion of all tokens
+        pipe = redis_client.pipeline()
+        pipe.delete("kite_access_token")
+        pipe.delete("kite_access_token_timestamp")
+        pipe.delete("kite_request_token")
+        results = pipe.execute()
+        
+        deleted_count = sum(results)
+        logging.info(f"Pipeline deletion results: {results}, total deleted: {deleted_count}")
+        
+        # Also try individual deletes as fallback
+        if deleted_count == 0:
+            logging.warning("Pipeline deletion returned 0, trying individual deletes...")
+            result1 = redis_client.delete("kite_access_token")
+            result2 = redis_client.delete("kite_access_token_timestamp")
+            result3 = redis_client.delete("kite_request_token")
+            deleted_count = result1 + result2 + result3
+            logging.info(f"Individual deletion results: {[result1, result2, result3]}, total deleted: {deleted_count}")
+        
+        logging.info(f"Logout completed. Deleted {deleted_count} token(s) from Redis")
+        
+        # Verify deletion by checking if token still exists
+        try:
+            remaining_token = redis_client.get("kite_access_token")
+            if remaining_token:
+                logging.error(f"ERROR: kite_access_token still exists in Redis after deletion: {remaining_token}")
+                # Try force delete with unlink (non-blocking)
+                try:
+                    redis_client.unlink("kite_access_token")
+                    redis_client.unlink("kite_access_token_timestamp")
+                    redis_client.unlink("kite_request_token")
+                    logging.info("Attempted force delete using unlink")
+                except Exception as unlink_error:
+                    logging.error(f"Error using unlink: {unlink_error}")
+            else:
+                logging.info("Verified: kite_access_token successfully deleted from Redis")
+        except Exception as e:
+            logging.error(f"Error verifying token deletion: {e}")
+            
+    except Exception as e:
+        logging.error(f"Error during logout: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+    
+    # Redirect to login page
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/", status_code=302)
 
 @app.post("/api/clear_cache")
 async def api_clear_cache():
@@ -5786,9 +5846,10 @@ async def api_cancel_all_gtts():
 @app.get("/api/derivatives_suggestions")
 async def api_derivatives_suggestions(
     instrument_token: int = Query(256265, description="Instrument token (default: 256265 for Nifty 50)"),
-    analysis_date: str = Query(None, description="Analysis date in YYYY-MM-DD format (default: today)")
+    analysis_date: str = Query(None, description="Analysis date in YYYY-MM-DD format (default: today)"),
+    suggestion_type: str = Query('tpo', description="Suggestion type: 'tpo' for TPO-based, 'orderflow' for Order flow-based")
 ):
-    """API endpoint to get TPO-based derivatives trading suggestions"""
+    """API endpoint to get derivatives trading suggestions (TPO-based or Order flow-based)"""
     try:
         from market.CalculateTPO import PostgresDataFetcher
         from options.DerivativesTPOAnalyzer import DerivativesTPOAnalyzer
@@ -5837,8 +5898,8 @@ async def api_derivatives_suggestions(
             finally:
                 conn.close()
         
-        # Generate suggestions
-        suggestions = suggestion_engine.generate_suggestions(analysis_date, current_price)
+        # Generate suggestions based on type
+        suggestions = suggestion_engine.generate_suggestions(analysis_date, current_price, suggestion_type=suggestion_type.lower())
         
         # Get filtering statistics
         filtering_stats = getattr(suggestion_engine, '_last_filtering_stats', {
@@ -5858,6 +5919,7 @@ async def api_derivatives_suggestions(
             "analysis_date": analysis_date or datetime.now().strftime('%Y-%m-%d'),
             "instrument_token": instrument_token,
             "current_price": current_price,
+            "suggestion_type": suggestion_type.lower(),
             "suggestions": suggestions,
             "total_suggestions": len(suggestions),
             "filtering_stats": filtering_stats

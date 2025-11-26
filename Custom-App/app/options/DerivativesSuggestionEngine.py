@@ -10,6 +10,7 @@ from options.DerivativesTPOAnalyzer import DerivativesTPOAnalyzer
 from market.OrderFlowAnalyzer import OrderFlowAnalyzer
 from options.OptionsDataFetcher import OptionsDataFetcher
 from market.CalculateTPO import PostgresDataFetcher
+from common.Boilerplate import get_db_connection
 import pandas as pd
 import numpy as np
 
@@ -190,7 +191,24 @@ class DerivativesSuggestionEngine:
         self.options_fetcher = OptionsDataFetcher()
         self.db_fetcher = tpo_analyzer.db_fetcher if hasattr(tpo_analyzer, 'db_fetcher') else None
     
-    def generate_suggestions(self, analysis_date: str = None, current_price: float = None) -> List[Dict]:
+    def generate_suggestions(self, analysis_date: str = None, current_price: float = None, suggestion_type: str = 'tpo') -> List[Dict]:
+        """
+        Generate derivatives trading suggestions based on TPO analysis or Order flow analysis
+        
+        Args:
+            analysis_date: Date for analysis
+            current_price: Current market price (optional, will be fetched if not provided)
+            suggestion_type: 'tpo' for TPO-based suggestions, 'orderflow' for Order flow-based suggestions
+            
+        Returns:
+            List of suggestion dictionaries
+        """
+        if suggestion_type.lower() == 'orderflow':
+            return self.generate_order_flow_suggestions(analysis_date, current_price)
+        else:
+            return self.generate_tpo_suggestions(analysis_date, current_price)
+    
+    def generate_tpo_suggestions(self, analysis_date: str = None, current_price: float = None) -> List[Dict]:
         """
         Generate derivatives trading suggestions based on TPO analysis
         
@@ -1789,4 +1807,629 @@ class DerivativesSuggestionEngine:
             'signal_alignment': signal_alignment,
             'risk_factors': risk_factors,
             'key_levels': key_levels
+        }
+    
+    def generate_order_flow_suggestions(self, analysis_date: str = None, current_price: float = None) -> List[Dict]:
+        """
+        Generate derivatives trading suggestions based on Order Flow analysis
+        
+        Args:
+            analysis_date: Date for analysis
+            current_price: Current market price (optional, will be fetched if not provided)
+            
+        Returns:
+            List of suggestion dictionaries
+        """
+        if not analysis_date:
+            analysis_date = datetime.now().strftime('%Y-%m-%d')
+        
+        suggestions = []
+        
+        # Fetch order flow data (primary signal source)
+        order_flow_data = self._fetch_order_flow_data(analysis_date)
+        
+        if not order_flow_data.get('success'):
+            logging.warning("No order flow data available for suggestions")
+            return suggestions
+        
+        # Get current price if not provided
+        if not current_price:
+            # Try to get from order flow data or database
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT last_price FROM my_schema.futures_ticks
+                    WHERE instrument_token = %s
+                    ORDER BY timestamp DESC LIMIT 1
+                """, (self.futures_instrument_token,))
+                result = cursor.fetchone()
+                if result:
+                    current_price = float(result[0])
+                conn.close()
+            except Exception as e:
+                logging.warning(f"Could not fetch current price: {e}")
+        
+        if not current_price:
+            logging.warning("Unable to determine current price for order flow suggestions")
+            return suggestions
+        
+        # Fetch additional data sources for context
+        market_bias_data = self._fetch_market_bias_data(analysis_date)
+        options_data = self._fetch_options_data(analysis_date, current_price)
+        futures_data = self._fetch_futures_data(analysis_date)
+        tick_momentum = self._analyze_tick_momentum(analysis_date)
+        
+        # Get TPO data for reference (but not primary signal)
+        pre_market_tpo = self.tpo_analyzer.get_tpo_analysis(analysis_date, 'pre_market')
+        live_tpo = self.tpo_analyzer.get_tpo_analysis(analysis_date, 'live')
+        tpo_data = live_tpo if live_tpo else pre_market_tpo
+        if isinstance(tpo_data, list):
+            tpo_data = tpo_data[0] if tpo_data else {}
+        
+        # Combine all signals into a unified context (order flow is primary)
+        market_context = {
+            'tpo_data': tpo_data or {},
+            'pre_market_tpo': pre_market_tpo,
+            'order_flow': order_flow_data,
+            'market_bias': market_bias_data,
+            'options_data': options_data,
+            'futures_data': futures_data,
+            'tick_momentum': tick_momentum,
+            'current_price': current_price,
+            'suggestion_type': 'orderflow'
+        }
+        
+        # Generate suggestions based on order flow signals
+        futures_suggestions = self._generate_order_flow_futures_suggestions(market_context)
+        suggestions.extend(futures_suggestions)
+        
+        # Generate options suggestions based on order flow
+        options_suggestions = self._generate_order_flow_options_suggestions(market_context)
+        suggestions.extend(options_suggestions)
+        
+        # Apply filtering (less aggressive for order flow-based)
+        filtered_suggestions, filtering_stats = self._filter_order_flow_suggestions(suggestions, order_flow_data)
+        
+        # Add generation diagnostics to filtering stats
+        filtering_stats['futures_generated'] = len(futures_suggestions)
+        filtering_stats['options_generated'] = len(options_suggestions)
+        filtering_stats['generation_issue'] = len(suggestions) == 0
+        filtering_stats['suggestion_type'] = 'orderflow'
+        
+        # Add decision logic and context to each suggestion
+        for suggestion in filtered_suggestions:
+            direction = 'Bullish' if suggestion.get('action') == 'BUY' else 'Bearish' if suggestion.get('action') == 'SELL' else 'Neutral'
+            
+            # Build decision logic
+            decision_logic = self._build_order_flow_decision_logic(market_context, suggestion, direction)
+            suggestion['decision_logic'] = decision_logic
+            
+            # Add context information
+            decision_context = self._build_order_flow_decision_context(market_context, suggestion, direction)
+            suggestion['decision_context'] = decision_context
+        
+        logging.info(f"Order flow suggestions generated: futures={len(futures_suggestions)}, options={len(options_suggestions)}, initial={len(suggestions)}, filtered={len(filtered_suggestions)}")
+        
+        if len(suggestions) == 0:
+            logging.warning("No order flow suggestions generated. Possible reasons: missing order flow data, invalid price, or market conditions don't meet criteria.")
+        
+        # Store filtering stats in a class variable for API access
+        self._last_filtering_stats = filtering_stats
+        
+        return filtered_suggestions
+    
+    def _generate_order_flow_futures_suggestions(self, market_context: Dict) -> List[Dict]:
+        """
+        Generate futures trading suggestions based on order flow signals
+        """
+        suggestions = []
+        order_flow = market_context.get('order_flow', {})
+        current_price = market_context.get('current_price')
+        
+        if not order_flow.get('success') or not current_price:
+            return suggestions
+        
+        # Get order flow signals
+        pressure_analysis = order_flow.get('pressure_analysis', {})
+        trapped_traders = order_flow.get('trapped_traders', {})
+        exhaustion_signals = order_flow.get('exhaustion_signals', {})
+        absorption_zones = order_flow.get('absorption_zones', [])
+        overall_sentiment = order_flow.get('overall_sentiment', {})
+        
+        pressure_direction = pressure_analysis.get('pressure_direction', 'Neutral')
+        sentiment = overall_sentiment.get('sentiment', 'Neutral')
+        
+        # Use TPO data for reference levels if available
+        tpo_data = market_context.get('tpo_data', {})
+        poc = tpo_data.get('poc') if tpo_data else None
+        vah = tpo_data.get('value_area_high') if tpo_data else None
+        val = tpo_data.get('value_area_low') if tpo_data else None
+        
+        # Calculate position sizing
+        num_lots = 50  # Default
+        lot_size = 50
+        
+        # Generate BUY suggestions based on order flow
+        if pressure_direction in ['Strong_buy', 'Buy'] or sentiment in ['Bullish', 'Strongly_Bullish']:
+            # Check for trapped sellers (bullish signal)
+            trapped_sellers = trapped_traders.get('trapped_sellers', [])
+            if trapped_sellers or pressure_direction in ['Strong_buy', 'Buy']:
+                entry_level = current_price
+                
+                # Determine targets based on absorption zones or TPO levels
+                target_levels = []
+                if absorption_zones:
+                    # Use upper boundary of latest absorption zone
+                    latest_zone = absorption_zones[-1]
+                    zone_high = latest_zone.get('price_high') or latest_zone.get('price')
+                    if zone_high and zone_high > entry_level:
+                        profit = calculate_futures_profit(entry_level, zone_high, 'BUY', num_lots, lot_size)
+                        if profit > 0:
+                            target_levels.append({
+                                'level': zone_high,
+                                'type': 'Absorption Zone',
+                                'probability': 'High',
+                                'potential_profit': profit
+                            })
+                
+                # Use VAH if available and higher than entry
+                if vah and vah > entry_level and not any(t.get('level') == vah for t in target_levels):
+                    profit = calculate_futures_profit(entry_level, vah, 'BUY', num_lots, lot_size)
+                    if profit > 0:
+                        target_levels.append({
+                            'level': vah,
+                            'type': 'VAH (TPO Reference)',
+                            'probability': 'Medium',
+                            'potential_profit': profit
+                        })
+                
+                # Use trapped seller levels as targets
+                for trapped in trapped_sellers[:3]:  # Top 3 trapped seller levels
+                    trapped_price = trapped.get('futures_price') or trapped.get('price')
+                    if trapped_price and trapped_price > entry_level:
+                        profit = calculate_futures_profit(entry_level, trapped_price, 'BUY', num_lots, lot_size)
+                        if profit > 0:
+                            target_levels.append({
+                                'level': trapped_price,
+                                'type': 'Trapped Seller Level',
+                                'probability': 'High',
+                                'potential_profit': profit
+                            })
+                
+                if target_levels:
+                    max_profit = max(t.get('potential_profit', 0) for t in target_levels)
+                    margin_info = calculate_futures_margin(entry_level, num_lots)
+                    
+                    # Determine stop loss
+                    stop_loss = None
+                    if absorption_zones:
+                        latest_zone = absorption_zones[-1]
+                        zone_low = latest_zone.get('price_low') or latest_zone.get('price')
+                        if zone_low and zone_low < entry_level:
+                            stop_loss = zone_low - 5
+                    if not stop_loss and val:
+                        stop_loss = val - 10
+                    elif not stop_loss:
+                        stop_loss = entry_level - (entry_level * 0.01)  # 1% stop loss
+                    
+                    suggestion = {
+                        'instrument': 'NIFTY',
+                        'derivative_type': 'FUTURES',
+                        'action': 'BUY',
+                        'entry_level': entry_level,
+                        'stop_loss': stop_loss,
+                        'target_levels': target_levels,
+                        'position_size': f"{num_lots} lots",
+                        'max_potential_profit': round(max_profit, 2),
+                        'confidence_score': self._calculate_order_flow_confidence(order_flow, 'Bullish'),
+                        'rationale': self._build_order_flow_rationale(order_flow, 'Bullish', trapped_sellers),
+                        'order_flow_signals': {
+                            'pressure_direction': pressure_direction,
+                            'sentiment': sentiment,
+                            'trapped_sellers_count': len(trapped_sellers),
+                            'exhaustion_signals': exhaustion_signals.get('selling_exhaustion', 0)
+                        },
+                        'required_margin': margin_info,
+                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'source': 'orderflow'
+                    }
+                    suggestions.append(suggestion)
+        
+        # Generate SELL suggestions based on order flow
+        if pressure_direction in ['Strong_sell', 'Sell'] or sentiment in ['Bearish', 'Strongly_Bearish']:
+            # Check for trapped buyers (bearish signal)
+            trapped_buyers = trapped_traders.get('trapped_buyers', [])
+            if trapped_buyers or pressure_direction in ['Strong_sell', 'Sell']:
+                entry_level = current_price
+                
+                # Determine targets based on absorption zones or TPO levels
+                target_levels = []
+                if absorption_zones:
+                    # Use lower boundary of latest absorption zone
+                    latest_zone = absorption_zones[-1]
+                    zone_low = latest_zone.get('price_low') or latest_zone.get('price')
+                    if zone_low and zone_low < entry_level:
+                        profit = calculate_futures_profit(entry_level, zone_low, 'SELL', num_lots, lot_size)
+                        if profit > 0:
+                            target_levels.append({
+                                'level': zone_low,
+                                'type': 'Absorption Zone',
+                                'probability': 'High',
+                                'potential_profit': profit
+                            })
+                
+                # Use VAL if available and lower than entry
+                if val and val < entry_level and not any(t.get('level') == val for t in target_levels):
+                    profit = calculate_futures_profit(entry_level, val, 'SELL', num_lots, lot_size)
+                    if profit > 0:
+                        target_levels.append({
+                            'level': val,
+                            'type': 'VAL (TPO Reference)',
+                            'probability': 'Medium',
+                            'potential_profit': profit
+                        })
+                
+                # Use trapped buyer levels as targets
+                for trapped in trapped_buyers[:3]:  # Top 3 trapped buyer levels
+                    trapped_price = trapped.get('futures_price') or trapped.get('price')
+                    if trapped_price and trapped_price < entry_level:
+                        profit = calculate_futures_profit(entry_level, trapped_price, 'SELL', num_lots, lot_size)
+                        if profit > 0:
+                            target_levels.append({
+                                'level': trapped_price,
+                                'type': 'Trapped Buyer Level',
+                                'probability': 'High',
+                                'potential_profit': profit
+                            })
+                
+                if target_levels:
+                    max_profit = max(t.get('potential_profit', 0) for t in target_levels)
+                    margin_info = calculate_futures_margin(entry_level, num_lots)
+                    
+                    # Determine stop loss
+                    stop_loss = None
+                    if absorption_zones:
+                        latest_zone = absorption_zones[-1]
+                        zone_high = latest_zone.get('price_high') or latest_zone.get('price')
+                        if zone_high and zone_high > entry_level:
+                            stop_loss = zone_high + 5
+                    if not stop_loss and vah:
+                        stop_loss = vah + 10
+                    elif not stop_loss:
+                        stop_loss = entry_level + (entry_level * 0.01)  # 1% stop loss
+                    
+                    suggestion = {
+                        'instrument': 'NIFTY',
+                        'derivative_type': 'FUTURES',
+                        'action': 'SELL',
+                        'entry_level': entry_level,
+                        'stop_loss': stop_loss,
+                        'target_levels': target_levels,
+                        'position_size': f"{num_lots} lots",
+                        'max_potential_profit': round(max_profit, 2),
+                        'confidence_score': self._calculate_order_flow_confidence(order_flow, 'Bearish'),
+                        'rationale': self._build_order_flow_rationale(order_flow, 'Bearish', trapped_buyers),
+                        'order_flow_signals': {
+                            'pressure_direction': pressure_direction,
+                            'sentiment': sentiment,
+                            'trapped_buyers_count': len(trapped_buyers),
+                            'exhaustion_signals': exhaustion_signals.get('buying_exhaustion', 0)
+                        },
+                        'required_margin': margin_info,
+                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'source': 'orderflow'
+                    }
+                    suggestions.append(suggestion)
+        
+        return suggestions
+    
+    def _generate_order_flow_options_suggestions(self, market_context: Dict) -> List[Dict]:
+        """
+        Generate options trading suggestions based on order flow signals
+        """
+        suggestions = []
+        order_flow = market_context.get('order_flow', {})
+        current_price = market_context.get('current_price')
+        options_data = market_context.get('options_data', {})
+        
+        if not order_flow.get('success') or not current_price:
+            return suggestions
+        
+        # Get order flow signals
+        pressure_analysis = order_flow.get('pressure_analysis', {})
+        trapped_traders = order_flow.get('trapped_traders', {})
+        overall_sentiment = order_flow.get('overall_sentiment', {})
+        
+        pressure_direction = pressure_analysis.get('pressure_direction', 'Neutral')
+        sentiment = overall_sentiment.get('sentiment', 'Neutral')
+        
+        # Round to nearest 50 for Nifty strikes
+        def round_to_strike(price):
+            return round(price / 50) * 50
+        
+        num_lots = 2
+        lot_size = 50
+        estimated_premium_pct = 0.02
+        estimated_premium = current_price * estimated_premium_pct
+        
+        # Generate CALL suggestions
+        if pressure_direction in ['Strong_buy', 'Buy'] or sentiment in ['Bullish', 'Strongly_Bullish']:
+            trapped_sellers = trapped_traders.get('trapped_sellers', [])
+            if trapped_sellers:
+                # Use trapped seller level as strike reference
+                latest_trapped = trapped_sellers[-1]
+                trapped_price = latest_trapped.get('futures_price') or latest_trapped.get('price')
+                call_strike = round_to_strike(trapped_price) if trapped_price else round_to_strike(current_price)
+            else:
+                call_strike = round_to_strike(current_price)
+            
+            # Determine targets
+            target_levels = []
+            if trapped_sellers:
+                for trapped in trapped_sellers[:2]:
+                    trapped_price = trapped.get('futures_price') or trapped.get('price')
+                    if trapped_price and trapped_price > call_strike:
+                        profit = calculate_options_profit(current_price, trapped_price, call_strike, 
+                                                           estimated_premium, 'CALL', num_lots, lot_size)
+                        if profit > 0:
+                            target_levels.append({
+                                'level': trapped_price,
+                                'type': 'Trapped Seller Level',
+                                'probability': 'High',
+                                'potential_profit': profit
+                            })
+            
+            if target_levels:
+                max_profit = max(t.get('potential_profit', 0) for t in target_levels)
+                margin_info = calculate_options_margin(call_strike, estimated_premium, num_lots, is_long=True)
+                
+                suggestion = {
+                    'instrument': 'NIFTY',
+                    'derivative_type': 'CALL',
+                    'action': 'BUY',
+                    'strike_price': call_strike,
+                    'entry_level': current_price,
+                    'stop_loss': None,
+                    'target_levels': target_levels,
+                    'position_size': f'{num_lots} lots',
+                    'max_potential_profit': round(max_profit, 2),
+                    'confidence_score': self._calculate_order_flow_confidence(order_flow, 'Bullish'),
+                    'rationale': f"Order flow shows {pressure_direction.lower()} pressure and {sentiment.lower()} sentiment. Trapped sellers detected ({len(trapped_sellers)} instances) - bullish reversal potential.",
+                    'order_flow_signals': {
+                        'pressure_direction': pressure_direction,
+                        'sentiment': sentiment,
+                        'trapped_sellers_count': len(trapped_sellers)
+                    },
+                    'required_margin': margin_info,
+                    'estimated_premium': estimated_premium,
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'source': 'orderflow'
+                }
+                suggestions.append(suggestion)
+        
+        # Generate PUT suggestions
+        if pressure_direction in ['Strong_sell', 'Sell'] or sentiment in ['Bearish', 'Strongly_Bearish']:
+            trapped_buyers = trapped_traders.get('trapped_buyers', [])
+            if trapped_buyers:
+                # Use trapped buyer level as strike reference
+                latest_trapped = trapped_buyers[-1]
+                trapped_price = latest_trapped.get('futures_price') or latest_trapped.get('price')
+                put_strike = round_to_strike(trapped_price) if trapped_price else round_to_strike(current_price)
+            else:
+                put_strike = round_to_strike(current_price)
+            
+            # Determine targets
+            target_levels = []
+            if trapped_buyers:
+                for trapped in trapped_buyers[:2]:
+                    trapped_price = trapped.get('futures_price') or trapped.get('price')
+                    if trapped_price and trapped_price < put_strike:
+                        profit = calculate_options_profit(current_price, trapped_price, put_strike, 
+                                                           estimated_premium, 'PUT', num_lots, lot_size)
+                        if profit > 0:
+                            target_levels.append({
+                                'level': trapped_price,
+                                'type': 'Trapped Buyer Level',
+                                'probability': 'High',
+                                'potential_profit': profit
+                            })
+            
+            if target_levels:
+                max_profit = max(t.get('potential_profit', 0) for t in target_levels)
+                margin_info = calculate_options_margin(put_strike, estimated_premium, num_lots, is_long=True)
+                
+                suggestion = {
+                    'instrument': 'NIFTY',
+                    'derivative_type': 'PUT',
+                    'action': 'BUY',
+                    'strike_price': put_strike,
+                    'entry_level': current_price,
+                    'stop_loss': None,
+                    'target_levels': target_levels,
+                    'position_size': f'{num_lots} lots',
+                    'max_potential_profit': round(max_profit, 2),
+                    'confidence_score': self._calculate_order_flow_confidence(order_flow, 'Bearish'),
+                    'rationale': f"Order flow shows {pressure_direction.lower()} pressure and {sentiment.lower()} sentiment. Trapped buyers detected ({len(trapped_buyers)} instances) - bearish reversal potential.",
+                    'order_flow_signals': {
+                        'pressure_direction': pressure_direction,
+                        'sentiment': sentiment,
+                        'trapped_buyers_count': len(trapped_buyers)
+                    },
+                    'required_margin': margin_info,
+                    'estimated_premium': estimated_premium,
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'source': 'orderflow'
+                }
+                suggestions.append(suggestion)
+        
+        return suggestions
+    
+    def _calculate_order_flow_confidence(self, order_flow: Dict, direction: str) -> float:
+        """Calculate confidence score based on order flow signals"""
+        confidence = 50.0  # Base confidence
+        
+        pressure_analysis = order_flow.get('pressure_analysis', {})
+        pressure_direction = pressure_analysis.get('pressure_direction', 'Neutral')
+        pressure_score = pressure_analysis.get('pressure_score', 0)
+        
+        if direction == 'Bullish':
+            if pressure_direction == 'Strong_buy':
+                confidence += 25
+            elif pressure_direction == 'Buy':
+                confidence += 15
+            elif pressure_direction == 'Strong_sell':
+                confidence -= 20
+            elif pressure_direction == 'Sell':
+                confidence -= 10
+        elif direction == 'Bearish':
+            if pressure_direction == 'Strong_sell':
+                confidence += 25
+            elif pressure_direction == 'Sell':
+                confidence += 15
+            elif pressure_direction == 'Strong_buy':
+                confidence -= 20
+            elif pressure_direction == 'Buy':
+                confidence -= 10
+        
+        # Adjust based on pressure score
+        confidence += pressure_score * 0.1
+        
+        # Trapped traders boost confidence
+        trapped_traders = order_flow.get('trapped_traders', {})
+        if direction == 'Bullish' and trapped_traders.get('trapped_sellers_count', 0) > 0:
+            confidence += 10
+        elif direction == 'Bearish' and trapped_traders.get('trapped_buyers_count', 0) > 0:
+            confidence += 10
+        
+        return max(0, min(100, confidence))
+    
+    def _build_order_flow_rationale(self, order_flow: Dict, direction: str, trapped_list: List) -> str:
+        """Build rationale based on order flow signals"""
+        rationale_parts = []
+        
+        pressure_analysis = order_flow.get('pressure_analysis', {})
+        pressure_direction = pressure_analysis.get('pressure_direction', 'Neutral')
+        overall_sentiment = order_flow.get('overall_sentiment', {})
+        sentiment = overall_sentiment.get('sentiment', 'Neutral')
+        
+        rationale_parts.append(f"Order flow analysis shows {pressure_direction.lower()} pressure with {sentiment.lower()} sentiment.")
+        
+        if trapped_list:
+            if direction == 'Bullish':
+                rationale_parts.append(f"Trapped sellers detected ({len(trapped_list)} instances) indicating potential bullish reversal.")
+            else:
+                rationale_parts.append(f"Trapped buyers detected ({len(trapped_list)} instances) indicating potential bearish reversal.")
+        
+        exhaustion_signals = order_flow.get('exhaustion_signals', {})
+        if direction == 'Bullish' and exhaustion_signals.get('selling_exhaustion', 0) > 0:
+            rationale_parts.append("Selling exhaustion detected - bullish reversal signal.")
+        elif direction == 'Bearish' and exhaustion_signals.get('buying_exhaustion', 0) > 0:
+            rationale_parts.append("Buying exhaustion detected - bearish reversal signal.")
+        
+        return " ".join(rationale_parts)
+    
+    def _filter_order_flow_suggestions(self, suggestions: List[Dict], order_flow: Dict) -> Tuple[List[Dict], Dict]:
+        """Filter order flow suggestions (less aggressive than TPO filtering)"""
+        if not order_flow.get('success'):
+            return suggestions, {
+                'initial_count': len(suggestions),
+                'filtered_exhaustion': 0,
+                'filtered_sentiment_conflict': 0,
+                'filtered_pressure_conflict': 0,
+                'filtered_weak_confidence': 0,
+                'final_count': len(suggestions)
+            }
+        
+        filtering_stats = {
+            'initial_count': len(suggestions),
+            'filtered_exhaustion': 0,
+            'filtered_sentiment_conflict': 0,
+            'filtered_pressure_conflict': 0,
+            'filtered_weak_confidence': 0,
+            'final_count': 0
+        }
+        
+        filtered_suggestions = []
+        exhaustion_signals = order_flow.get('exhaustion_signals', {})
+        
+        for suggestion in suggestions:
+            action = suggestion.get('action', '')
+            confidence = suggestion.get('confidence_score', 0)
+            should_filter = False
+            
+            # Only filter if exhaustion strongly conflicts (more lenient than TPO)
+            if action == 'BUY' and exhaustion_signals.get('buying_exhaustion', 0) > 2:
+                should_filter = True
+                filtering_stats['filtered_exhaustion'] += 1
+            elif action == 'SELL' and exhaustion_signals.get('selling_exhaustion', 0) > 2:
+                should_filter = True
+                filtering_stats['filtered_exhaustion'] += 1
+            
+            # Filter very weak confidence
+            if not should_filter and confidence < 30:
+                should_filter = True
+                filtering_stats['filtered_weak_confidence'] += 1
+            
+            if not should_filter:
+                filtered_suggestions.append(suggestion)
+        
+        filtering_stats['final_count'] = len(filtered_suggestions)
+        return filtered_suggestions, filtering_stats
+    
+    def _build_order_flow_decision_logic(self, market_context: Dict, suggestion: Dict, direction: str) -> Dict:
+        """Build decision logic for order flow-based suggestions"""
+        order_flow = market_context.get('order_flow', {})
+        current_price = market_context.get('current_price')
+        
+        pressure_analysis = order_flow.get('pressure_analysis', {})
+        trapped_traders = order_flow.get('trapped_traders', {})
+        
+        entry_logic = f"Entry level set at {suggestion.get('entry_level', current_price):.2f} based on current market price and order flow signals."
+        
+        stop_loss_logic = "Stop loss not applicable (options are limited risk)."
+        if suggestion.get('stop_loss'):
+            stop_loss_logic = f"Stop loss set at {suggestion.get('stop_loss'):.2f} based on absorption zones or TPO reference levels."
+        
+        target_logic = "Targets selected based on trapped trader levels and absorption zones from order flow analysis."
+        
+        return {
+            'entry_level_logic': entry_logic,
+            'stop_loss_logic': stop_loss_logic,
+            'target_selection_logic': target_logic,
+            'primary_signal': 'Order Flow',
+            'confidence_breakdown': {
+                'base_order_flow_confidence': suggestion.get('confidence_score', 0),
+                'final_confidence': suggestion.get('confidence_score', 0)
+            }
+        }
+    
+    def _build_order_flow_decision_context(self, market_context: Dict, suggestion: Dict, direction: str) -> Dict:
+        """Build decision context for order flow-based suggestions"""
+        order_flow = market_context.get('order_flow', {})
+        current_price = market_context.get('current_price')
+        
+        pressure_analysis = order_flow.get('pressure_analysis', {})
+        trapped_traders = order_flow.get('trapped_traders', {})
+        absorption_zones = order_flow.get('absorption_zones', [])
+        
+        return {
+            'market_condition': pressure_analysis.get('pressure_direction', 'Neutral'),
+            'price_position': f"Current price: {current_price:.2f}",
+            'signal_alignment': {
+                'supporting_signals': [f"Order flow pressure: {pressure_analysis.get('pressure_direction', 'Neutral')}"],
+                'conflicting_signals': [],
+                'neutral_signals': []
+            },
+            'risk_factors': [],
+            'key_levels': {
+                'current_price': current_price,
+                'entry_level': suggestion.get('entry_level'),
+                'stop_loss': suggestion.get('stop_loss'),
+                'targets': [t.get('level') for t in suggestion.get('target_levels', [])],
+                'trapped_levels': [t.get('futures_price') or t.get('price') for t in 
+                                  (trapped_traders.get('trapped_buyers', []) if direction == 'Bearish' 
+                                   else trapped_traders.get('trapped_sellers', []))],
+                'absorption_zones': absorption_zones
+            }
         }
