@@ -274,6 +274,173 @@ class TPOProfile:
         
         return ax
 
+    def predict_support_resistance_levels(self, current_price: float = None, lookback_days: int = 5) -> dict:
+        """
+        Predict upcoming support and resistance levels based on TPO patterns
+        
+        Uses three methods:
+        1. TPO Cluster Analysis - identifies significant price clusters
+        2. Value Area Extensions - projects levels from Value Area boundaries
+        3. Fibonacci-like Extensions - applies Fibonacci ratios to Value Area width
+        
+        Args:
+            current_price: Current market price (if None, uses POC)
+            lookback_days: Number of days for analysis (for future use)
+            
+        Returns:
+            Dictionary with support_levels, resistance_levels, and key TPO metrics
+        """
+        if self.tpo_data is None or self.tpo_data.empty:
+            return {
+                'support_levels': [],
+                'resistance_levels': [],
+                'current_price': current_price if current_price else None,
+                'poc': float(self.poc) if self.poc else None,
+                'vah': float(self.value_area_high) if self.value_area_high else None,
+                'val': float(self.value_area_low) if self.value_area_low else None
+            }
+        
+        # Determine current price
+        if current_price is None:
+            if self.poc:
+                current_price = float(self.poc)
+            else:
+                # Use middle of price range
+                prices = self.tpo_data['price'].values
+                current_price = float((prices.min() + prices.max()) / 2)
+        else:
+            current_price = float(current_price)
+        
+        predicted_support = []
+        predicted_resistance = []
+        
+        # Method 1: TPO Cluster Analysis
+        # Identify price levels with significant TPO count (clusters)
+        for idx, row in self.tpo_data.iterrows():
+            price = float(row['price'])
+            tpo_count = int(row['tpo_count'])
+            
+            # Significant cluster if TPO count >= 3
+            if tpo_count >= 3:
+                distance_from_poc = abs(price - self.poc) if self.poc else 0
+                
+                if price < current_price:
+                    # Potential support level
+                    strength = 'Strong' if tpo_count >= 5 else 'Medium'
+                    confidence = min(100, tpo_count * 15)  # Higher TPO count = higher confidence
+                    predicted_support.append({
+                        'price': price,
+                        'strength': strength,
+                        'tpo_count': tpo_count,
+                        'distance_from_current': float(current_price - price),
+                        'type': 'TPO Cluster',
+                        'confidence': confidence
+                    })
+                elif price > current_price:
+                    # Potential resistance level
+                    strength = 'Strong' if tpo_count >= 5 else 'Medium'
+                    confidence = min(100, tpo_count * 15)
+                    predicted_resistance.append({
+                        'price': price,
+                        'strength': strength,
+                        'tpo_count': tpo_count,
+                        'distance_from_current': float(price - current_price),
+                        'type': 'TPO Cluster',
+                        'confidence': confidence
+                    })
+        
+        # Method 2: Value Area Extensions
+        if self.value_area_high and self.value_area_low:
+            va_width = float(self.value_area_high - self.value_area_low)
+            
+            if va_width > 0:
+                # Extension multipliers
+                extension_multipliers = [0.5, 1.0, 1.5]
+                
+                # Resistance levels above VAH
+                for multiplier in extension_multipliers:
+                    extension_above = float(self.value_area_high) + (va_width * multiplier)
+                    if extension_above > current_price:
+                        predicted_resistance.append({
+                            'price': extension_above,
+                            'strength': 'Medium',
+                            'tpo_count': 0,
+                            'distance_from_current': float(extension_above - current_price),
+                            'type': f'VAH Extension ({multiplier}x)',
+                            'confidence': 60
+                        })
+                
+                # Support levels below VAL
+                for multiplier in extension_multipliers:
+                    extension_below = float(self.value_area_low) - (va_width * multiplier)
+                    if extension_below < current_price:
+                        predicted_support.append({
+                            'price': extension_below,
+                            'strength': 'Medium',
+                            'tpo_count': 0,
+                            'distance_from_current': float(current_price - extension_below),
+                            'type': f'VAL Extension ({multiplier}x)',
+                            'confidence': 60
+                        })
+        
+        # Method 3: Fibonacci-like Extensions
+        if self.value_area_high and self.value_area_low:
+            va_width = float(self.value_area_high - self.value_area_low)
+            
+            if va_width > 0:
+                # Fibonacci ratios
+                fib_ratios = [0.382, 0.5, 0.618, 1.0, 1.382, 1.618]
+                
+                # Confidence mapping for Fibonacci ratios
+                confidence_map = {
+                    0.382: 50,
+                    0.5: 55,
+                    0.618: 70,
+                    1.0: 65,
+                    1.382: 60,
+                    1.618: 70
+                }
+                
+                # Resistance levels above VAH
+                for ratio in fib_ratios:
+                    resistance_level = float(self.value_area_high) + (va_width * ratio)
+                    if resistance_level > current_price:
+                        predicted_resistance.append({
+                            'price': resistance_level,
+                            'strength': 'Medium',
+                            'tpo_count': 0,
+                            'distance_from_current': float(resistance_level - current_price),
+                            'type': f'VA Fib Extension ({ratio})',
+                            'confidence': confidence_map.get(ratio, 55)
+                        })
+                
+                # Support levels below VAL
+                for ratio in fib_ratios:
+                    support_level = float(self.value_area_low) - (va_width * ratio)
+                    if support_level < current_price:
+                        predicted_support.append({
+                            'price': support_level,
+                            'strength': 'Medium',
+                            'tpo_count': 0,
+                            'distance_from_current': float(current_price - support_level),
+                            'type': f'VA Fib Extension ({ratio})',
+                            'confidence': confidence_map.get(ratio, 55)
+                        })
+        
+        # Sort and filter - keep top 3 most relevant levels per category
+        # Sort support descending (highest first), resistance ascending (lowest first)
+        predicted_support = sorted(predicted_support, key=lambda x: x['price'], reverse=True)[:3]
+        predicted_resistance = sorted(predicted_resistance, key=lambda x: x['price'])[:3]
+        
+        return {
+            'support_levels': predicted_support,
+            'resistance_levels': predicted_resistance,
+            'current_price': current_price,
+            'poc': float(self.poc) if self.poc else None,
+            'vah': float(self.value_area_high) if self.value_area_high else None,
+            'val': float(self.value_area_low) if self.value_area_low else None
+        }
+
 
 class PostgresDataFetcher:
     def __init__(self, host, database, user, password, port=5432):

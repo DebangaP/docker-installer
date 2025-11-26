@@ -237,14 +237,56 @@
             </div>
         </div>
 
-        <!-- TPO Charts Section (full width) -->
+        <!-- TPO Charts Section (full width with hover/button for predictions) -->
         <div class="card" id="section-tpo-chart" style="margin-bottom: 20px;">
             <div class="card-header">
                 <h3 class="card-title">📈 TPO Market Profile</h3>
                 <span class="card-icon">📊</span>
             </div>
-            <div class="tpo-chart-container" style="height: 600px; background-color: #000;">
+            <div class="tpo-chart-container" id="tpoChartContainer" style="position: relative; height: 600px; background-color: #000;">
                 <img id="tpoChartImage" src="" alt="TPO Charts" style="width: 100%; height: 100%; object-fit: contain; border-radius: 8px;" />
+                
+                <!-- Toggle Button for Predictions (positioned to the right) -->
+                <button id="tpoPredictionsToggle" onclick="toggleTPOPredictions()" 
+                        style="position: absolute; top: 10px; right: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; padding: 8px 12px; font-size: 12px; cursor: pointer; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"
+                        onmouseover="this.style.backgroundColor='#0056b3'; showTPOPredictionsOnHover();" 
+                        onmouseout="this.style.backgroundColor='#007bff'">
+                    🎯 Predictions
+                </button>
+                
+                <!-- Predictions Panel (hidden by default, shown on hover/click) -->
+                <div id="tpoPredictionsPanel" 
+                     style="position: absolute; top: 50px; right: 10px; width: 380px; max-height: 520px; background-color: #ffffff; border-radius: 8px; padding: 12px; overflow-y: auto; border: 2px solid #007bff; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 20; display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 style="margin: 0; color: #333; font-size: 14px; font-weight: 600;">🎯 Predicted Support & Resistance</h4>
+                        <button onclick="toggleTPOPredictions()" style="background: none; border: none; font-size: 16px; cursor: pointer; color: #666; padding: 0; width: 20px; height: 20px; line-height: 20px;">&times;</button>
+                    </div>
+                    
+                    <!-- Live Market Predictions Section -->
+                    <div id="liveMarketPredictions">
+                        <h5 style="color: #495057; font-size: 12px; font-weight: 600; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 2px solid #28a745;">Live Market Predictions</h5>
+                        
+                        <!-- Support Levels -->
+                        <div style="margin-bottom: 12px;">
+                            <div style="background-color: #d4edda; padding: 6px; border-radius: 4px; margin-bottom: 4px;">
+                                <strong style="color: #155724; font-size: 11px;">Support Levels</strong>
+                            </div>
+                            <div id="liveMarketSupportLevels" style="font-size: 10px;">
+                                <div style="text-align: center; padding: 8px; color: #6c757d;">Loading...</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Resistance Levels -->
+                        <div>
+                            <div style="background-color: #f8d7da; padding: 6px; border-radius: 4px; margin-bottom: 4px;">
+                                <strong style="color: #721c24; font-size: 11px;">Resistance Levels</strong>
+                            </div>
+                            <div id="liveMarketResistanceLevels" style="font-size: 10px;">
+                                <div style="text-align: center; padding: 8px; color: #6c757d;">Loading...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -2135,6 +2177,15 @@
             
             // Initial update
             updateActiveSection();
+            
+            // Load TPO predictions after a short delay to ensure TPO charts are initialized
+            setTimeout(function() {
+                if (typeof loadTPOPredictions === 'function') {
+                    loadTPOPredictions();
+                } else if (typeof window.loadTPOPredictions === 'function') {
+                    window.loadTPOPredictions();
+                }
+            }, 1000);
         });
 
         // IST market-hours helpers
@@ -2941,6 +2992,199 @@
                     console.error('Error fetching 5-day TPO chart:', error);
                     chartImage.alt = 'Error loading chart';
                 });
+        }
+        
+        // Load TPO Support/Resistance Predictions
+        // Make function globally accessible
+        window.loadTPOPredictions = function(analysisDate = null) {
+            try {
+                let url = '/api/tpo-predictions/support-resistance';
+                if (analysisDate) {
+                    url += `?analysis_date=${analysisDate}`;
+                }
+                
+                fetch(url)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data.error || !data.success) {
+                            console.error('Error loading TPO predictions:', data.error || 'Unknown error');
+                            const errorMsg = data.error || 'Failed to load predictions';
+                            displayPredictionsError('liveMarketPredictions', errorMsg);
+                            return;
+                        }
+                        
+                        // Display live market predictions only
+                        if (data.live_market) {
+                            displayPredictionsLevels('liveMarketSupportLevels', data.live_market.support_levels, 'support');
+                            displayPredictionsLevels('liveMarketResistanceLevels', data.live_market.resistance_levels, 'resistance');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching TPO predictions:', error);
+                        const errorMsg = error.message || 'Error loading predictions. Please check if the API endpoint is available.';
+                        displayPredictionsError('liveMarketPredictions', errorMsg);
+                    });
+            } catch (error) {
+                console.error('Error in loadTPOPredictions:', error);
+            }
+        };
+        
+        // Also create a non-window version for backward compatibility
+        function loadTPOPredictions(analysisDate = null) {
+            return window.loadTPOPredictions(analysisDate);
+        }
+        
+        // Display prediction levels in a table format
+        function displayPredictionsLevels(containerId, levels, type) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            
+            if (!levels || levels.length === 0) {
+                container.innerHTML = '<div style="text-align: center; padding: 8px; color: #6c757d; font-style: italic; font-size: 10px;">No levels predicted</div>';
+                return;
+            }
+            
+            const isSupport = type === 'support';
+            const bgColor = isSupport ? '#d4edda' : '#f8d7da';
+            const textColor = isSupport ? '#155724' : '#721c24';
+            const borderColor = isSupport ? '#c3e6cb' : '#f5c6cb';
+            
+            // Reduced font sizes by 2px to eliminate scrolling
+            let html = '<table style="width: 100%; border-collapse: collapse; font-size: 11px;">';
+            html += '<thead><tr style="background-color: ' + bgColor + '; color: ' + textColor + '; font-weight: 600;">';
+            html += '<th style="padding: 6px; text-align: left; border: 1px solid ' + borderColor + ';">Price</th>';
+            html += '<th style="padding: 6px; text-align: center; border: 1px solid ' + borderColor + ';">Strength</th>';
+            html += '<th style="padding: 6px; text-align: center; border: 1px solid ' + borderColor + ';">Type</th>';
+            html += '<th style="padding: 6px; text-align: center; border: 1px solid ' + borderColor + ';">Confidence</th>';
+            html += '<th style="padding: 6px; text-align: right; border: 1px solid ' + borderColor + ';">Distance</th>';
+            html += '</tr></thead><tbody>';
+            
+            levels.forEach(level => {
+                const strengthStyle = level.strength === 'Strong' ? 'font-weight: 700;' : 'font-weight: 500;';
+                const strengthBg = level.strength === 'Strong' ? (isSupport ? '#a3d9a3' : '#f1aeb5') : bgColor;
+                
+                html += '<tr style="background-color: ' + strengthBg + '; color: ' + textColor + ';">';
+                html += '<td style="padding: 6px; border: 1px solid ' + borderColor + '; ' + strengthStyle + '">' + level.price.toFixed(2) + '</td>';
+                html += '<td style="padding: 6px; text-align: center; border: 1px solid ' + borderColor + '; ' + strengthStyle + '">' + level.strength + '</td>';
+                html += '<td style="padding: 6px; text-align: center; border: 1px solid ' + borderColor + '; font-size: 9px;">' + level.type + '</td>';
+                html += '<td style="padding: 6px; text-align: center; border: 1px solid ' + borderColor + ';">' + level.confidence + '%</td>';
+                html += '<td style="padding: 6px; text-align: right; border: 1px solid ' + borderColor + ';">' + level.distance_from_current.toFixed(2) + '</td>';
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+        
+        // Show predictions panel on hover
+        function showTPOPredictionsOnHover() {
+            const panel = document.getElementById('tpoPredictionsPanel');
+            if (panel && (panel.style.display === 'none' || panel.style.display === '')) {
+                panel.style.display = 'block';
+                // Ensure predictions are loaded
+                if (typeof loadTPOPredictions === 'function') {
+                    loadTPOPredictions();
+                }
+            }
+        }
+        
+        // Toggle predictions panel visibility
+        function toggleTPOPredictions() {
+            const panel = document.getElementById('tpoPredictionsPanel');
+            if (panel) {
+                if (panel.style.display === 'none' || panel.style.display === '') {
+                    panel.style.display = 'block';
+                    // Ensure predictions are loaded
+                    if (typeof loadTPOPredictions === 'function') {
+                        loadTPOPredictions();
+                    }
+                } else {
+                    panel.style.display = 'none';
+                }
+            }
+        }
+        
+        // Setup hover functionality for chart container
+        document.addEventListener('DOMContentLoaded', function() {
+            const chartContainer = document.getElementById('tpoChartContainer');
+            const toggleBtn = document.getElementById('tpoPredictionsToggle');
+            const panel = document.getElementById('tpoPredictionsPanel');
+            
+            if (chartContainer && panel) {
+                // Show panel on hover over chart area (right side)
+                let hoverTimeout;
+                chartContainer.addEventListener('mouseenter', function(e) {
+                    // Only show if mouse is on the right side of the chart
+                    const rect = chartContainer.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left;
+                    const chartWidth = rect.width;
+                    
+                    // If mouse is in the right 30% of the chart, show predictions
+                    if (mouseX > chartWidth * 0.7) {
+                        clearTimeout(hoverTimeout);
+                        hoverTimeout = setTimeout(function() {
+                            showTPOPredictionsOnHover();
+                        }, 300); // Small delay to avoid flickering
+                    }
+                });
+                
+                chartContainer.addEventListener('mousemove', function(e) {
+                    const rect = chartContainer.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left;
+                    const chartWidth = rect.width;
+                    
+                    if (mouseX > chartWidth * 0.7) {
+                        clearTimeout(hoverTimeout);
+                        hoverTimeout = setTimeout(function() {
+                            showTPOPredictionsOnHover();
+                        }, 300);
+                    } else {
+                        clearTimeout(hoverTimeout);
+                    }
+                });
+                
+                // Keep panel visible when hovering over it
+                if (panel) {
+                    panel.addEventListener('mouseenter', function() {
+                        clearTimeout(hoverTimeout);
+                    });
+                    
+                    panel.addEventListener('mouseleave', function() {
+                        // Optional: hide when leaving panel (uncomment if desired)
+                        // hoverTimeout = setTimeout(function() {
+                        //     panel.style.display = 'none';
+                        // }, 500);
+                    });
+                }
+            }
+        });
+        
+        // Display error message in predictions container
+        function displayPredictionsError(sectionId, errorMessage) {
+            if (sectionId === 'preMarketPredictions') {
+                const supportContainer = document.getElementById('preMarketSupportLevels');
+                const resistanceContainer = document.getElementById('preMarketResistanceLevels');
+                if (supportContainer) {
+                    supportContainer.innerHTML = '<div style="text-align: center; padding: 10px; color: #dc3545;">' + errorMessage + '</div>';
+                }
+                if (resistanceContainer) {
+                    resistanceContainer.innerHTML = '<div style="text-align: center; padding: 10px; color: #dc3545;">' + errorMessage + '</div>';
+                }
+            } else if (sectionId === 'liveMarketPredictions') {
+                const supportContainer = document.getElementById('liveMarketSupportLevels');
+                const resistanceContainer = document.getElementById('liveMarketResistanceLevels');
+                if (supportContainer) {
+                    supportContainer.innerHTML = '<div style="text-align: center; padding: 8px; color: #dc3545; font-size: 10px;">' + errorMessage + '</div>';
+                }
+                if (resistanceContainer) {
+                    resistanceContainer.innerHTML = '<div style="text-align: center; padding: 8px; color: #dc3545; font-size: 10px;">' + errorMessage + '</div>';
+                }
+            }
         }
         
         // Global variable for sort settings

@@ -84,6 +84,11 @@ class TPOChartRenderer {
             // Reload TPO data with new date
             this.loadTPOData();
             
+            // Reload predictions with new date
+            if (typeof loadTPOPredictions === 'function') {
+                loadTPOPredictions(this.currentAnalysisDate);
+            }
+            
             // Show success message
             this.showMessage(result.message, 'success');
         } catch (error) {
@@ -214,6 +219,11 @@ class TPOChartRenderer {
                 chartImage.src = data.chart_image;
                 chartImage.style.display = 'block';
             }
+            
+            // Load predictions after charts are loaded
+            if (typeof loadTPOPredictions === 'function') {
+                loadTPOPredictions(this.currentAnalysisDate);
+            }
         } catch (error) {
             console.error('Error loading TPO data:', error);
             this.showError('Failed to load TPO data');
@@ -242,6 +252,10 @@ class TPOChartRenderer {
 
     updateCharts() {
         this.loadTPOData();
+        // Also update predictions
+        if (typeof loadTPOPredictions === 'function') {
+            loadTPOPredictions(this.currentAnalysisDate);
+        }
     }
 }
 
