@@ -38,3 +38,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 # Monitor cron jobs status every 10 minutes during market hours
 */10 9-16 * * 1-5 root cd /app && python /app/scheduled_jobs/CronJobMonitor.py >> /app/logs/cron_monitor.log 2>&1 &
+
+# Monitor derivative suggestions for exit conditions every 5 minutes during market hours
+*/5 9-16 * * 1-5 root cd /app && python /app/scheduled_jobs/DerivativeSuggestionsMonitorScheduler.py >> /app/logs/derivative_suggestions_monitor.log 2>&1 &
+0,5,10,15,20,25,30 15 * * 1-5 root cd /app && python /app/scheduled_jobs/DerivativeSuggestionsMonitorScheduler.py >> /app/logs/derivative_suggestions_monitor.log 2>&1 &

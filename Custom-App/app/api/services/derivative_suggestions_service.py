@@ -179,13 +179,13 @@ class DerivativeSuggestionsService:
                         total_premium_income, margin_required, hedge_value, coverage_percentage,
                         portfolio_value, beta, rationale, tpo_context, diagnostics,
                         potential_profit, max_potential_profit, max_loss, risk_reward_ratio, 
-                        probability_of_profit, breakeven, payoff_chart, payoff_sparkline
+                        probability_of_profit, breakeven, payoff_chart, payoff_sparkline, status
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s,
                         %s, %s, %s, %s, %s, %s, %s,
                         %s, %s, %s, %s,
                         %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, 'MOCKED'
                     )
                     """,
                     rows

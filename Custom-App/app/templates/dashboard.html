@@ -460,22 +460,22 @@
                 </div>
 
                 <!-- Performance Statistics Dashboard -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                <div style="display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 20px; margin-bottom: 20px;">
                     <!-- Statistics Cards -->
-                    <div>
-                        <h4 style="margin: 0 0 15px 0; font-size: 14px; font-weight: 600;">📊 Performance Statistics</h4>
-                        <div id="performanceStatsCards" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                    <div style="min-width: 0;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 600;">📊 Performance Statistics</h4>
+                        <div id="performanceStatsCards" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
                             <!-- Cards will be populated by JavaScript -->
                         </div>
-                        <div id="performanceChartsContainer" style="margin-top: 20px;">
+                        <div id="performanceChartsContainer" style="margin-top: 15px;">
                             <!-- Charts will be rendered here -->
                         </div>
                     </div>
 
                     <!-- Suggestions History Table -->
-                    <div>
-                        <h4 style="margin: 0 0 15px 0; font-size: 14px; font-weight: 600;">📋 Suggestions History</h4>
-                        <div id="suggestionsHistoryTable" style="overflow-x: auto; max-height: 600px; overflow-y: auto;">
+                    <div style="min-width: 0; overflow: hidden;">
+                        <h4 style="margin: 0 0 12px 0; font-size: 13px; font-weight: 600;">📋 Suggestions History</h4>
+                        <div id="suggestionsHistoryTable" style="overflow-x: auto; max-height: 600px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px;">
                             <div style="text-align: center; padding: 20px; color: #666;">Loading suggestions history...</div>
                         </div>
                     </div>
@@ -6152,35 +6152,35 @@
             const lossMakingCount = stats.pnl_statistics?.loss_making_count || 0;
             
             container.innerHTML = `
-                <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 15px; border-radius: 4px;">
-                    <div style="font-size: 11px; color: #666; margin-bottom: 5px;">Total Suggestions</div>
-                    <div style="font-size: 24px; font-weight: bold; color: #1976d2;">${stats.total_suggestions || 0}</div>
+                <div style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 12px; border-radius: 4px;">
+                    <div style="font-size: 10px; color: #666; margin-bottom: 4px;">Total Suggestions</div>
+                    <div style="font-size: 19px; font-weight: bold; color: #1976d2;">${stats.total_suggestions || 0}</div>
                 </div>
-                <div style="background: ${successRate >= 50 ? '#e8f5e9' : '#fff3e0'}; border-left: 4px solid ${successRate >= 50 ? '#4caf50' : '#ff9800'}; padding: 15px; border-radius: 4px;">
-                    <div style="font-size: 11px; color: #666; margin-bottom: 5px;">Success Rate</div>
-                    <div style="font-size: 24px; font-weight: bold; color: ${successRate >= 50 ? '#388e3c' : '#f57c00'};">
+                <div style="background: ${successRate >= 50 ? '#e8f5e9' : '#fff3e0'}; border-left: 4px solid ${successRate >= 50 ? '#4caf50' : '#ff9800'}; padding: 12px; border-radius: 4px;">
+                    <div style="font-size: 10px; color: #666; margin-bottom: 4px;">Success Rate</div>
+                    <div style="font-size: 19px; font-weight: bold; color: ${successRate >= 50 ? '#388e3c' : '#f57c00'};">
                         ${successRate !== null ? successRate.toFixed(1) + '%' : 'N/A'}
                     </div>
                 </div>
-                <div style="background: ${totalPnl >= 0 ? '#e8f5e9' : '#ffebee'}; border-left: 4px solid ${totalPnl >= 0 ? '#4caf50' : '#f44336'}; padding: 15px; border-radius: 4px;">
-                    <div style="font-size: 11px; color: #666; margin-bottom: 5px;">Total P&L</div>
-                    <div style="font-size: 24px; font-weight: bold; color: ${totalPnl >= 0 ? '#388e3c' : '#c62828'};">
+                <div style="background: ${totalPnl >= 0 ? '#e8f5e9' : '#ffebee'}; border-left: 4px solid ${totalPnl >= 0 ? '#4caf50' : '#f44336'}; padding: 12px; border-radius: 4px;">
+                    <div style="font-size: 10px; color: #666; margin-bottom: 4px;">Total P&L</div>
+                    <div style="font-size: 19px; font-weight: bold; color: ${totalPnl >= 0 ? '#388e3c' : '#c62828'};">
                         ₹${totalPnl >= 0 ? '+' : ''}${totalPnl.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                     </div>
                 </div>
-                <div style="background: ${avgPnl >= 0 ? '#e8f5e9' : '#ffebee'}; border-left: 4px solid ${avgPnl >= 0 ? '#4caf50' : '#f44336'}; padding: 15px; border-radius: 4px;">
-                    <div style="font-size: 11px; color: #666; margin-bottom: 5px;">Avg P&L (Closed)</div>
-                    <div style="font-size: 24px; font-weight: bold; color: ${avgPnl >= 0 ? '#388e3c' : '#c62828'};">
+                <div style="background: ${avgPnl >= 0 ? '#e8f5e9' : '#ffebee'}; border-left: 4px solid ${avgPnl >= 0 ? '#4caf50' : '#f44336'}; padding: 12px; border-radius: 4px;">
+                    <div style="font-size: 10px; color: #666; margin-bottom: 4px;">Avg P&L (Closed)</div>
+                    <div style="font-size: 19px; font-weight: bold; color: ${avgPnl >= 0 ? '#388e3c' : '#c62828'};">
                         ₹${avgPnl >= 0 ? '+' : ''}${avgPnl.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                     </div>
                 </div>
-                <div style="background: #f3e5f5; border-left: 4px solid #9c27b0; padding: 15px; border-radius: 4px;">
-                    <div style="font-size: 11px; color: #666; margin-bottom: 5px;">Profitable</div>
-                    <div style="font-size: 24px; font-weight: bold; color: #7b1fa2;">${profitableCount}</div>
+                <div style="background: #f3e5f5; border-left: 4px solid #9c27b0; padding: 12px; border-radius: 4px;">
+                    <div style="font-size: 10px; color: #666; margin-bottom: 4px;">Profitable</div>
+                    <div style="font-size: 19px; font-weight: bold; color: #7b1fa2;">${profitableCount}</div>
                 </div>
-                <div style="background: #fce4ec; border-left: 4px solid #e91e63; padding: 15px; border-radius: 4px;">
-                    <div style="font-size: 11px; color: #666; margin-bottom: 5px;">Loss Making</div>
-                    <div style="font-size: 24px; font-weight: bold; color: #c2185b;">${lossMakingCount}</div>
+                <div style="background: #fce4ec; border-left: 4px solid #e91e63; padding: 12px; border-radius: 4px;">
+                    <div style="font-size: 10px; color: #666; margin-bottom: 5px;">Loss Making</div>
+                    <div style="font-size: 19px; font-weight: bold; color: #c2185b;">${lossMakingCount}</div>
                 </div>
             `;
         }
@@ -6211,14 +6211,14 @@
             statusCtx.style.maxHeight = '200px';
             
             container.innerHTML = `
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px;">
                     <div>
-                        <h5 style="font-size: 12px; font-weight: 600; margin-bottom: 10px;">Outcome Breakdown</h5>
-                        <canvas id="outcomeChart" style="max-height: 200px;"></canvas>
+                        <h5 style="font-size: 11px; font-weight: 600; margin-bottom: 8px;">Outcome Breakdown</h5>
+                        <canvas id="outcomeChart" style="max-height: 160px;"></canvas>
                     </div>
                     <div>
-                        <h5 style="font-size: 12px; font-weight: 600; margin-bottom: 10px;">Status Breakdown</h5>
-                        <canvas id="statusChart" style="max-height: 200px;"></canvas>
+                        <h5 style="font-size: 11px; font-weight: 600; margin-bottom: 8px;">Status Breakdown</h5>
+                        <canvas id="statusChart" style="max-height: 160px;"></canvas>
                     </div>
                 </div>
             `;
@@ -6249,13 +6249,13 @@
                             plugins: {
                                 legend: {
                                     position: 'bottom',
-                                    labels: { font: { size: 11 } }
+                                    labels: { font: { size: 10 } }
                                 }
                             }
                         }
                     });
                 } else {
-                    outcomeChartEl.parentElement.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">No outcome data available</div>';
+                    outcomeChartEl.parentElement.innerHTML = '<div style="text-align: center; padding: 15px; color: #999; font-size: 10px;">No outcome data available</div>';
                 }
             }
             
@@ -6288,13 +6288,13 @@
                             plugins: {
                                 legend: {
                                     position: 'bottom',
-                                    labels: { font: { size: 11 } }
+                                    labels: { font: { size: 10 } }
                                 }
                             }
                         }
                     });
                 } else {
-                    statusChartEl.parentElement.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">No status data available</div>';
+                    statusChartEl.parentElement.innerHTML = '<div style="text-align: center; padding: 15px; color: #999; font-size: 10px;">No status data available</div>';
                 }
             }
         }
@@ -6344,19 +6344,19 @@
             }
             
             let html = `
-                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed;">
                     <thead>
-                        <tr style="background: #e9ecef; position: sticky; top: 0;">
-                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6; font-weight: 600;">ID</th>
-                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6; font-weight: 600;">Date</th>
-                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6; font-weight: 600;">Strategy</th>
-                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6; font-weight: 600;">Instrument</th>
-                            <th style="padding: 10px; text-align: left; border: 1px solid #dee2e6; font-weight: 600;">Direction</th>
-                            <th style="padding: 10px; text-align: right; border: 1px solid #dee2e6; font-weight: 600;">Entry</th>
-                            <th style="padding: 10px; text-align: center; border: 1px solid #dee2e6; font-weight: 600;">Status</th>
-                            <th style="padding: 10px; text-align: center; border: 1px solid #dee2e6; font-weight: 600;">Outcome</th>
-                            <th style="padding: 10px; text-align: right; border: 1px solid #dee2e6; font-weight: 600;">P&L</th>
-                            <th style="padding: 10px; text-align: center; border: 1px solid #dee2e6; font-weight: 600;">Actions</th>
+                        <tr style="background: #e9ecef; position: sticky; top: 0; z-index: 10;">
+                            <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6; font-weight: 600; width: 50px;">ID</th>
+                            <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6; font-weight: 600; width: 80px;">Date</th>
+                            <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6; font-weight: 600; width: 80px;">Strategy</th>
+                            <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6; font-weight: 600; width: 80px;">Instrument</th>
+                            <th style="padding: 8px; text-align: left; border: 1px solid #dee2e6; font-weight: 600; width: 70px;">Direction</th>
+                            <th style="padding: 8px; text-align: right; border: 1px solid #dee2e6; font-weight: 600; width: 80px;">Entry</th>
+                            <th style="padding: 8px; text-align: center; border: 1px solid #dee2e6; font-weight: 600; width: 90px;">Status</th>
+                            <th style="padding: 8px; text-align: center; border: 1px solid #dee2e6; font-weight: 600; width: 80px;">Outcome</th>
+                            <th style="padding: 8px; text-align: right; border: 1px solid #dee2e6; font-weight: 600; width: 100px;">P&L</th>
+                            <th style="padding: 8px; text-align: center; border: 1px solid #dee2e6; font-weight: 600; width: 70px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -6401,27 +6401,27 @@
                 
                 html += `
                     <tr style="border-bottom: 1px solid #dee2e6;">
-                        <td style="padding: 8px; border: 1px solid #dee2e6;">${row.id}</td>
-                        <td style="padding: 8px; border: 1px solid #dee2e6;">${generatedAt}</td>
-                        <td style="padding: 8px; border: 1px solid #dee2e6;">${row.strategy_type || '-'}</td>
-                        <td style="padding: 8px; border: 1px solid #dee2e6;">${row.instrument || '-'}</td>
-                        <td style="padding: 8px; border: 1px solid #dee2e6;">${row.direction || '-'}</td>
-                        <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6;">${entryPrice}</td>
-                        <td style="padding: 8px; text-align: center; border: 1px solid #dee2e6;">
-                            <span style="background: ${statusColor}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                        <td style="padding: 6px; border: 1px solid #dee2e6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${row.id}</td>
+                        <td style="padding: 6px; border: 1px solid #dee2e6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${generatedAt}</td>
+                        <td style="padding: 6px; border: 1px solid #dee2e6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${row.strategy_type || '-'}</td>
+                        <td style="padding: 6px; border: 1px solid #dee2e6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${row.instrument || '-'}</td>
+                        <td style="padding: 6px; border: 1px solid #dee2e6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${row.direction || '-'}</td>
+                        <td style="padding: 6px; text-align: right; border: 1px solid #dee2e6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${entryPrice}</td>
+                        <td style="padding: 6px; text-align: center; border: 1px solid #dee2e6; overflow: hidden;">
+                            <span style="background: ${statusColor}; color: white; padding: 3px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; display: inline-block;">
                                 ${status}
                             </span>
                         </td>
-                        <td style="padding: 8px; text-align: center; border: 1px solid #dee2e6;">
-                            <span style="color: ${outcomeColor}; font-weight: 600; font-size: 11px;">
+                        <td style="padding: 6px; text-align: center; border: 1px solid #dee2e6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            <span style="color: ${outcomeColor}; font-weight: 600; font-size: 10px;">
                                 ${outcome}
                             </span>
                         </td>
-                        <td style="padding: 8px; text-align: right; border: 1px solid #dee2e6; color: ${pnlColor}; font-weight: 600;">
+                        <td style="padding: 6px; text-align: right; border: 1px solid #dee2e6; color: ${pnlColor}; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px;">
                             ${pnlText}
                         </td>
-                        <td style="padding: 8px; text-align: center; border: 1px solid #dee2e6;">
-                            <button onclick="openUpdateResultModal(${row.id})" style="background: #2196f3; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;">
+                        <td style="padding: 6px; text-align: center; border: 1px solid #dee2e6;">
+                            <button onclick="openUpdateResultModal(${row.id})" style="background: #2196f3; color: white; border: none; padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 10px;">
                                 Update
                             </button>
                         </td>

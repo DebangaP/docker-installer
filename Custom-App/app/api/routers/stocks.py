@@ -486,3 +486,31 @@ async def api_calculate_theoretical_pnl(request: Request):
         logger.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
 
+
+@router.post("/derivatives_suggestions/monitor")
+async def api_monitor_derivative_suggestions():
+    """API endpoint to manually trigger monitoring of MOCKED derivative suggestions"""
+    try:
+        from api.services.derivative_suggestions_monitor import DerivativeSuggestionsMonitor
+        
+        monitor = DerivativeSuggestionsMonitor()
+        result = monitor.monitor_and_exit_suggestions()
+        
+        if 'error' in result:
+            return {
+                "success": False,
+                "error": result['error']
+            }
+        
+        return {
+            "success": True,
+            "statistics": result,
+            "message": f"Monitored {result.get('total_checked', 0)} suggestions. Exits: {result.get('target_exits', 0) + result.get('stop_loss_exits', 0) + result.get('conflicting_signal_exits', 0)}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error monitoring derivative suggestions: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
