@@ -452,3 +452,37 @@ async def api_refresh_stock_data(request: Request):
         logger.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
 
+
+@router.post("/derivatives_suggestions/calculate_theoretical_pnl")
+async def api_calculate_theoretical_pnl(request: Request):
+    """API endpoint to calculate theoretical P&L for PENDING derivative suggestions"""
+    try:
+        from api.services.theoretical_pnl_calculator import TheoreticalPnlCalculator
+        
+        body = await request.json()
+        start_date = body.get('start_date')
+        end_date = body.get('end_date')
+        strategy_type = body.get('strategy_type')
+        source = body.get('source')
+        
+        calculator = TheoreticalPnlCalculator()
+        result = calculator.calculate_theoretical_pnl_for_suggestions(
+            start_date=start_date,
+            end_date=end_date,
+            strategy_type=strategy_type,
+            source=source
+        )
+        
+        return {
+            "success": True,
+            "updated_count": result['updated_count'],
+            "suggestions_processed": result['suggestions_processed'],
+            "message": f"Calculated theoretical P&L for {result['updated_count']} out of {result['suggestions_processed']} suggestions"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating theoretical P&L: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+

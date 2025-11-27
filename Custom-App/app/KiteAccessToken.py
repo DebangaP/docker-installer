@@ -458,8 +458,6 @@ SHOW_OPTIONS_TAB = os.getenv("SHOW_OPTIONS_TAB", "False").lower() == "true"
 SHOW_UTILITIES_TAB = os.getenv("SHOW_UTILITIES_TAB", "False").lower() == "true"
 SHOW_FUNDAMENTALS_TAB = os.getenv("SHOW_FUNDAMENTALS_TAB", "False").lower() == "true"
 
-# Debug logging for tab visibility settings
-logging.info(f"Tab visibility settings - SHOW_STOCKS_TAB: {SHOW_STOCKS_TAB}, SHOW_OPTIONS_TAB: {SHOW_OPTIONS_TAB}, SHOW_UTILITIES_TAB: {SHOW_UTILITIES_TAB}, SHOW_FUNDAMENTALS_TAB: {SHOW_FUNDAMENTALS_TAB}")
 
 # Small JSON cache helpers using Redis
 def cache_get_json(key: str):
@@ -5682,6 +5680,26 @@ async def api_derivatives_suggestions(
             'generation_issue': len(suggestions) == 0
         })
         
+        # Save suggestions to database for tracking
+        try:
+            from api.services.derivative_suggestions_service import DerivativeSuggestionsService
+            suggestions_service = DerivativeSuggestionsService()
+            saved_count = suggestions_service.save_suggestions(
+                suggestions=suggestions,
+                analysis_date=analysis_date,
+                source=suggestion_type.upper(),
+                diagnostics={'filtering_stats': filtering_stats}
+            )
+            if saved_count > 0:
+                logging.info(f"Saved {saved_count} derivative suggestions to database for tracking")
+            else:
+                logging.warning(f"No suggestions were saved. Total suggestions generated: {len(suggestions)}")
+        except Exception as e:
+            logging.error(f"Error saving suggestions to database: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+            # Continue even if saving fails
+        
         return {
             "success": True,
             "analysis_date": analysis_date or datetime.now().strftime('%Y-%m-%d'),
@@ -7421,7 +7439,8 @@ async def api_derivatives_history(
                    instrument, instrument_token, direction, quantity, lot_size, entry_price,
                    strike_price, expiry, total_premium, total_premium_income, margin_required,
                    hedge_value, coverage_percentage, portfolio_value, beta, rationale,
-                   tpo_context, diagnostics
+                   tpo_context, diagnostics, status, executed_at, exit_date, exit_price,
+                   actual_profit, actual_loss, actual_pnl, outcome, notes, updated_at
             FROM my_schema.derivative_suggestions
             {('WHERE ' + ' AND '.join(where_clauses)) if where_clauses else ''}
             ORDER BY generated_at DESC
@@ -7435,6 +7454,78 @@ async def api_derivatives_history(
         return {"success": True, "rows": rows}
     except Exception as e:
         logging.error(f"Error fetching derivative suggestions history: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/derivatives_suggestions/update_result")
+async def api_update_suggestion_result(request: Request):
+    """API endpoint to update the result/outcome of a derivative suggestion"""
+    try:
+        from api.services.derivative_suggestions_service import DerivativeSuggestionsService
+        
+        body = await request.json()
+        suggestion_id = body.get('suggestion_id')
+        
+        if not suggestion_id:
+            return {"success": False, "error": "suggestion_id is required"}
+        
+        service = DerivativeSuggestionsService()
+        success = service.update_suggestion_result(
+            suggestion_id=suggestion_id,
+            status=body.get('status'),
+            exit_date=body.get('exit_date'),
+            exit_price=body.get('exit_price'),
+            actual_profit=body.get('actual_profit'),
+            actual_loss=body.get('actual_loss'),
+            actual_pnl=body.get('actual_pnl'),
+            outcome=body.get('outcome'),
+            notes=body.get('notes')
+        )
+        
+        if success:
+            return {
+                "success": True,
+                "message": f"Suggestion {suggestion_id} updated successfully"
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"Suggestion {suggestion_id} not found or update failed"
+            }
+            
+    except Exception as e:
+        logging.error(f"Error updating suggestion result: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/derivatives_suggestions/efficacy")
+async def api_derivatives_suggestions_efficacy(
+    start_date: str = Query(None, description="Start date YYYY-MM-DD"),
+    end_date: str = Query(None, description="End date YYYY-MM-DD"),
+    strategy_type: str = Query(None, description="Strategy type filter"),
+    source: str = Query(None, description="Source filter (TPO, ORDERFLOW)")
+):
+    """API endpoint to get efficacy statistics for derivative suggestions"""
+    try:
+        from api.services.derivative_suggestions_service import DerivativeSuggestionsService
+        
+        service = DerivativeSuggestionsService()
+        stats = service.get_efficacy_statistics(
+            start_date=start_date,
+            end_date=end_date,
+            strategy_type=strategy_type,
+            source=source
+        )
+        
+        return {
+            "success": True,
+            "statistics": stats
+        }
+        
+    except Exception as e:
+        logging.error(f"Error getting efficacy statistics: {e}")
         import traceback
         logging.error(traceback.format_exc())
         return {"success": False, "error": str(e)}

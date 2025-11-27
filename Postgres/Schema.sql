@@ -136,12 +136,38 @@ CREATE TABLE IF NOT EXISTS my_schema.derivative_suggestions (
     breakeven DOUBLE PRECISION,
     payoff_chart TEXT,
     payoff_sparkline TEXT,
-    run_date DATE DEFAULT CURRENT_DATE
+    run_date DATE DEFAULT CURRENT_DATE,
+    -- Result tracking fields
+    status VARCHAR(20) DEFAULT 'PENDING', -- PENDING, EXECUTED, CLOSED, EXPIRED, CANCELLED
+    executed_at TIMESTAMP,
+    exit_date DATE,
+    exit_price DOUBLE PRECISION,
+    actual_profit DOUBLE PRECISION,
+    actual_loss DOUBLE PRECISION,
+    actual_pnl DOUBLE PRECISION, -- Net P&L (profit - loss)
+    outcome VARCHAR(20), -- SUCCESS, FAILURE, PARTIAL, BREAKEVEN
+    notes TEXT, -- Additional notes about the outcome
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE my_schema.derivative_suggestions ADD COLUMN status VARCHAR(20) DEFAULT 'PENDING';
+ALTER TABLE my_schema.derivative_suggestions ADD COLUMN executed_at TIMESTAMP;
+ALTER TABLE my_schema.derivative_suggestions ADD COLUMN exit_date DATE;
+ALTER TABLE my_schema.derivative_suggestions ADD COLUMN exit_price DOUBLE PRECISION;
+ALTER TABLE my_schema.derivative_suggestions ADD COLUMN actual_profit DOUBLE PRECISION;
+ALTER TABLE my_schema.derivative_suggestions ADD COLUMN actual_loss DOUBLE PRECISION;
+ALTER TABLE my_schema.derivative_suggestions ADD COLUMN actual_pnl DOUBLE PRECISION;
+ALTER TABLE my_schema.derivative_suggestions ADD COLUMN outcome VARCHAR(20);
+ALTER TABLE my_schema.derivative_suggestions ADD COLUMN notes TEXT;
+ALTER TABLE my_schema.derivative_suggestions ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
 
 CREATE INDEX IF NOT EXISTS idx_deriv_sugg_generated_at ON my_schema.derivative_suggestions(generated_at);
 CREATE INDEX IF NOT EXISTS idx_deriv_sugg_strategy ON my_schema.derivative_suggestions(strategy_type);
 CREATE INDEX IF NOT EXISTS idx_deriv_sugg_instrument ON my_schema.derivative_suggestions(instrument);
+CREATE INDEX IF NOT EXISTS idx_deriv_sugg_status ON my_schema.derivative_suggestions(status);
+CREATE INDEX IF NOT EXISTS idx_deriv_sugg_outcome ON my_schema.derivative_suggestions(outcome);
+
 
 -- Options Back-testing Results (store back-testing runs and their results)
 CREATE TABLE IF NOT EXISTS my_schema.options_backtest_results (
