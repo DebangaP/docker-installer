@@ -304,7 +304,7 @@ class AlternateDataService:
                             SELECT price_close
                             FROM my_schema.rt_intraday_price
                             WHERE scrip_id = %s
-                            ORDER BY price_date::date DESC, price_time DESC
+                            ORDER BY price_date::date DESC
                             LIMIT 1
                         """, (symbol,))
                         price_row = cursor.fetchone()

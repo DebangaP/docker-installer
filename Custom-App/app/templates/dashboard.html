@@ -249,7 +249,7 @@
                 <!-- Toggle Button for Predictions (positioned to the right) -->
                 <button id="tpoPredictionsToggle" onclick="toggleTPOPredictions()" 
                         style="position: absolute; top: 10px; right: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; padding: 8px 12px; font-size: 12px; cursor: pointer; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"
-                        onmouseover="this.style.backgroundColor='#0056b3'; showTPOPredictionsOnHover();" 
+                        onmouseover="this.style.backgroundColor='#0056b3';" 
                         onmouseout="this.style.backgroundColor='#007bff'">
                     🎯 Predictions
                 </button>
@@ -1244,6 +1244,47 @@
                     </button>
                     
                     <div id="addStockStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+                </div>
+            </div>
+            
+            <!-- Refresh Stock Data Section -->
+            <div class="card" id="section-refresh-stock-data" style="margin-bottom: 20px; margin-top: 20px;">
+                <div class="card-header" style="background-color: #dc3545; color: white;">
+                    <h3 class="card-title" style="color: white;">🔄 Refresh Stock Data (After Split/Bonus)</h3>
+                </div>
+                <div style="padding: 15px;">
+                    <div style="margin-bottom: 15px;">
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Stock Symbol (e.g., RELIANCE, TCS):</label>
+                        <input type="text" id="refreshStockSymbol" placeholder="Enter stock symbol" 
+                               style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px; text-transform: uppercase;"
+                               maxlength="10">
+                        <small style="color: #666; font-size: 11px;">Enter the stock symbol as it appears in master_scrips</small>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px;">
+                        <label style="font-size: 12px; font-weight: 600; margin-bottom: 5px; display: block;">Country:</label>
+                        <select id="refreshStockCountry" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                            <option value="IN">India (IN)</option>
+                            <option value="">Other</option>
+                        </select>
+                    </div>
+                    
+                    <div style="margin-bottom: 15px; padding: 10px; background-color: #fff3cd; border-radius: 4px; border-left: 3px solid #ffc107;">
+                        <div style="font-size: 11px; color: #333; font-weight: 600; margin-bottom: 5px;">⚠️ What will happen:</div>
+                        <ul style="font-size: 11px; color: #666; margin: 0; padding-left: 20px;">
+                            <li><strong>All existing price data</strong> for this stock will be <strong>deleted</strong> from rt_intraday_price table</li>
+                            <li>Historical price data for <strong>last 6 months</strong> will be re-fetched from Yahoo Finance</li>
+                            <li>New price data will be inserted into rt_intraday_price table</li>
+                            <li>This is useful when a stock has split or bonus has been issued</li>
+                            <li>This process may take a few minutes depending on data availability</li>
+                        </ul>
+                    </div>
+                    
+                    <button onclick="refreshStockData()" id="refreshStockDataBtn" class="btn" style="width: 100%; padding: 10px; background-color: #dc3545; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                        🔄 Delete & Re-fetch Stock Data (6 Months)
+                    </button>
+                    
+                    <div id="refreshStockDataStatus" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
                 </div>
             </div>
                 
@@ -3108,61 +3149,6 @@
                 }
             }
         }
-        
-        // Setup hover functionality for chart container
-        document.addEventListener('DOMContentLoaded', function() {
-            const chartContainer = document.getElementById('tpoChartContainer');
-            const toggleBtn = document.getElementById('tpoPredictionsToggle');
-            const panel = document.getElementById('tpoPredictionsPanel');
-            
-            if (chartContainer && panel) {
-                // Show panel on hover over chart area (right side)
-                let hoverTimeout;
-                chartContainer.addEventListener('mouseenter', function(e) {
-                    // Only show if mouse is on the right side of the chart
-                    const rect = chartContainer.getBoundingClientRect();
-                    const mouseX = e.clientX - rect.left;
-                    const chartWidth = rect.width;
-                    
-                    // If mouse is in the right 30% of the chart, show predictions
-                    if (mouseX > chartWidth * 0.7) {
-                        clearTimeout(hoverTimeout);
-                        hoverTimeout = setTimeout(function() {
-                            showTPOPredictionsOnHover();
-                        }, 300); // Small delay to avoid flickering
-                    }
-                });
-                
-                chartContainer.addEventListener('mousemove', function(e) {
-                    const rect = chartContainer.getBoundingClientRect();
-                    const mouseX = e.clientX - rect.left;
-                    const chartWidth = rect.width;
-                    
-                    if (mouseX > chartWidth * 0.7) {
-                        clearTimeout(hoverTimeout);
-                        hoverTimeout = setTimeout(function() {
-                            showTPOPredictionsOnHover();
-                        }, 300);
-                    } else {
-                        clearTimeout(hoverTimeout);
-                    }
-                });
-                
-                // Keep panel visible when hovering over it
-                if (panel) {
-                    panel.addEventListener('mouseenter', function() {
-                        clearTimeout(hoverTimeout);
-                    });
-                    
-                    panel.addEventListener('mouseleave', function() {
-                        // Optional: hide when leaving panel (uncomment if desired)
-                        // hoverTimeout = setTimeout(function() {
-                        //     panel.style.display = 'none';
-                        // }, 500);
-                    });
-                }
-            }
-        });
         
         // Display error message in predictions container
         function displayPredictionsError(sectionId, errorMessage) {
@@ -8250,6 +8236,94 @@
             });
         }
         
+        function refreshStockData() {
+            const statusDiv = document.getElementById('refreshStockDataStatus');
+            const btn = document.getElementById('refreshStockDataBtn');
+            const symbolInput = document.getElementById('refreshStockSymbol');
+            const countrySelect = document.getElementById('refreshStockCountry');
+            
+            if (!statusDiv || !btn || !symbolInput) {
+                console.error('Required elements not found');
+                return;
+            }
+            
+            const symbol = symbolInput.value.trim().toUpperCase();
+            const country = countrySelect.value.trim() || 'IN';
+            
+            // Validation
+            if (!symbol) {
+                statusDiv.innerHTML = '<span style="color: #dc3545;">❌ Please enter a stock symbol</span>';
+                return;
+            }
+            
+            // Confirm action since this will delete data
+            if (!confirm(`⚠️ WARNING: This will DELETE ALL existing price data for ${symbol} and re-fetch the last 6 months.\n\nAre you sure you want to continue?`)) {
+                return;
+            }
+            
+            // Disable button and show loading state
+            btn.disabled = true;
+            btn.style.opacity = '0.6';
+            btn.style.cursor = 'not-allowed';
+            btn.innerHTML = '⏳ Deleting & Re-fetching Data...';
+            statusDiv.innerHTML = '<span style="color: #666;">Deleting existing data and fetching 6 months of historical data... This may take a few minutes.</span>';
+            
+            // Call API endpoint
+            fetch('/api/refresh_stock_data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    symbol: symbol,
+                    country: country
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Re-enable button
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+                btn.innerHTML = '🔄 Delete & Re-fetch Stock Data (6 Months)';
+                
+                if (data.error || !data.success) {
+                    statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${data.error || data.message || 'Failed to refresh stock data'}</span>`;
+                    return;
+                }
+                
+                // Show success message with statistics
+                let message = `<div style="color: #28a745;">`;
+                message += `<strong>✓ ${data.message || 'Stock data refreshed successfully!'}</strong><br>`;
+                if (data.records_deleted !== undefined) {
+                    message += `<small>Records deleted: ${data.records_deleted}</small><br>`;
+                }
+                if (data.records_inserted !== undefined) {
+                    message += `<small>New records inserted: ${data.records_inserted}</small><br>`;
+                }
+                if (data.date_range) {
+                    message += `<small>Date range: ${data.date_range.start || 'N/A'} to ${data.date_range.end || 'N/A'}</small>`;
+                }
+                message += `</div>`;
+                
+                statusDiv.innerHTML = message;
+                
+                // Clear form field
+                symbolInput.value = '';
+                countrySelect.value = 'IN';
+            })
+            .catch(error => {
+                // Re-enable button
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+                btn.innerHTML = '🔄 Delete & Re-fetch Stock Data (6 Months)';
+                
+                console.error('Error refreshing stock data:', error);
+                statusDiv.innerHTML = `<span style="color: #dc3545;">❌ Error: ${error.message || 'Failed to refresh stock data'}</span>`;
+            });
+        }
+        
         // Preview CSV file before import
         document.getElementById('importCsvFile')?.addEventListener('change', function(e) {
             const file = e.target.files[0];
@@ -10265,19 +10339,32 @@
                 let html = '<div style="display: grid; grid-template-columns: repeat(2, 1.2fr); gap: 20px; align-items: start;">';
                 
                 // Render each indicator
-                sortedIndicators.forEach(indicator => {
+                sortedIndicators.forEach((indicator, index) => {
                     const hasData = indicator.data.success && indicator.data.stocks && indicator.data.stocks.length > 0;
                     
-                    html += `<div style="background: #f8f9fa; border-radius: 5px; padding: 18px; border-left: 4px solid ${indicator.color}; display: flex; flex-direction: column;">`;
-                    html += `<h4 style="margin: 0 0 12px 0; color: #333; font-size: 16px; font-weight: 600;">${indicator.icon} ${indicator.name}</h4>`;
+                    // Add extra margin-right to Increased Volume table to create more space before Increased OBV
+                    const extraMargin = indicator.name === 'Increased Volume' ? 'margin-right: 80px;' : '';
+                    
+                    html += `<div style="background: #f8f9fa; border-radius: 5px; padding: 18px; border-left: 4px solid ${indicator.color}; display: flex; flex-direction: column; ${extraMargin}">`;
+                    html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">`;
+                    html += `<h4 style="margin: 0; color: #333; font-size: 16px; font-weight: 600;">${indicator.icon} ${indicator.name}</h4>`;
+                    if (hasData) {
+                        html += `<select id="limit-select-${indicator.prefix}" onchange="updateIndicatorRows('${indicator.prefix}', this.value)" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; background: white; cursor: pointer;">`;
+                        html += `<option value="5" selected>Show 5</option>`;
+                        html += `<option value="10">Show 10</option>`;
+                        html += `<option value="15">Show 15</option>`;
+                        html += `</select>`;
+                    }
+                    html += `</div>`;
                     
                     if (hasData) {
                         // Render table based on indicator type
                         if (indicator.name === 'Increased Volume') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
                             html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Volume ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
-                            indicator.data.stocks.slice(0, 10).forEach(stock => {
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Volume ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead>';
+                            html += `<tbody id="tbody-${indicator.prefix}">`;
+                            indicator.data.stocks.slice(0, 5).forEach(stock => {
                                 html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: #28a745; font-weight: 600;">+${stock.volume_increase_pct.toFixed(1)}%</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
@@ -10287,8 +10374,9 @@
                         } else if (indicator.name === 'Increased OBV') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
                             html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">OBV ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
-                            indicator.data.stocks.slice(0, 10).forEach(stock => {
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">OBV ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead>';
+                            html += `<tbody id="tbody-${indicator.prefix}">`;
+                            indicator.data.stocks.slice(0, 5).forEach(stock => {
                                 html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: #28a745; font-weight: 600;">+${stock.obv_increase_pct.toFixed(1)}%</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
@@ -10298,8 +10386,9 @@
                         } else if (indicator.name === 'Supertrend Change') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
                             html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 7px; border: 1px solid #ddd;">Change</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 7px; border: 1px solid #ddd;">Date</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
-                            indicator.data.stocks.slice(0, 10).forEach(stock => {
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 7px; border: 1px solid #ddd;">Change</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 7px; border: 1px solid #ddd;">Date</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead>';
+                            html += `<tbody id="tbody-${indicator.prefix}">`;
+                            indicator.data.stocks.slice(0, 5).forEach(stock => {
                                 const changeColor = stock.change_type === 'BULLISH' ? '#28a745' : '#dc3545';
                                 html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; color: ${changeColor}; font-weight: 600;">${stock.change_type}</td>`;
@@ -10311,8 +10400,9 @@
                         } else if (indicator.name === 'Golden Cross (50/200 MA)') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
                             html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">50 MA</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">200 MA</th><th style="padding: 7px; border: 1px solid #ddd;">Date</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
-                            indicator.data.stocks.slice(0, 10).forEach(stock => {
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">50 MA</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">200 MA</th><th style="padding: 7px; border: 1px solid #ddd;">Date</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead>';
+                            html += `<tbody id="tbody-${indicator.prefix}">`;
+                            indicator.data.stocks.slice(0, 5).forEach(stock => {
                                 html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${stock.fast_ma_value.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${stock.slow_ma_value.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
@@ -10323,8 +10413,9 @@
                         } else if (indicator.name === 'RSI Signals') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
                             html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">RSI</th><th style="padding: 7px; border: 1px solid #ddd;">Signal</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
-                            indicator.data.stocks.slice(0, 10).forEach(stock => {
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">RSI</th><th style="padding: 7px; border: 1px solid #ddd;">Signal</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead>';
+                            html += `<tbody id="tbody-${indicator.prefix}">`;
+                            indicator.data.stocks.slice(0, 5).forEach(stock => {
                                 const signalColor = stock.signal_type === 'OVERSOLD' ? '#28a745' : '#dc3545';
                                 html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; font-weight: 600;">${stock.rsi_value.toFixed(1)}</td>`;
@@ -10336,8 +10427,9 @@
                         } else if (indicator.name === 'MACD Crossover') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
                             html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 7px; border: 1px solid #ddd;">Type</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Histogram</th><th style="padding: 7px; border: 1px solid #ddd;">Date</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
-                            indicator.data.stocks.slice(0, 10).forEach(stock => {
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 7px; border: 1px solid #ddd;">Type</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Histogram</th><th style="padding: 7px; border: 1px solid #ddd;">Date</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead>';
+                            html += `<tbody id="tbody-${indicator.prefix}">`;
+                            indicator.data.stocks.slice(0, 5).forEach(stock => {
                                 const typeColor = stock.crossover_type === 'BULLISH' ? '#28a745' : '#dc3545';
                                 html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; color: ${typeColor}; font-weight: 600;">${stock.crossover_type}</td>`;
@@ -10349,8 +10441,9 @@
                         } else if (indicator.name === 'ATR Expansion (Volatility)') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
                             html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">ATR ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Current ATR</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
-                            indicator.data.stocks.slice(0, 10).forEach(stock => {
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">ATR ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Current ATR</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead>';
+                            html += `<tbody id="tbody-${indicator.prefix}">`;
+                            indicator.data.stocks.slice(0, 5).forEach(stock => {
                                 html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: #dc3545; font-weight: 600;">+${stock.atr_increase_pct.toFixed(1)}%</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${stock.latest_atr.toFixed(2)}</td>`;
@@ -10361,8 +10454,9 @@
                         } else if (indicator.name === 'Volume Trend (Increasing)') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
                             html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Trend ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
-                            indicator.data.stocks.slice(0, 10).forEach(stock => {
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Trend ↑%</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead>';
+                            html += `<tbody id="tbody-${indicator.prefix}">`;
+                            indicator.data.stocks.slice(0, 5).forEach(stock => {
                                 html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: #28a745; font-weight: 600;">+${stock.trend_strength_pct.toFixed(1)}%</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
@@ -10372,8 +10466,9 @@
                         } else if (indicator.name === 'Momentum Change') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
                             html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 7px; border: 1px solid #ddd;">Type</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Change %</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
-                            indicator.data.stocks.slice(0, 10).forEach(stock => {
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 7px; border: 1px solid #ddd;">Type</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Change %</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead>';
+                            html += `<tbody id="tbody-${indicator.prefix}">`;
+                            indicator.data.stocks.slice(0, 5).forEach(stock => {
                                 const typeColor = stock.change_type === 'ACCELERATING' ? '#28a745' : '#dc3545';
                                 html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; color: ${typeColor}; font-weight: 600;">${stock.change_type}</td>`;
@@ -10385,8 +10480,9 @@
                         } else if (indicator.name === 'RSI Divergence') {
                             html += '<div style="max-height: 300px; overflow-y: auto;">';
                             html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
-                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 7px; border: 1px solid #ddd;">Type</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Strength %</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">RSI</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead><tbody>';
-                            indicator.data.stocks.slice(0, 10).forEach(stock => {
+                            html += '<thead><tr style="background: #e9ecef;"><th style="padding: 7px; border: 1px solid #ddd;">Symbol</th><th style="padding: 7px; border: 1px solid #ddd;">Type</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Strength %</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">RSI</th><th style="padding: 6px; border: 1px solid #ddd; text-align: right;">Price</th><th style="padding: 6px; border: 1px solid #ddd; text-align: center;">Sparkline</th></tr></thead>';
+                            html += `<tbody id="tbody-${indicator.prefix}">`;
+                            indicator.data.stocks.slice(0, 5).forEach(stock => {
                                 const typeColor = stock.divergence_type === 'BULLISH' ? '#28a745' : '#dc3545';
                                 html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
                                 html += `<td style="padding: 6px; border: 1px solid #ddd; color: ${typeColor}; font-weight: 600;">${stock.divergence_type}</td>`;
@@ -10421,11 +10517,14 @@
                 
                 container.innerHTML = html;
                 
-                // Load sparklines for all displayed stocks
+                // Store full indicator data for dynamic updates
+                window.alternateDataIndicators = sortedIndicators;
+                
+                // Load sparklines for all displayed stocks (default 5)
                 const allSymbols = [];
                 sortedIndicators.forEach(indicator => {
                     if (indicator.data.success && indicator.data.stocks && indicator.data.stocks.length > 0) {
-                        indicator.data.stocks.slice(0, 10).forEach(stock => {
+                        indicator.data.stocks.slice(0, 5).forEach(stock => {
                             if (stock.symbol && !allSymbols.includes(stock.symbol)) {
                                 allSymbols.push(stock.symbol);
                             }
@@ -10458,8 +10557,125 @@
             });
         }
         
-        // Make function globally accessible
+        // Function to update indicator table rows based on selected limit
+        function updateIndicatorRows(prefix, limit) {
+            if (!window.alternateDataIndicators) return;
+            
+            const limitNum = parseInt(limit);
+            const indicator = window.alternateDataIndicators.find(ind => ind.prefix === prefix);
+            if (!indicator || !indicator.data.success || !indicator.data.stocks) return;
+            
+            const tbody = document.getElementById(`tbody-${prefix}`);
+            if (!tbody) return;
+            
+            const stocks = indicator.data.stocks.slice(0, limitNum);
+            let html = '';
+            
+            // Render rows based on indicator type
+            if (indicator.name === 'Increased Volume') {
+                stocks.forEach(stock => {
+                    html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: #28a745; font-weight: 600;">+${stock.volume_increase_pct.toFixed(1)}%</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
+                });
+            } else if (indicator.name === 'Increased OBV') {
+                stocks.forEach(stock => {
+                    html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: #28a745; font-weight: 600;">+${stock.obv_increase_pct.toFixed(1)}%</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
+                });
+            } else if (indicator.name === 'Supertrend Change') {
+                stocks.forEach(stock => {
+                    const changeColor = stock.change_type === 'BULLISH' ? '#28a745' : '#dc3545';
+                    html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; color: ${changeColor}; font-weight: 600;">${stock.change_type}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                    html += `<td style="padding: 7px; border: 1px solid #ddd;">${stock.change_date || 'N/A'}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
+                });
+            } else if (indicator.name === 'Golden Cross (50/200 MA)') {
+                stocks.forEach(stock => {
+                    html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${stock.fast_ma_value.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${stock.slow_ma_value.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                    html += `<td style="padding: 7px; border: 1px solid #ddd;">${stock.cross_date || 'N/A'}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
+                });
+            } else if (indicator.name === 'RSI Signals') {
+                stocks.forEach(stock => {
+                    const signalColor = stock.signal_type === 'OVERSOLD' ? '#28a745' : '#dc3545';
+                    html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; font-weight: 600;">${stock.rsi_value.toFixed(1)}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; color: ${signalColor}; font-weight: 600;">${stock.signal_type}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
+                });
+            } else if (indicator.name === 'MACD Crossover') {
+                stocks.forEach(stock => {
+                    const typeColor = stock.crossover_type === 'BULLISH' ? '#28a745' : '#dc3545';
+                    html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; color: ${typeColor}; font-weight: 600;">${stock.crossover_type}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: ${typeColor};">${stock.histogram > 0 ? '+' : ''}${stock.histogram.toFixed(2)}</td>`;
+                    html += `<td style="padding: 7px; border: 1px solid #ddd;">${stock.cross_date || 'N/A'}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
+                });
+            } else if (indicator.name === 'ATR Expansion (Volatility)') {
+                stocks.forEach(stock => {
+                    html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: #dc3545; font-weight: 600;">+${stock.atr_increase_pct.toFixed(1)}%</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${stock.latest_atr.toFixed(2)}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
+                });
+            } else if (indicator.name === 'Volume Trend (Increasing)') {
+                stocks.forEach(stock => {
+                    html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: #28a745; font-weight: 600;">+${stock.trend_strength_pct.toFixed(1)}%</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
+                });
+            } else if (indicator.name === 'Momentum Change') {
+                stocks.forEach(stock => {
+                    const typeColor = stock.change_type === 'ACCELERATING' ? '#28a745' : '#dc3545';
+                    html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; color: ${typeColor}; font-weight: 600;">${stock.change_type}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: ${typeColor};">${stock.momentum_change_pct > 0 ? '+' : ''}${stock.momentum_change_pct.toFixed(1)}%</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
+                });
+            } else if (indicator.name === 'RSI Divergence') {
+                stocks.forEach(stock => {
+                    const typeColor = stock.divergence_type === 'BULLISH' ? '#28a745' : '#dc3545';
+                    html += `<tr><td style="padding: 7px; border: 1px solid #ddd;">${stock.symbol}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; color: ${typeColor}; font-weight: 600;">${stock.divergence_type}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right; color: ${typeColor};">${stock.divergence_strength.toFixed(1)}%</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${stock.current_rsi.toFixed(2)}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: right;">₹${(stock.current_price || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+                    html += `<td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><canvas id="sparkline-${prefix}-${stock.symbol}" width="100" height="30" onclick="showCandlestick('${stock.symbol}')" style="cursor: pointer;"></canvas></td></tr>`;
+                });
+            }
+            
+            tbody.innerHTML = html;
+            
+            // Load sparklines for newly displayed stocks
+            setTimeout(() => {
+                stocks.forEach(stock => {
+                    if (stock.symbol) {
+                        const canvasId = `sparkline-${prefix}-${stock.symbol}`;
+                        const canvas = document.getElementById(canvasId);
+                        if (canvas) {
+                            loadSparkline(canvasId);
+                        }
+                    }
+                });
+            }, 50);
+        }
+        
+        // Make functions globally accessible
         window.loadAlternateData = loadAlternateData;
+        window.updateIndicatorRows = updateIndicatorRows;
         
         // Render sectoral averages cards
         function renderSectoralAverages() {
