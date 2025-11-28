@@ -78,6 +78,7 @@ class RiskConcentrationAnalyzer:
             cursor.execute("""
                 SELECT
                     tradingsymbol as trading_symbol,
+                    fund,
                     quantity,
                     average_price,
                     COALESCE(last_price, 0) as current_price,
@@ -113,10 +114,29 @@ class RiskConcentrationAnalyzer:
                     logging.error(f"Error checking holdings table: {e2}")
                 return pd.DataFrame()
 
-            columns = ['trading_symbol', 'quantity', 'average_price', 'current_price',
+            # Handle columns - equity has 7 columns, MF has 8 columns (includes fund)
+            # For equity rows, add None for fund column
+            equity_columns = ['trading_symbol', 'quantity', 'average_price', 'current_price',
+                             'pnl', 'sector_name', 'holding_type']
+            mf_columns = ['trading_symbol', 'fund', 'quantity', 'average_price', 'current_price',
+                         'pnl', 'sector_name', 'holding_type']
+            
+            # Normalize rows - add fund=None for equity rows
+            normalized_rows = []
+            equity_row_count = len(equity_rows)
+            for i, row in enumerate(all_rows):
+                if i < equity_row_count:
+                    # Equity row - insert None for fund after trading_symbol
+                    normalized_row = list(row[:1]) + [None] + list(row[1:])
+                    normalized_rows.append(normalized_row)
+                else:
+                    # MF row - already has fund
+                    normalized_rows.append(row)
+            
+            columns = ['trading_symbol', 'fund', 'quantity', 'average_price', 'current_price',
                       'pnl', 'sector_name', 'holding_type']
-
-            df = pd.DataFrame(all_rows, columns=columns)
+            
+            df = pd.DataFrame(normalized_rows, columns=columns)
             
             # Ensure numeric columns are properly typed
             df['quantity'] = pd.to_numeric(df['quantity'], errors='coerce').fillna(0)
@@ -188,7 +208,7 @@ class RiskConcentrationAnalyzer:
                 })
 
             # Get top 5 holdings with full details
-            top_5_holdings = holdings.head(5)[['trading_symbol', 'weight', 'current_value']].copy()
+            top_5_holdings = holdings.head(5)[['trading_symbol', 'fund', 'holding_type', 'weight', 'current_value']].copy()
             top_5_holdings['percentage'] = top_5_holdings['weight']  # Keep weight as percentage (0-1)
             
             return {
@@ -198,7 +218,7 @@ class RiskConcentrationAnalyzer:
                 'top_5_concentration': float(top_5_sum),
                 'top_10_concentration': float(top_10_sum),
                 'top_5_holdings': top_5_holdings.to_dict('records'),
-                'concentration_distribution': holdings[['trading_symbol', 'weight']].head(20).to_dict('records'),
+                'concentration_distribution': holdings[['trading_symbol', 'fund', 'holding_type', 'weight']].head(20).to_dict('records'),
                 'alerts': alerts
             }
         except Exception as e:
@@ -472,3 +492,4 @@ class RiskConcentrationAnalyzer:
         except Exception as e:
             logging.error(f"Error calculating overall risk score: {e}")
             return {'error': str(e)}
+

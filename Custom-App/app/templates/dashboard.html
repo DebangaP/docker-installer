@@ -14374,15 +14374,17 @@
                         const topHoldings = stockData.slice(0, 5); // Get top 5
                         html += '<div><h4 style="margin-bottom: 10px;">Top 5 Holdings</h4>';
                         html += '<div style="max-height: 300px; overflow-y: auto;">';
-                        html += '<table style="width: 100%; border-collapse: collapse; font-size: 12px;"><thead><tr style="background: #f8f9fa;"><th style="padding: 8px; border: 1px solid #ddd;">Stock</th><th style="padding: 8px; border: 1px solid #ddd;">%</th><th style="padding: 8px; border: 1px solid #ddd;">Value</th></tr></thead><tbody>';
+                        html += '<table style="width: 100%; border-collapse: collapse; font-size: 12px;"><thead><tr style="background: #f8f9fa;"><th style="padding: 8px; border: 1px solid #ddd;">Stock/ Mutual Fund</th><th style="padding: 8px; border: 1px solid #ddd;">%</th><th style="padding: 8px; border: 1px solid #ddd;">Value</th></tr></thead><tbody>';
                         topHoldings.forEach(stock => {
                             const weight = stock.weight || stock.percentage || 0;
                             const percentage = (typeof weight === 'number' ? weight : parseFloat(weight) || 0) * 100;
                             // For top_5_holdings, current_value should be present. For concentration_distribution, calculate from total_value
                             const totalValue = data.stock_concentration?.total_value || 0;
                             const value = stock.current_value || (stock.weight ? stock.weight * totalValue : stock.value) || 0;
+                            // Show fund for mutual funds, trading_symbol for stocks
+                            const displayName = (stock.holding_type === 'MF' && stock.fund) ? stock.fund : (stock.trading_symbol || stock.symbol || 'N/A');
                             html += `<tr>
-                                <td style="padding: 8px; border: 1px solid #ddd;">${stock.trading_symbol || stock.symbol || 'N/A'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd;">${displayName}</td>
                                 <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">${percentage.toFixed(2)}%</td>
                                 <td style="padding: 8px; border: 1px solid #ddd;">₹${(value || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                             </tr>`;
