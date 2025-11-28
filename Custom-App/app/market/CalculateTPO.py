@@ -963,12 +963,12 @@ def plot_5day_tpo_chart(db_fetcher, table_name, instrument_token=256265,
     
     fig = plt.figure(figsize=(20, 12), facecolor='black')
     
-    # Create subplots: 1 row x (num_days + 1) columns
-    # Each day has TPO only, plus price scale at the end
-    # Layout: [TPO1][TPO2][TPO3][TPO4][TPO5][PriceScale]
+    # Create subplots: 1 row x num_days columns
+    # Each day has TPO only (price scale removed)
+    # Layout: [TPO1][TPO2][TPO3][TPO4][TPO5]
     from matplotlib.gridspec import GridSpec
-    gs = GridSpec(1, num_days + 1, figure=fig, hspace=0.2, wspace=0.1,
-                 width_ratios=[1] * num_days + [0.4])
+    gs = GridSpec(1, num_days, figure=fig, hspace=0.2, wspace=0.1,
+                 width_ratios=[1] * num_days)
     
     # Calculate global price range for all days (only from days with data)
     all_prices = []
@@ -1105,38 +1105,6 @@ def plot_5day_tpo_chart(db_fetcher, table_name, instrument_token=256265,
             ax_tpo.set_yticklabels([])
         else:
             ax_tpo.set_ylabel('Price', fontsize=10, color='white')
-    
-    # Add price scale on the right
-    ax_price_scale = fig.add_subplot(gs[0, num_days])
-    
-    # Create price scale with finer increments
-    price_ticks = np.arange(y_min, y_max + tick_size, tick_size * 5)
-    price_labels = [f'{p:.2f}' for p in price_ticks]
-    
-    # Current price
-    if trading_days:
-        last_day_data = trading_days[-1][1]
-        if not last_day_data.empty and 'last_price' in last_day_data.columns:
-            current_price = float(last_day_data['last_price'].iloc[-1])
-            price_labels_with_current = []
-            for p in price_ticks:
-                if abs(p - current_price) < tick_size * 2:
-                    price_labels_with_current.append(f'{p:.2f} (C)')
-                else:
-                    price_labels_with_current.append(f'{p:.2f}')
-            price_labels = price_labels_with_current
-    
-    ax_price_scale.set_ylim(y_min, y_max)
-    ax_price_scale.set_yticks(price_ticks)
-    ax_price_scale.set_yticklabels(price_labels, fontsize=9, color='white')
-    ax_price_scale.set_ylabel('Price', fontsize=12, fontweight='bold', color='white')
-    ax_price_scale.set_facecolor('black')
-    ax_price_scale.spines['top'].set_color('white')
-    ax_price_scale.spines['bottom'].set_color('white')
-    ax_price_scale.spines['left'].set_color('white')
-    ax_price_scale.spines['right'].set_color('white')
-    ax_price_scale.tick_params(colors='white', labelsize=9)
-    ax_price_scale.grid(True, alpha=0.2, axis='y', color='gray')
     
     # Add overall title
     fig.suptitle('5-Day TPO Market Profile', 
