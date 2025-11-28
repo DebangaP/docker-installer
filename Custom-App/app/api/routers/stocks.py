@@ -388,19 +388,55 @@ async def api_refresh_stock_data(request: Request):
                 
                 try:
                     # Extract values from yfinance data
+                    # yfinance returns DataFrame with columns: Open, High, Low, Close, Adj Close, Volume
+                    # Helper function to safely extract scalar value from Series or scalar
+                    def safe_get_value(val):
+                        """Safely extract scalar value, handling both Series and scalar inputs"""
+                        if val is None:
+                            return None
+                        # If it's a Series, get the first value
+                        if isinstance(val, pd.Series):
+                            val = val.iloc[0] if len(val) > 0 else None
+                        # Check if it's NaN
+                        if val is None or (isinstance(val, (int, float)) and pd.isna(val)):
+                            return None
+                        return val
+                    
                     try:
-                        open_price = round(float(dailyrow['Open'])) if 'Open' in dailyrow.index and not pd.isna(dailyrow['Open']) else None
-                        high_price = round(float(dailyrow['High'])) if 'High' in dailyrow.index and not pd.isna(dailyrow['High']) else None
-                        low_price = round(float(dailyrow['Low'])) if 'Low' in dailyrow.index and not pd.isna(dailyrow['Low']) else None
-                        close_price = round(float(dailyrow['Close'])) if 'Close' in dailyrow.index and not pd.isna(dailyrow['Close']) else None
-                        volume_value = int(dailyrow['Volume']) if 'Volume' in dailyrow.index and not pd.isna(dailyrow['Volume']) else 0
-                    except (KeyError, IndexError):
-                        # Fallback to positional access
-                        open_price = round(float(dailyrow.values[0])) if len(dailyrow.values) > 0 and not pd.isna(dailyrow.values[0]) else None
-                        high_price = round(float(dailyrow.values[1])) if len(dailyrow.values) > 1 and not pd.isna(dailyrow.values[1]) else None
-                        low_price = round(float(dailyrow.values[2])) if len(dailyrow.values) > 2 and not pd.isna(dailyrow.values[2]) else None
-                        close_price = round(float(dailyrow.values[3])) if len(dailyrow.values) > 3 and not pd.isna(dailyrow.values[3]) else None
-                        volume_value = int(dailyrow.values[5]) if len(dailyrow.values) > 5 and not pd.isna(dailyrow.values[5]) else 0
+                        # Try to get values by column name
+                        open_val = safe_get_value(dailyrow.get('Open'))
+                        high_val = safe_get_value(dailyrow.get('High'))
+                        low_val = safe_get_value(dailyrow.get('Low'))
+                        close_val = safe_get_value(dailyrow.get('Close'))
+                        volume_val = safe_get_value(dailyrow.get('Volume'))
+                        
+                        # Round prices to integers for consistent storage
+                        open_price = round(float(open_val)) if open_val is not None else None
+                        high_price = round(float(high_val)) if high_val is not None else None
+                        low_price = round(float(low_val)) if low_val is not None else None
+                        close_price = round(float(close_val)) if close_val is not None else None
+                        volume_value = int(volume_val) if volume_val is not None else 0
+                    except (KeyError, IndexError, AttributeError):
+                        # Fallback to positional access if column names not available
+                        # yfinance returns: Open, High, Low, Close, Adj Close, Volume
+                        # So: values[0]=Open, values[1]=High, values[2]=Low, values[3]=Close, values[5]=Volume
+                        try:
+                            vals = dailyrow.values
+                            open_val = safe_get_value(vals[0] if len(vals) > 0 else None)
+                            high_val = safe_get_value(vals[1] if len(vals) > 1 else None)
+                            low_val = safe_get_value(vals[2] if len(vals) > 2 else None)
+                            close_val = safe_get_value(vals[3] if len(vals) > 3 else None)
+                            volume_val = safe_get_value(vals[5] if len(vals) > 5 else None)
+                            
+                            open_price = round(float(open_val)) if open_val is not None else None
+                            high_price = round(float(high_val)) if high_val is not None else None
+                            low_price = round(float(low_val)) if low_val is not None else None
+                            close_price = round(float(close_val)) if close_val is not None else None
+                            volume_value = int(volume_val) if volume_val is not None else 0
+                        except (IndexError, ValueError, TypeError):
+                            # If all else fails, skip this row
+                            logger.warning(f"Could not extract price data for {symbol} on {date}")
+                            continue
                     
                     date_str = date.strftime('%Y-%m-%d') if hasattr(date, 'strftime') else str(date)[:10]
                     

@@ -13526,8 +13526,8 @@
                             isSyncing = true;
                             
                             charts.forEach(chart => {
-                                if (!chart || !chart.data) {
-                                    return; // Skip invalid charts only
+                                if (!chart || !chart.data || !chart.canvas) {
+                                    return; // Skip invalid charts or charts without canvas
                                 }
                                 
                                 const activeElements = [];
@@ -13548,7 +13548,7 @@
                                     
                                     // Calculate the x position on this chart for the timestamp
                                     const scale = chart.scales.x;
-                                    if (scale && scale.getPixelForValue) {
+                                    if (scale && scale.getPixelForValue && chart.canvas) {
                                         const chartX = scale.getPixelForValue(timestamp);
                                         const rect = chart.canvas.getBoundingClientRect();
                                         
@@ -13575,7 +13575,9 @@
                                         });
                                         
                                         // Dispatch the event on the chart's canvas to trigger tooltip
-                                        chart.canvas.dispatchEvent(syntheticEvent);
+                                        if (chart.canvas) {
+                                            chart.canvas.dispatchEvent(syntheticEvent);
+                                        }
                                         
                                         // Update chart to ensure tooltip is displayed
                                         chart.update('none');
@@ -13627,7 +13629,7 @@
                                 isSyncing = true;
                                 
                                 charts.forEach(c => {
-                                    if (c) {
+                                    if (c && c.canvas) {
                                         c.setActiveElements([]);
                                         // Hide tooltip by dispatching mouseout
                                         const mouseOutEvent = new MouseEvent('mouseout', {
